@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="2026-07-31-07" author="ticketwave">
+        <comment>BookingItems: line items of a booking, pairing a held/booked seat with a passenger and its fare.</comment>
+        <createTable tableName="booking_items">
+            <column name="item_id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" primaryKeyName="pk_booking_items"/>
+            </column>
+            <column name="booking_id" type="BIGINT">
+                <constraints nullable="false"
+                             foreignKeyName="fk_booking_items_booking"
+                             references="bookings(booking_id)"/>
+            </column>
+            <column name="seat_id" type="BIGINT">
+                <constraints nullable="false"
+                             foreignKeyName="fk_booking_items_seat"
+                             references="seats(seat_id)"/>
+            </column>
+            <column name="passenger_id" type="BIGINT">
+                <constraints nullable="false"
+                             foreignKeyName="fk_booking_items_passenger"
+                             references="passengers(passenger_id)"/>
+            </column>
+            <column name="fare" type="DECIMAL(12,2)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addUniqueConstraint tableName="booking_items"
+                              columnNames="booking_id, seat_id"
+                              constraintName="uq_booking_items_booking_seat"/>
+
+        <createIndex tableName="booking_items" indexName="ix_booking_items_seat_id">
+            <column name="seat_id"/>
+        </createIndex>
+        <createIndex tableName="booking_items" indexName="ix_booking_items_passenger_id">
+            <column name="passenger_id"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable tableName="booking_items"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

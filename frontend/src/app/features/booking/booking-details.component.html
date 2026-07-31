@@ -1,0 +1,61 @@
+@if (loading()) {
+  <p>Loading booking…</p>
+} @else if (loadError()) {
+  <div class="card">
+    <p>This booking couldn't be found, or you don't have access to it.</p>
+    <a class="btn secondary" routerLink="/search">Back to search</a>
+  </div>
+} @else if (detail(); as d) {
+  <div class="card">
+    <h2>Booking {{ d.booking.pnr }}</h2>
+    <p class="status" [class]="d.booking.status.toLowerCase()">{{ d.booking.status }}</p>
+    <p class="meta">Booked {{ d.booking.bookingTime | date: 'medium' }}</p>
+    @if (d.booking.promoCode) {
+      <p class="meta">Promo code: {{ d.booking.promoCode }}</p>
+    }
+    <p class="total">Total: {{ d.booking.totalAmount }}</p>
+  </div>
+
+  <div class="card">
+    <h3>Items</h3>
+    <table class="item-table">
+      <thead>
+        <tr>
+          <th>Seat</th>
+          <th>Passenger</th>
+          <th>Fare</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (item of d.items; track item.id) {
+          <tr>
+            <td>{{ seatNumber(item.seatId) }}</td>
+            <td>{{ passengerName(item.passengerId) }}</td>
+            <td>{{ item.fare }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+
+  @if (refund(); as r) {
+    <div class="card">
+      <h3>Refund</h3>
+      <p>Status: {{ r.status }}</p>
+      <p>Amount: {{ r.amount }} ({{ r.policyCode }})</p>
+    </div>
+  } @else if (canRefund()) {
+    <div class="card">
+      <button class="btn secondary" type="button" [disabled]="requestingRefund()" (click)="requestRefund()">
+        {{ requestingRefund() ? 'Requesting…' : 'Request refund' }}
+      </button>
+    </div>
+  }
+
+  @if (canReschedule()) {
+    <div class="card">
+      <p class="hint">This booking hasn't been paid yet — you can freely change its schedule/seats.</p>
+      <button class="btn secondary" type="button" (click)="startReschedule()">Change schedule</button>
+    </div>
+  }
+}

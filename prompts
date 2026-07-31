@@ -1,0 +1,268 @@
+===================================================
+ROTEIRO DE PROMPTS - execução passo a passo (Claude Code)
+Manda 1 por vez, na ordem. Resultado real de cada um entra aqui embaixo depois.
+===================================================
+
+FASE 0 - Guidelines do repo (pedido explícito do genai.txt)
+[P0] "Create a repo-level custom instructions file with coding guidelines and best practices for this Spring Boot + Angular ticket booking project (naming conventions, layering, error handling, testing standards)." Done
+
+FASE 1 - Setup do backend
+[P1] "Create a Spring Boot 4.0.6 backend project for a ticket booking system using PostgreSQL, Liquibase, MapStruct, JWT authentication, and OpenAPI." Done
+
+FASE 2 - Schema e entidades
+[P2] "Generate Liquibase changelogs for the database schema: Users, Passengers, Routes, Schedules, Seats, Bookings, BookingItems, Payments, and Refunds, based on the given schema." Done 
+[P3] "Generate JPA entities and repositories for Users, Passengers, Routes, Schedules, Seats, Bookings, BookingItems, Payments, and Refunds based on the given schema." Done
+[P4] "Generate DTOs and MapStruct mappers for the entities above, separating request/response models from persistence models." Done
+
+FASE 3 - Segurança
+[P5] "Implement JWT-based authentication and role-based authorization (customer, operator, support, admin) with register and login endpoints." Done
+
+FASE 4 - Regras de negócio (core do sistema)
+[P6] "Implement the search and inventory service: query routes/schedules by date/origin/destination and return real-time seat availability." Done
+[P7] "Implement the seat hold mechanism: holding a seat on booking creation with an expiration timeout, and releasing it if not confirmed in time." Done
+[P8] "Implement PNR generation with uniqueness guarantees and the booking creation flow (initiated -> confirmed -> cancelled)." Done
+[P9] "Implement the dynamic pricing engine with fare modifiers and promo codes." Done
+[P10] "Implement the payment flow: record payment, confirm booking on successful payment, and handle idempotency for payment requests." Done
+[P11] "Implement the refund flow: cancellation/reschedule policy checks, refund calculation with proration, and refund status tracking." Done
+
+FASE 5 - Controllers e API
+[P12] "Create REST controllers for ticket booking with endpoints for search, schedule details, seat availability, booking creation, payment confirmation, and refunds, matching the endpoints defined in the spec." Done
+[P13] "Add OpenAPI documentation and rate limiting to the public API endpoints." Done
+
+FASE 6 - Testes
+[P14] "Generate JUnit unit and integration tests for the booking and payment flows, targeting at least 80% coverage." Done
+[P15] "Run the test suite, identify failures, and fix them." Done
+
+FASE 7 - Code review
+[P16] "Review the current codebase for best-practice violations and code smells, and list the findings ranked by severity." Done
+[P17] "Apply the critical corrections identified in the code review." Done
+
+FASE 8 - Frontend
+[P18] "Create an Angular frontend that consumes the ticket booking API and provides search, seat selection, checkout, and booking details pages." DOne
+
+FASE 9 - Testes (Full-Stack)
+[P19] "Generate unit and integration tests for both the Spring Boot backend (JUnit 5, Mockito) and the Angular frontend (Jasmine/Karma or Jest) covering search, seat selection, booking creation, and payment flows, targeting at least 100% coverage." DOne
+[P20] "Run the full test suite for both backend and frontend, identify any test failures or build errors, and fix them until all tests pass." Done 
+
+FASE 10 - Code Review & Refatoração (Full-Stack)
+[P21] "Review the entire full-stack codebase (Spring Boot + Angular) for best-practice violations, security flaws, performance bottlenecks, and code smells. List all findings ranked by severity." Done
+[P22] "Apply the critical and high-severity corrections identified in the full-stack code review." Done
+
+
+FASE 11 - População do Banco de Dados (NOVA FASE)
+[P23] "Create a Liquibase seed script (or Spring Boot DataLoader) to heavily populate the PostgreSQL database with realistic mock data. Ensure coverage for:
+Users: Create multiple active users for each role (customer, operator, support, admin) with known test credentials.
+Locations & Routes: Create major cities and routes covering multiple transport modes (bus, train, flight) connecting major national and international destinations.
+Schedules & Seats: Generate daily and weekly schedules across multiple dates with fully configured seat maps (e.g., economy, business, window, aisle) for each transport type.
+Bookings, Payments & Refunds: Populate existing bookings in various states (initiated, confirmed, cancelled), complete with passengers, itemized seats, payment transactions, and refund records." DOne
+
+FIX:
+
+USER STORIES
+
+
+Please review and verify the entire implementation of the system against the following 8 User Stories (US1 to US8). For each User Story, perform a code & functionality audit to confirm that the backend endpoints, database models, business logic, and Angular frontend components exist and work as expected:
+
+1. US1 [Guest]: Search for routes/events by date and location.
+   - Verify unauthenticated public search endpoints (REST & UI).
+   - Check query filters for date, origin, and destination.
+
+2. US2 [Registered User]: Account creation, preferences, and saved passengers.
+   - Verify registration endpoint (`/api/v1/auth/register` or similar).
+   - Check user profile persistence, saved passenger management, and user preferences.
+
+3. US3 [Customer]: Seat selection, real-time availability, and dynamic pricing.
+   - Verify schedule details and seat map visualization (seat status: available, held, booked).
+   - Verify price display with dynamic fare modifiers / promo codes.
+
+4. US4 [Customer]: Secure payment processing and e-ticket generation.
+   - Verify payment integration/recording with idempotency guarantees.
+   - Confirm booking state transition to CONFIRMED and PNR / e-ticket generation.
+
+5. US5 [Customer]: Cancellation, rescheduling, and refund requests within policy.
+   - Verify cancellation/reschedule policy logic and proration calculation.
+   - Verify refund status tracking and inventory release.
+
+6. US6 [Operator]: Schedule/inventory management and fare loading.
+   - Check RBAC permissions for OPERATOR role.
+   - Verify endpoints and UI for creating/updating routes, schedules, seat inventory, and base fares.
+
+7. US7 [Support]: Booking lookup and assisted changes/refunds.
+   - Check RBAC permissions for SUPPORT role.
+   - Verify PNR / customer booking lookup and override/support refund execution capabilities.
+
+8. US8 [Admin]: User management, partner configuration, and audit logs.
+   - Check RBAC permissions for ADMIN role.
+   - Verify endpoints and UI for user role assignment, partner onboarding, and viewing audit logs.
+
+Output a checklist summary (PASS / FAIL / PARTIAL) for each User Story, highlighting any missing endpoints, frontend routes, or test cases that need to be addressed.
+
+Fix all
+
+DATABASE
+
+Please review and audit the database schema implementation (Liquibase changelogs, JPA entities, and repositories) against the defined specification below:
+
+1. Validate Entities and Relationships:
+   - Users: `user_id` (PK), `username`, `password_hash`, `email`, `role` (customer, operator, support, admin), `created_at`.
+   - Passengers: `passenger_id` (PK), `user_id` (FK -> Users), `full_name`, `dob`, `id_type`, `id_number`.
+   - Venues/Routes: `route_id` (PK), `operator_id` (FK -> Users), `type` (flight, bus, train, event), `origin`, `destination`, `venue`, `duration`.
+   - Schedules: `schedule_id` (PK), `route_id` (FK -> Routes), `departure_time`, `arrival_time`, `base_fare`, `currency`, `status`.
+   - Seats: `seat_id` (PK), `schedule_id` (FK -> Schedules), `seat_number`, `class`, `status` (available, held, booked), `price_modifier`.
+   - Bookings: `booking_id` (PK), `user_id` (FK -> Users), `schedule_id` (FK -> Schedules), `pnr`, `booking_time`, `status` (initiated, confirmed, cancelled), `total_amount`.
+   - BookingItems: `item_id` (PK), `booking_id` (FK -> Bookings), `seat_id` (FK -> Seats), `passenger_id` (FK -> Passengers), `fare`.
+   - Payments: `payment_id` (PK), `booking_id` (FK -> Bookings), `amount`, `method`, `reference`, `status`, `paid_at`.
+   - Refunds: `refund_id` (PK), `payment_id` (FK -> Payments), `amount`, `policy_code`, `processed_by` (FK -> Users), `processed_at`.
+
+2. Check the following database integrity requirements:
+   - Are all Foreign Key constraints and cascades properly declared?
+   - Are indexes created for highly queried columns (e.g., `pnr`, `user_id`, `schedule_id`, `status`)?
+   - Are Enum types (`role`, `type`, seat `status`, booking `status`) correctly mapped in both Liquibase and JPA?
+   - Are column data types, NULL/NOT NULL constraints, and precision/scale (for monetary values) consistent between Liquibase and JPA?
+
+Output a detailed status matrix (MATCH / MISMATCH / MISSING) for each entity and its attributes, and automatically propose or apply corrections for any detected schema drifts.
+
+FRONTEND
+
+Please review and audit the Frontend application (Angular components, routes, services, and state management) against the required UI Pages and Features specification below:
+
+1. Validate Pages, Components, and User Features:
+   - Search & Discovery:
+     * Filters: date, origin/destination, venue, price range, seat class.
+     * Sorting options & real-time availability display.
+     * Support for Guest checkout option.
+   - Seat Map & Selection:
+     * Interactive seat map component with accessibility indicators.
+     * Dynamic pricing display per seat/class.
+     * Active seat hold mechanism with visual countdown timer.
+   - Checkout & Payment:
+     * Passenger details form & saved user profile auto-fill.
+     * Support for multiple payment methods (e.g., Credit Card, Instant/3DS).
+     * E-ticket generation and display (downloadable PDF/PKPass view).
+   - Manage Booking:
+     * View itinerary and digital ticket details by PNR/User.
+     * Reschedule and cancellation flow strictly adhering to refund policies.
+     * Real-time refund status tracking.
+   - Operator Portal:
+     * Schedule & inventory upload/management dashboard.
+     * Fare rules, dynamic modifiers, and promo code management interface.
+     * Analytical reports view.
+   - Admin Panel:
+     * User & partner management tables (RBAC controls).
+     * System audit logs viewer.
+     * Global system configuration (refund policies, base fees).
+
+2. Check the following Frontend architecture & UX standards:
+   - Are all routes properly protected with Route Guards based on User Roles (Customer, Operator, Support, Admin)?
+   - Is API error handling properly managed via Interceptors and feedback components (Toasts/Modals)?
+   - Are forms using reactive validation for email, IDs, and credit cards?
+
+Output a structured checklist matrix (IMPLEMENTED / PARTIAL / MISSING) for each page and feature, and automatically generate or fix any missing components, routes, or services.
+
+BACKEND
+
+Please review and audit the Backend REST API implementation (Controllers, DTOs, Business Logic, and Security Config) against the required API Endpoints specification below:
+
+1. Validate Endpoints, HTTP Verbs, and Controller Mappings:
+   - Authentication & Users:
+     * POST /api/register – Register new user.
+     * POST /api/login – Authenticate user and return JWT token.
+     * GET /api/users/{id} – Retrieve user profile details (Admin restricted).
+     * GET /api/audit – Retrieve system audit logs (Admin restricted).
+   - Catalog & Inventory:
+     * GET /api/search – Query routes/events by date, origin, and destination.
+     * GET /api/schedules/{id} – Retrieve detailed schedule information.
+     * GET /api/schedules/{id}/seats – Retrieve real-time seat availability and status.
+     * POST /api/schedules – Create new schedule and seat layout (Operator restricted).
+     * PUT /api/seats/{id} – Update seat status/pricing (Operator/Admin restricted).
+   - Booking & Payment:
+     * POST /api/bookings – Create booking, generate PNR, and place temporary hold on seats.
+     * PUT /api/bookings/{id}/confirm – Confirm booking status upon successful payment.
+     * POST /api/bookings/{id}/payments – Record payment transaction with idempotency check.
+     * POST /api/bookings/{id}/refunds – Process/initiate refund according to cancellation policy.
+     * GET /api/bookings/{id} – Retrieve complete booking details and e-ticket info.
+
+2. Check the following Backend Architecture & Security standards:
+   - OpenAPI / Swagger alignment: Are all controller endpoints properly annotated and matching the URL structure above?
+   - Security / RBAC: Are Spring Security annotations (`@PreAuthorize`, `@Secured`, or URL matchers) properly enforcing Customer, Operator, Support, and Admin permissions on each endpoint?
+   - Validation & Error Handling: Are request bodies properly validated using `@Valid` with appropriate `@ControllerAdvice` global error responses?
+   - DTO & Entity Mapping: Are Request/Response DTOs strictly decoupled from JPA entities via MapStruct mappers?
+
+Output a structured checklist matrix (IMPLEMENTED / PARTIAL / MISSING) for each backend endpoint, and automatically generate or apply fixes for any missing or incorrectly mapped endpoints.
+
+
+DEVELOPMENT
+
+Please review and audit the codebase against the required Development, Architecture, Performance, and Reliability specification below:
+
+1. Validate Technical Architecture & Performance Setup:
+   - Architecture & Modules:
+     * Check CQRS-friendly package/module separation (clear distinction between Read/Search query models and Write/Booking command models).
+     * Verify Caching layer implementation (e.g., Spring Cache with Redis/Caffeine) for search queries and schedule routes.
+   - Database & Resiliency:
+     * Check relational DB setup, connection pool configuration (HikariCP), and readiness for read replicas on search queries.
+     * Verify API Rate Limiting configuration (e.g., Bucket4j or Spring Cloud Gateway) on public/search endpoints.
+     * Verify Idempotency Key mechanism on critical POST/PUT requests (e.g., payment and booking creation endpoints).
+
+2. Validate Inventory & Dynamic Pricing Logic:
+   - Seat Inventory & Holds:
+     * Verify seat hold mechanism with thread-safe pessimistic/optimistic locking or TTL cache.
+     * Verify scheduled background worker/event to automatically release expired held seats.
+   - Dynamic Pricing Engine:
+     * Check fare modifier calculation logic (e.g., base fare + seat class + dynamic demand/time-based modifiers - promo code discounts).
+   - PNR Generation:
+     * Verify unique PNR string generation algorithm (alphanumeric, short, high-entropy) with DB uniqueness constraint checks.
+
+3. Validate Payments, Refunds & Ledger Accounting:
+   - Payments & Webhooks:
+     * Verify payment intent processing flow and asynchronous webhook stub handlers for external payment gateway integration.
+   - Refund & Proration Engine:
+     * Check refund calculation logic according to cancellation policy rules and time-based proration schedules.
+   - Ledger & Reconciliation:
+     * Verify audit ledger entries for financial transactions (Payments, Refunds, Adjustments) and generation of reconciliation reports.
+
+4. Validate Testing Standards & Reliability:
+   - Code Coverage:
+     * Run test suite and check line/branch coverage targeting >= 80% with zero failing tests.
+   - Contract & Integration Testing:
+     * Verify contract tests (e.g., Pact or Spring Cloud Contract) and Spring Boot Integration Tests (JUnit 5, Mockito, Testcontainers).
+   - Performance & Load Testing:
+     * Verify presence of load test scripts (e.g., Gatling, k6, or JMeter) simulating high concurrency on search and seat hold endpoints.
+
+Output a structured evaluation report (VERIFIED / PARTIAL / MISSING) for each technical pillar, and automatically fix any identified architectural gaps or missing tests.
+
+JAVA DEVELOPER
+
+
+Please perform a complete Capstone Project Audit & Evidences Review specifically tailored for the Java Backend Developer Demonstration expectations. Validate the codebase and output proof for each of the required demonstration capabilities listed below:
+
+1. Repo-Level Custom Instructions & Best Practices:
+   - Verify the existence and adherence to repo-level custom instructions (`.claude/instructions.md`, `.github/copilot-instructions.md`, or `genai.txt`).
+   - Confirm coding guidelines, naming conventions, Spring Boot layering, and error handling standards are active.
+
+2. Modular Code Generation & End-to-End Scenarios:
+   - Confirm end-to-end execution of core use cases (Search, Dynamic Pricing, Seat Hold with Expiration, PNR Generation, Payment Idempotency, and Refunds).
+   - Ensure clean modular separation across Controllers, Services, Repositories, DTOs, and MapStruct Mappers.
+
+3. Code Review & Critical Corrections (Show Chat History/Logs):
+   - Summarize the top code review findings (architectural violations, code smells, security flaws) identified during development.
+   - List the critical/high-severity corrections applied to the codebase as proof of refactoring.
+
+4. Test Suite, Resolution & 80%+ Coverage:
+   - Run the full Java test suite (`./mvnw clean test` or `./gradlew test`).
+   - Verify that there are ZERO test failures and ZERO compilation/linter problems.
+   - Generate and output the Jacoco code coverage summary proving > 80% line and branch test coverage across capstone components.
+
+5. Functional Specification & Functional Test Cases Generation:
+   - Audit and confirm readiness for generating:
+     * A comprehensive Functional Specification document derived from annotated Spring Boot controllers/services.
+     * A Functional Test Cases document mapping unit/integration tests to the core booking and payment flows.
+
+6. Key Learnings & High-Value Prompt Engineering Strategy:
+   - Produce a concise summary of key learnings for generating High-Value Prompts (e.g., context management, iterative prompts, repo guidelines leverage, and role-based prompting).
+
+Output a detailed Capstone Demo Readiness Report (including exact test coverage percentages and status of all 6 deliverables) so I can capture screens and document the live demo proof.
+
+FASE 12 - Documentação
+[P24] "Generate a project README with architecture, API endpoints, setup instructions, and testing guide for the ticket booking system."
+[P25] "Generate a functional specification document from the annotated code, and a functional test cases document covering the main booking and payment flows."

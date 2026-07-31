@@ -1,0 +1,231 @@
+TicketWave: Ticket Booking System (Travel & Events)
+🎯 Overview
+The Ticket Booking System supports discovery, seat selection, dynamic pricing, booking, and payment flows for travel (flights, buses, trains) and events. It handles inventory, holds, cancellations/refunds, and notifications, with role-based access and partner/vendor portals.
+👥 User Stories
+ID 
+	
+Role 
+	
+Description 
+
+
+US1 
+	
+Guest 
+	
+As a guest, I want to search for routes/events by date and location. 
+
+
+US2 
+	
+Registered User 
+	
+As a user, I want to create an account and save preferences and passengers. 
+
+
+US3 
+	
+Customer 
+	
+As a customer, I want to select seats and view real-time availability and prices. 
+
+
+US4 
+	
+Customer 
+	
+As a customer, I want to pay securely and receive e-tickets. 
+
+
+US5 
+	
+Customer 
+	
+As a customer, I want to cancel or reschedule within policy and get refunds. 
+
+
+US6 
+	
+Operator 
+	
+As an operator, I want to load schedules/inventory and manage fares. 
+
+
+US7 
+	
+Support 
+	
+As support, I want to look up bookings and process changes/refunds. 
+
+
+US8 
+	
+Admin 
+	
+As an admin, I want to manage users, partners, and audit logs. 
+🗃️ Database Schema
+Entities and Relationships
+Users
+user_id (PK)
+username
+password_hash
+email
+role (customer, operator, support, admin)
+created_at
+Passengers
+passenger_id (PK)
+user_id (FK -> Users)
+full_name
+dob
+id_type
+id_number
+Venues/Routes
+route_id (PK)
+operator_id (FK -> Users)
+type (flight,bus,train,event)
+origin
+destination
+venue
+duration
+Schedules
+schedule_id (PK)
+route_id (FK -> Routes)
+departure_time
+arrival_time
+base_fare
+currency
+status
+Seats
+seat_id (PK)
+schedule_id (FK -> Schedules)
+seat_number
+class
+status (available, held, booked)
+price_modifier
+Bookings
+booking_id (PK)
+user_id (FK -> Users)
+schedule_id (FK -> Schedules)
+pnr
+booking_time
+status (initiated, confirmed, cancelled)
+total_amount
+BookingItems
+item_id (PK)
+booking_id (FK -> Bookings)
+seat_id (FK -> Seats)
+passenger_id (FK -> Passengers)
+fare
+Payments
+payment_id (PK)
+booking_id (FK -> Bookings)
+amount
+method
+reference
+status
+paid_at
+Refunds
+refund_id (PK)
+payment_id (FK -> Payments)
+amount
+policy_code
+processed_by (FK -> Users)
+processed_at
+🖥️ Frontend Components (Any UI Framework) - Optional
+Pages and Features
+Search & Discovery
+Filters: date, origin/destination, venue, price, class
+Sorting and real-time availability
+Guest checkout option
+Seat Map & Selection
+Interactive seat map with accessibility indicators
+Dynamic pricing display
+Hold seats with countdown
+Checkout & Payment
+Passenger details and saved profiles
+Multiple payment methods and 3DS
+E-ticket generation (PDF/PKPass)
+Manage Booking
+View itinerary/tickets
+Reschedule/cancel per policy
+Refund status
+Operator Portal
+Schedule/inventory upload
+Fare rules and promo codes
+Reports
+Admin Panel
+User/partner management
+Audit logs
+Configuration (refund policies, fees)
+🔌 Backend API Endpoints
+Authentication & Users
+POST /api/register – Register user
+POST /api/login – Authenticate and return JWT
+GET /api/users/{id} – Retrieve user (admin)
+GET /api/audit – Audit logs (admin)
+Catalog & Inventory
+GET /api/search – Query routes/events
+GET /api/schedules/{id} – Schedule details
+GET /api/schedules/{id}/seats – Seat availability
+POST /api/schedules – Create schedule (operator)
+PUT /api/seats/{id} – Update seat status
+Booking & Payment
+POST /api/bookings – Create booking and hold seats
+PUT /api/bookings/{id}/confirm – Confirm booking on payment
+POST /api/bookings/{id}/payments – Record payment
+POST /api/bookings/{id}/refunds – Initiate refund
+GET /api/bookings/{id} – Booking details
+🛠️ Development
+Setup & Performance
+Initialize service with CQRS-friendly modules and caching
+Configure relational DB and read replicas for search
+Implement rate limiting and idempotency keys
+Inventory & Pricing
+Seat inventory model with holds and expirations
+Dynamic pricing engine with modifiers and promo codes
+PNR generation and uniqueness guarantees
+Payments & Refunds
+Payment intent flow with webhook stubs
+Refund policies and proration logic
+Ledger entries and reconciliation reports
+Testing & Reliability
+Unit and contract tests for booking/payment
+Load tests for search and seat selection
+>=80% coverage, zero failures, chaos testing (optional)
+ 
+Demo Expectation: 
+If you are java backend Developer<Please take screenshots w.r.t prompt and output received for each feature demonstration in a word document, live demo is more advantage than sharing the document with screen proof>. UI Screens are optional to meet the capstone project demo completion.
+'- Ability to design and develop end-to-end use cases using any IDE and GitHub Copilot with real-world scenarios - covering the following capabilities: (Show Chat History)
+- Generate a repo level - custom instruction w.r.t Coding guidelines, come up with best practices for this project and perform modular code generation.
+- Initiate a new project using Any Copilot modes
+- Identify code review findings using Any Copilot modes based on best practices
+- Apply few code review critical corrections and improvements using Any Copilot modes
+- Generate a Functional Specification document using Any Copilot modes from annotated code
+- Configure test setup and generate JUnit test cases for capstone components using Any Copilot modes
+- Resolve test failures and enhance test coverage with guided changes using Any Copilot modes
+- Produce a Functional TestCases Documentation using Any Copilot modes
+- Code base - zero problems, zero test failures > 80% code coverage.
+- Share your Learnings to generate High Value Prompts
+
+ 
+If you are BA role, <Please take screenshots w.r.t prompt and output received for each feature demonstration in a word document>
+- Generate a repo level - custom prompts, instructions w.r.t customer name, abbreviations, project team members, specific requirement IDs, etc.,
+Generate BRD/FRS as per specific template of your choice, 
+Generate few mockup screens for the UI functionalities.
+Generate Traceability Matrix
+- Share your Learnings to generate High Value Prompts
+If you are SQL developer, <Please take screenshots w.r.t prompt and output received for each feature demonstration in a word document>
+ Generate a repo level - custom prompts, instructions w.r.t SQL file name, coding guidelines, database details.
+Generate ERD diagram for the tables/entities defined in the use cases.
+Generate View or Procedure or Functions for 
+To Cancel or reschedule within policy and get refunds.
+To select seats and view real-time availability and prices.
+To pay securely for the selected seats and receive e-tickets.
+ 
+If you are DevOps Engineer, <Please take screenshots w.r.t prompt and output received for each feature demonstration in a word document>
+Generate a repo level - custom prompts, instructions w.r.t cloud environment, cloud storage, guidelines, etc.,
+Generate deployment architecture/diagram for the defined in the use case.
+Generate configuration, scripts as per your cloud platform experience.
+Generate continuous deployment artifacts, logs, rollback scripts for use case project.
+
+

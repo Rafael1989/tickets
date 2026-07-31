@@ -1,0 +1,70 @@
+<div class="card">
+  <h2>Search schedules</h2>
+
+  <form class="search-form" [formGroup]="form" (ngSubmit)="search()">
+    <div class="field">
+      <label for="type">Type</label>
+      <select id="type" formControlName="type">
+        <option value="">Any</option>
+        <option value="FLIGHT">Flight</option>
+        <option value="BUS">Bus</option>
+        <option value="TRAIN">Train</option>
+        <option value="EVENT">Event</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="origin">Origin</label>
+      <input id="origin" type="text" formControlName="origin" placeholder="e.g. NYC" />
+    </div>
+
+    <div class="field">
+      <label for="destination">Destination</label>
+      <input id="destination" type="text" formControlName="destination" placeholder="e.g. Boston" />
+    </div>
+
+    <div class="field">
+      <label for="venue">Venue</label>
+      <input id="venue" type="text" formControlName="venue" placeholder="Events only" />
+    </div>
+
+    <div class="field">
+      <label for="departureDate">Date</label>
+      <input id="departureDate" type="date" formControlName="departureDate" />
+    </div>
+
+    <button class="btn" type="submit" [disabled]="loading()">
+      {{ loading() ? 'Searching…' : 'Search' }}
+    </button>
+  </form>
+</div>
+
+@if (hasSearched()) {
+  <div class="results">
+    @if (results().length === 0) {
+      <p>No schedules match your search.</p>
+    } @else {
+      @for (result of results(); track result.scheduleId) {
+        <div class="card result-card">
+          <div class="result-main">
+            <h3>
+              {{ result.origin ?? result.venue }}
+              @if (result.destination) {
+                &rarr; {{ result.destination }}
+              }
+            </h3>
+            <p class="meta">
+              {{ result.type }} · departs {{ result.departureTime | date: 'medium' }}
+            </p>
+            <p class="meta">{{ result.availableSeats }} seats available</p>
+          </div>
+
+          <div class="result-price">
+            <p class="price">{{ result.baseFare }} {{ result.currency }}</p>
+            <a class="btn" [routerLink]="['/schedules', result.scheduleId]">Select seats</a>
+          </div>
+        </div>
+      }
+    }
+  </div>
+}

@@ -1,0 +1,114 @@
+<h2>Admin panel</h2>
+
+<div class="tabs">
+  <button type="button" [class.active]="tab() === 'users'" (click)="selectTab('users')">Users</button>
+  <button type="button" [class.active]="tab() === 'audit'" (click)="selectTab('audit')">Audit log</button>
+</div>
+
+@if (tab() === 'users') {
+  <div class="card">
+    <h3>Create an account</h3>
+    <p class="hint">Self-registration always creates a customer — use this to provision operator/support/admin accounts.</p>
+    <form class="grid-form" [formGroup]="newUserForm" (ngSubmit)="createUser()">
+      <div class="field">
+        <label for="username">Username</label>
+        <input id="username" type="text" formControlName="username" />
+      </div>
+      <div class="field">
+        <label for="email">Email</label>
+        <input id="email" type="email" formControlName="email" />
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input id="password" type="password" formControlName="password" />
+      </div>
+      <div class="field">
+        <label for="role">Role</label>
+        <select id="role" formControlName="role">
+          <option value="OPERATOR">Operator</option>
+          <option value="SUPPORT">Support</option>
+          <option value="ADMIN">Admin</option>
+          <option value="CUSTOMER">Customer</option>
+        </select>
+      </div>
+      <button class="btn" type="submit" [disabled]="newUserForm.invalid || creatingUser()">
+        {{ creatingUser() ? 'Creating…' : 'Create account' }}
+      </button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>All accounts</h3>
+    @if (loadingUsers()) {
+      <p>Loading…</p>
+    } @else {
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Username</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Created</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (user of users(); track user.id) {
+            <tr>
+              <td>{{ user.id }}</td>
+              <td>{{ user.username }}</td>
+              <td>{{ user.email }}</td>
+              <td>
+                <select
+                  [value]="user.role"
+                  [disabled]="updatingRoleForUserId() === user.id"
+                  (change)="changeRole(user, $event)"
+                >
+                  <option value="CUSTOMER">Customer</option>
+                  <option value="OPERATOR">Operator</option>
+                  <option value="SUPPORT">Support</option>
+                  <option value="ADMIN">Admin</option>
+                </select>
+              </td>
+              <td>{{ user.createdAt | date: 'medium' }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+  </div>
+}
+
+@if (tab() === 'audit') {
+  <div class="card">
+    <h3>Audit log</h3>
+    @if (loadingAudit()) {
+      <p>Loading…</p>
+    } @else if (auditLog().length === 0) {
+      <p>No entries yet.</p>
+    } @else {
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>When</th>
+            <th>Actor</th>
+            <th>Action</th>
+            <th>Entity</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (entry of auditLog(); track entry.id) {
+            <tr>
+              <td>{{ entry.createdAt | date: 'medium' }}</td>
+              <td>{{ entry.actorUsername }}</td>
+              <td>{{ entry.action }}</td>
+              <td>{{ entry.entityType }} @if (entry.entityId) { #{{ entry.entityId }} }</td>
+              <td>{{ entry.details }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+  </div>
+}

@@ -1,0 +1,115 @@
+@if (draft(); as d) {
+  @if (step() === 'assign') {
+    <div class="card">
+      <h2>Assign passengers</h2>
+      <p class="meta">
+        {{ d.schedule.origin ?? d.schedule.venue }}
+        @if (d.schedule.destination) {
+          &rarr; {{ d.schedule.destination }}
+        }
+      </p>
+
+      <table class="seat-table">
+        <thead>
+          <tr>
+            <th>Seat</th>
+            <th>Class</th>
+            <th>Passenger</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (seat of d.seats; track seat.id) {
+            <tr>
+              <td>{{ seat.seatNumber }}</td>
+              <td>{{ seat.seatClass }}</td>
+              <td>
+                <select (change)="onAssignChange(seat.id, $event)">
+                  <option value="">Select passenger…</option>
+                  @for (passenger of passengers(); track passenger.id) {
+                    <option [value]="passenger.id">{{ passenger.fullName }}</option>
+                  }
+                </select>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Add a passenger</h3>
+      <form class="passenger-form" [formGroup]="newPassengerForm" (ngSubmit)="addPassenger()">
+        <div class="field">
+          <label for="fullName">Full name</label>
+          <input id="fullName" type="text" formControlName="fullName" />
+        </div>
+        <div class="field">
+          <label for="dob">Date of birth</label>
+          <input id="dob" type="date" formControlName="dob" />
+        </div>
+        <div class="field">
+          <label for="idType">ID type</label>
+          <select id="idType" formControlName="idType">
+            <option value="passport">Passport</option>
+            <option value="national_id">National ID</option>
+            <option value="driver_license">Driver's license</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="idNumber">ID number</label>
+          <input id="idNumber" type="text" formControlName="idNumber" />
+        </div>
+        <button class="btn secondary" type="submit" [disabled]="newPassengerForm.invalid || addingPassenger()">
+          {{ addingPassenger() ? 'Saving…' : 'Save passenger' }}
+        </button>
+      </form>
+    </div>
+
+    <div class="card">
+      <form [formGroup]="promoForm">
+        <div class="field">
+          <label for="promoCode">Promo code (optional)</label>
+          <input id="promoCode" type="text" formControlName="promoCode" />
+        </div>
+      </form>
+
+      <button
+        class="btn"
+        type="button"
+        [disabled]="!allSeatsAssigned() || creatingBooking()"
+        (click)="createBooking()"
+      >
+        {{ creatingBooking() ? 'Creating booking…' : 'Create booking' }}
+      </button>
+    </div>
+  }
+
+  @if (step() === 'payment' && booking(); as b) {
+    <div class="card">
+      <h2>Payment</h2>
+      <p class="meta">PNR {{ b.booking.pnr }}</p>
+      <p class="total">Total due: {{ b.booking.totalAmount }}</p>
+
+      <form [formGroup]="paymentForm" (ngSubmit)="pay()">
+        <div class="field">
+          <label for="method">Payment method</label>
+          <select id="method" formControlName="method">
+            <option value="card">Card</option>
+            <option value="paypal">PayPal</option>
+            <option value="wallet">Wallet</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="reference">Payment reference</label>
+          <input id="reference" type="text" formControlName="reference" readonly class="readonly-field" />
+          <span class="hint">Generated automatically — prevents this payment from being charged twice on retry.</span>
+        </div>
+
+        <button class="btn" type="submit" [disabled]="paymentForm.invalid || payingSubmitting()">
+          {{ payingSubmitting() ? 'Processing…' : 'Pay now' }}
+        </button>
+      </form>
+    </div>
+  }
+}

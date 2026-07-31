@@ -1,0 +1,44 @@
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+
+  button {
+    padding: 0.5rem 1rem;
+    border: 1px solid #c8c8d8;
+    background: #fff;
+    border-radius: 0.3rem;
+    cursor: pointer;
+
+    &.active {
+      background: #2471a3;
+      color: #fff;
+      border-color: #2471a3;
+    }
+  }
+}
+
+.hint {
+  color: #888;
+  font-size: 0.85rem;
+}
+
+.grid-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 1rem;
+  align-items: end;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+
+  th,
+  td {
+    text-align: left;
+    padding: 0.5rem 0.4rem;
+    border-bottom: 1px solid #eee;
+  }
+}

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="2026-07-31-09" author="ticketwave">
+        <comment>
+            Refunds: a refund against a payment. Adds a `status` column beyond the fields
+            listed in genai.txt's DB schema section, because the same spec's user stories
+            (US5) and dev checklist explicitly require refund status tracking, and there is
+            no other column to track it against. processed_by/processed_at are nullable
+            because a refund can be auto-approved by policy before any admin/support user
+            touches it.
+        </comment>
+        <createTable tableName="refunds">
+            <column name="refund_id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" primaryKeyName="pk_refunds"/>
+            </column>
+            <column name="payment_id" type="BIGINT">
+                <constraints nullable="false"
+                             foreignKeyName="fk_refunds_payment"
+                             references="payments(payment_id)"/>
+            </column>
+            <column name="amount" type="DECIMAL(12,2)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="policy_code" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="VARCHAR(20)" defaultValue="pending">
+                <constraints nullable="false"/>
+            </column>
+            <column name="processed_by" type="BIGINT">
+                <constraints nullable="true"
+                             foreignKeyName="fk_refunds_processed_by"
+                             references="users(user_id)"/>
+            </column>
+            <column name="processed_at" type="TIMESTAMP WITH TIME ZONE"/>
+        </createTable>
+
+        <sql dbms="postgresql">
+            ALTER TABLE refunds ADD CONSTRAINT ck_refunds_status
+                CHECK (status IN ('pending', 'processed', 'rejected'));
+        </sql>
+
+        <createIndex tableName="refunds" indexName="ix_refunds_payment_id">
+            <column name="payment_id"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable tableName="refunds"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

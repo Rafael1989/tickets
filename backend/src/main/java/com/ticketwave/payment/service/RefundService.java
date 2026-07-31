@@ -1,0 +1,33 @@
+package com.ticketwave.payment.service;
+
+import com.ticketwave.payment.dto.RefundDecision;
+import com.ticketwave.payment.dto.RefundResponse;
+
+public interface RefundService {
+
+    /**
+     * Applies the cancellation policy to a CONFIRMED booking's schedule,
+     * creates a PENDING refund for the prorated amount against its
+     * successful payment, and cancels the booking (releasing its seats).
+     * The refund itself is not settled here — see processRefund.
+     *
+     * @throws com.ticketwave.booking.exception.BookingNotFoundException if no such booking exists
+     * @throws com.ticketwave.booking.exception.InvalidBookingStateException if the booking isn't currently CONFIRMED
+     * @throws com.ticketwave.payment.exception.PaymentNotFoundException if the booking has no successful payment on record
+     * @throws com.ticketwave.payment.exception.CancellationNotAllowedException if departure is too imminent to cancel
+     */
+    RefundResponse initiateRefund(Long bookingId);
+
+    /**
+     * Support/admin action settling a PENDING refund as PROCESSED or
+     * REJECTED. On approval, the underlying payment is marked REFUNDED.
+     * processedByUsername is the authenticated caller, resolved server-side
+     * — never a client-supplied id, the same ownership discipline as every
+     * other identity-bearing call in this app.
+     *
+     * @throws com.ticketwave.payment.exception.RefundNotFoundException if no such refund exists
+     * @throws com.ticketwave.payment.exception.InvalidRefundStateException if the refund isn't currently PENDING
+     * @throws com.ticketwave.user.exception.UserNotFoundException if processedByUsername doesn't resolve to a user
+     */
+    RefundResponse processRefund(Long refundId, String processedByUsername, RefundDecision decision);
+}

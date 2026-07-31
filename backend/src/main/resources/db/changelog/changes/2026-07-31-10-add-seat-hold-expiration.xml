@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="2026-07-31-10" author="ticketwave">
+        <comment>
+            Seats: held_until tracks when an active HELD hold expires, so a
+            seat can be reclaimed either on-access (the next hold attempt) or
+            by the background sweeper, without waiting on the customer to
+            confirm the booking.
+        </comment>
+        <addColumn tableName="seats">
+            <column name="held_until" type="TIMESTAMP WITH TIME ZONE"/>
+        </addColumn>
+
+        <rollback>
+            <dropColumn tableName="seats" columnName="held_until"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

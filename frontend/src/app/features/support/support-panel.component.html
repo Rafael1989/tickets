@@ -1,0 +1,65 @@
+<h2>Support panel</h2>
+
+<div class="card">
+  <h3>Look up a booking by PNR</h3>
+  <form class="inline-form" [formGroup]="pnrForm" (ngSubmit)="lookupByPnr()">
+    <div class="field">
+      <label for="pnr">PNR</label>
+      <input id="pnr" type="text" formControlName="pnr" placeholder="e.g. ABC234" />
+    </div>
+    <button class="btn" type="submit" [disabled]="pnrForm.invalid || searching()">
+      {{ searching() ? 'Searching…' : 'Look up' }}
+    </button>
+  </form>
+
+  @if (searchError()) {
+    <p class="form-error">No booking found for that PNR.</p>
+  }
+
+  @if (booking(); as b) {
+    <div class="booking-summary">
+      <p><strong>Status:</strong> {{ b.booking.status }}</p>
+      <p><strong>Booked:</strong> {{ b.booking.bookingTime | date: 'medium' }}</p>
+      <p><strong>Total:</strong> {{ b.booking.totalAmount }}</p>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Seat ID</th>
+            <th>Passenger ID</th>
+            <th>Fare</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (item of b.items; track item.id) {
+            <tr>
+              <td>{{ item.seatId }}</td>
+              <td>{{ item.passengerId }}</td>
+              <td>{{ item.fare }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</div>
+
+<div class="card">
+  <h3>Process a refund</h3>
+  <p class="hint">Enter the refund ID from the refund-initiation response or the audit log.</p>
+  <form class="inline-form" [formGroup]="refundForm" (ngSubmit)="processRefund()">
+    <div class="field">
+      <label for="refundId">Refund ID</label>
+      <input id="refundId" type="number" formControlName="refundId" />
+    </div>
+    <div class="field">
+      <label for="decision">Decision</label>
+      <select id="decision" formControlName="decision">
+        <option value="APPROVE">Approve</option>
+        <option value="REJECT">Reject</option>
+      </select>
+    </div>
+    <button class="btn" type="submit" [disabled]="refundForm.invalid || processingRefund()">
+      {{ processingRefund() ? 'Processing…' : 'Submit decision' }}
+    </button>
+  </form>
+</div>

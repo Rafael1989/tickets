@@ -1,0 +1,166 @@
+<h2>Operator portal</h2>
+
+<div class="card">
+  <h3>Create a route</h3>
+  <form class="grid-form" [formGroup]="routeForm" (ngSubmit)="createRoute()">
+    <div class="field">
+      <label for="type">Type</label>
+      <select id="type" formControlName="type">
+        <option value="FLIGHT">Flight</option>
+        <option value="BUS">Bus</option>
+        <option value="TRAIN">Train</option>
+        <option value="EVENT">Event</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="origin">Origin</label>
+      <input id="origin" type="text" formControlName="origin" />
+    </div>
+    <div class="field">
+      <label for="destination">Destination</label>
+      <input id="destination" type="text" formControlName="destination" />
+    </div>
+    <div class="field">
+      <label for="venue">Venue (events only)</label>
+      <input id="venue" type="text" formControlName="venue" />
+    </div>
+    <div class="field">
+      <label for="durationMinutes">Duration (minutes)</label>
+      <input id="durationMinutes" type="number" formControlName="durationMinutes" />
+    </div>
+    <button class="btn" type="submit" [disabled]="routeForm.invalid || creatingRoute()">
+      {{ creatingRoute() ? 'Creating…' : 'Create route' }}
+    </button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>My routes</h3>
+  @if (loadingRoutes()) {
+    <p>Loading…</p>
+  } @else if (routes().length === 0) {
+    <p>No routes yet — create one above.</p>
+  } @else {
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Type</th>
+          <th>Origin</th>
+          <th>Destination</th>
+          <th>Venue</th>
+          <th>Duration</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (route of routes(); track route.id) {
+          <tr>
+            <td>{{ route.id }}</td>
+            <td>{{ route.type }}</td>
+            <td>{{ route.origin ?? '—' }}</td>
+            <td>{{ route.destination ?? '—' }}</td>
+            <td>{{ route.venue ?? '—' }}</td>
+            <td>{{ route.durationMinutes }} min</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  }
+</div>
+
+<div class="card">
+  <h3>Create a schedule</h3>
+  <form class="grid-form" [formGroup]="scheduleForm" (ngSubmit)="createSchedule()">
+    <div class="field">
+      <label for="routeId">Route</label>
+      <select id="routeId" formControlName="routeId">
+        <option [ngValue]="null">Select a route…</option>
+        @for (route of routes(); track route.id) {
+          <option [ngValue]="route.id">
+            #{{ route.id }} — {{ route.type }} {{ route.origin ?? route.venue }}
+          </option>
+        }
+      </select>
+    </div>
+    <div class="field">
+      <label for="departureTime">Departure</label>
+      <input id="departureTime" type="datetime-local" formControlName="departureTime" />
+    </div>
+    <div class="field">
+      <label for="arrivalTime">Arrival</label>
+      <input id="arrivalTime" type="datetime-local" formControlName="arrivalTime" />
+    </div>
+    <div class="field">
+      <label for="baseFare">Base fare</label>
+      <input id="baseFare" type="number" step="0.01" formControlName="baseFare" />
+    </div>
+    <div class="field">
+      <label for="currency">Currency</label>
+      <input id="currency" type="text" maxlength="3" formControlName="currency" />
+    </div>
+    <button class="btn" type="submit" [disabled]="scheduleForm.invalid || creatingSchedule()">
+      {{ creatingSchedule() ? 'Creating…' : 'Create schedule' }}
+    </button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>Add a seat</h3>
+  <form class="grid-form" [formGroup]="seatForm" (ngSubmit)="addSeat()">
+    <div class="field">
+      <label for="seatScheduleId">Schedule ID</label>
+      <input id="seatScheduleId" type="number" formControlName="scheduleId" />
+    </div>
+    <div class="field">
+      <label for="seatNumber">Seat number</label>
+      <input id="seatNumber" type="text" formControlName="seatNumber" placeholder="e.g. 12A" />
+    </div>
+    <div class="field">
+      <label for="seatClass">Class</label>
+      <input id="seatClass" type="text" formControlName="seatClass" placeholder="economy" />
+    </div>
+    <div class="field">
+      <label for="priceModifier">Price modifier</label>
+      <input id="priceModifier" type="number" step="0.001" formControlName="priceModifier" />
+    </div>
+    <button class="btn" type="submit" [disabled]="seatForm.invalid || addingSeat()">
+      {{ addingSeat() ? 'Adding…' : 'Add seat' }}
+    </button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>View a schedule's seats</h3>
+  <form class="grid-form" [formGroup]="viewSeatsForm" (ngSubmit)="viewSeats()">
+    <div class="field">
+      <label for="viewScheduleId">Schedule ID</label>
+      <input id="viewScheduleId" type="number" formControlName="scheduleId" />
+    </div>
+    <button class="btn secondary" type="submit" [disabled]="viewSeatsForm.invalid || loadingSeats()">
+      {{ loadingSeats() ? 'Loading…' : 'View seats' }}
+    </button>
+  </form>
+
+  @if (viewedSeats(); as seats) {
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Seat</th>
+          <th>Class</th>
+          <th>Status</th>
+          <th>Price modifier</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (seat of seats; track seat.id) {
+          <tr>
+            <td>{{ seat.seatNumber }}</td>
+            <td>{{ seat.seatClass }}</td>
+            <td>{{ seat.status }}</td>
+            <td>{{ seat.priceModifier }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  }
+</div>

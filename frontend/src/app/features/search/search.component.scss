@@ -1,0 +1,43 @@
+.search-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 1rem;
+  align-items: end;
+
+  .btn {
+    height: fit-content;
+  }
+}
+
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.result-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0;
+
+  .meta {
+    color: #666;
+    font-size: 0.85rem;
+    margin: 0.2rem 0;
+  }
+
+  .result-price {
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.5rem;
+
+    .price {
+      font-weight: 700;
+      font-size: 1.1rem;
+      margin: 0;
+    }
+  }
+}

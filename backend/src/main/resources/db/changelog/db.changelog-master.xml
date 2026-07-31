@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- Schema changesets are added here as they are generated, one include per logical change. -->
+    <include file="changes/2026-07-31-01-create-users-table.xml" relativeToChangelogFile="true"/>
+    <include file="changes/2026-07-31-02-create-passengers-table.xml" relativeToChangelogFile="true"/>
+    <include file="changes/2026-07-31-03-create-routes-table.xml" relativeToChangelogFile="true"/>
+    <include file="changes/2026-07-31-04-create-schedules-table.xml" relativeToChangelogFile="true"/>
+    <include file="changes/2026-07-31-05-create-seats-table.xml" relativeToChangelogFile="true"/>
+    <include file="changes/2026-07-31-06-create-bookings-table.xml" relativeToChangelogFile="true"/>
+    <include file="changes/2026-07-31-07-create-booking-items-table.xml" relativeToChangelogFile="true"/>
+    <include file="changes/2026-07-31-08-create-payments-table.xml" relativeToChangelogFile="true"/>
+    <include file="changes/2026-07-31-09-create-refunds-table.xml" relativeToChangelogFile="true"/>
+    <include file="changes/2026-07-31-10-add-seat-hold-expiration.xml" relativeToChangelogFile="true"/>
+    <include file="changes/2026-07-31-11-create-promo-codes-table.xml" relativeToChangelogFile="true"/>
+    <include file="changes/2026-07-31-12-add-booking-promo-code.xml" relativeToChangelogFile="true"/>
+    <include file="changes/2026-08-01-01-create-audit-logs-table.xml" relativeToChangelogFile="true"/>
+
+</databaseChangeLog>

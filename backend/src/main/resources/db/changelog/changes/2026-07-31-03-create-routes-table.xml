@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="2026-07-31-03" author="ticketwave">
+        <comment>
+            Routes: an operator's offering, either a travel leg (flight/bus/train, using
+            origin/destination) or an event (using venue). duration is stored in minutes.
+        </comment>
+        <createTable tableName="routes">
+            <column name="route_id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" primaryKeyName="pk_routes"/>
+            </column>
+            <column name="operator_id" type="BIGINT">
+                <constraints nullable="false"
+                             foreignKeyName="fk_routes_operator"
+                             references="users(user_id)"/>
+            </column>
+            <column name="type" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="origin" type="VARCHAR(150)"/>
+            <column name="destination" type="VARCHAR(150)"/>
+            <column name="venue" type="VARCHAR(150)"/>
+            <column name="duration_minutes" type="INTEGER"/>
+        </createTable>
+
+        <sql dbms="postgresql">
+            ALTER TABLE routes ADD CONSTRAINT ck_routes_type
+                CHECK (type IN ('flight', 'bus', 'train', 'event'));
+        </sql>
+
+        <createIndex tableName="routes" indexName="ix_routes_operator_id">
+            <column name="operator_id"/>
+        </createIndex>
+        <createIndex tableName="routes" indexName="ix_routes_origin_destination">
+            <column name="origin"/>
+            <column name="destination"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable tableName="routes"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="2026-07-31-12" author="ticketwave">
+        <comment>
+            Bookings: records which promo code (if any) was applied, so a
+            later refund calculation can see what was actually discounted
+            rather than just the final total_amount.
+        </comment>
+        <addColumn tableName="bookings">
+            <column name="promo_code_id" type="BIGINT">
+                <constraints nullable="true"
+                             foreignKeyName="fk_bookings_promo_code"
+                             references="promo_codes(promo_code_id)"/>
+            </column>
+        </addColumn>
+
+        <rollback>
+            <dropColumn tableName="bookings" columnName="promo_code_id"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

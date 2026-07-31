@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="2026-07-31-08" author="ticketwave">
+        <comment>
+            Payments: a payment attempt against a booking. reference is the gateway's
+            idempotency/transaction reference and is unique so a retried request cannot
+            create a duplicate payment.
+        </comment>
+        <createTable tableName="payments">
+            <column name="payment_id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" primaryKeyName="pk_payments"/>
+            </column>
+            <column name="booking_id" type="BIGINT">
+                <constraints nullable="false"
+                             foreignKeyName="fk_payments_booking"
+                             references="bookings(booking_id)"/>
+            </column>
+            <column name="amount" type="DECIMAL(12,2)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="method" type="VARCHAR(30)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="reference" type="VARCHAR(100)">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uq_payments_reference"/>
+            </column>
+            <column name="status" type="VARCHAR(20)" defaultValue="pending">
+                <constraints nullable="false"/>
+            </column>
+            <column name="paid_at" type="TIMESTAMP WITH TIME ZONE"/>
+        </createTable>
+
+        <sql dbms="postgresql">
+            ALTER TABLE payments ADD CONSTRAINT ck_payments_status
+                CHECK (status IN ('pending', 'succeeded', 'failed', 'refunded'));
+        </sql>
+
+        <createIndex tableName="payments" indexName="ix_payments_booking_id">
+            <column name="booking_id"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable tableName="payments"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -1,0 +1,71 @@
+spring:
+  application:
+    name: ticketwave-backend
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ticketwave}
+    username: ${DB_USERNAME:ticketwave}
+    password: ${DB_PASSWORD:ticketwave}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.xml
+    enabled: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+ticketwave:
+  jwt:
+    # No fallback default on purpose: a shared, publicly-known secret baked
+    # into source control would let anyone forge a valid JWT (including
+    # ADMIN). Every environment — including local dev — must set JWT_SECRET
+    # explicitly; startup fails fast if it's missing rather than silently
+    # running with a guessable key.
+    secret: ${JWT_SECRET}
+    access-token-ttl-minutes: ${JWT_ACCESS_TTL_MINUTES:15}
+    refresh-token-ttl-minutes: ${JWT_REFRESH_TTL_MINUTES:10080}
+  inventory:
+    seat-hold-ttl-minutes: ${SEAT_HOLD_TTL_MINUTES:10}
+    hold-sweep-interval-ms: ${SEAT_HOLD_SWEEP_INTERVAL_MS:60000}
+  pricing:
+    last-minute-threshold-hours: ${PRICING_LAST_MINUTE_THRESHOLD_HOURS:24}
+    last-minute-surcharge-rate: ${PRICING_LAST_MINUTE_SURCHARGE_RATE:0.25}
+    early-bird-threshold-days: ${PRICING_EARLY_BIRD_THRESHOLD_DAYS:30}
+    early-bird-discount-rate: ${PRICING_EARLY_BIRD_DISCOUNT_RATE:0.10}
+    high-occupancy-threshold: ${PRICING_HIGH_OCCUPANCY_THRESHOLD:0.80}
+    high-occupancy-surcharge-rate: ${PRICING_HIGH_OCCUPANCY_SURCHARGE_RATE:0.15}
+    low-occupancy-threshold: ${PRICING_LOW_OCCUPANCY_THRESHOLD:0.20}
+    low-occupancy-discount-rate: ${PRICING_LOW_OCCUPANCY_DISCOUNT_RATE:0.05}
+  refund:
+    full-refund-threshold-days: ${REFUND_FULL_THRESHOLD_DAYS:7}
+    partial-refund-threshold-hours: ${REFUND_PARTIAL_THRESHOLD_HOURS:24}
+    partial-refund-rate: ${REFUND_PARTIAL_RATE:0.50}
+  rate-limit:
+    requests-per-window: ${RATE_LIMIT_REQUESTS_PER_WINDOW:60}
+    window-seconds: ${RATE_LIMIT_WINDOW_SECONDS:60}
+
+server:
+  port: ${SERVER_PORT:8080}
+  # Lets embedded Tomcat's RemoteIpValve rewrite request.getRemoteAddr() from
+  # X-Forwarded-For — but only when the immediate TCP peer matches Tomcat's
+  # default internalProxies pattern (loopback/private ranges), so a direct
+  # internet client can't spoof the header to dodge rate limiting. Without
+  # this, RateLimitingFilter (which keys on getRemoteAddr()) sees only the
+  # reverse proxy's address once deployed behind one.
+  forward-headers-strategy: native
+
+logging:
+  level:
+    com.ticketwave: INFO

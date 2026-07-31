@@ -1,0 +1,60 @@
+@if (loading()) {
+  <p>Loading schedule…</p>
+} @else if (schedule(); as sch) {
+  <div class="card">
+    <h2>
+      {{ sch.origin ?? sch.venue }}
+      @if (sch.destination) {
+        &rarr; {{ sch.destination }}
+      }
+    </h2>
+    <p class="meta">
+      {{ sch.type }} · departs {{ sch.departureTime | date: 'medium' }} · arrives
+      {{ sch.arrivalTime | date: 'medium' }}
+    </p>
+    <p class="meta">Base fare: {{ sch.baseFare }} {{ sch.currency }}</p>
+  </div>
+
+  <div class="card">
+    <h3>Select seats</h3>
+    <p class="hint">Fares shown are an estimate; the final price is calculated at booking time.</p>
+
+    <div class="seat-grid">
+      @for (seat of seats(); track seat.id) {
+        <button
+          type="button"
+          class="seat"
+          [class.selected]="selectedSeatIds().has(seat.id)"
+          [class.unavailable]="seat.status !== 'AVAILABLE'"
+          [disabled]="seat.status !== 'AVAILABLE'"
+          (click)="toggleSeat(seat)"
+        >
+          <span class="seat-number">{{ seat.seatNumber }}</span>
+          <span class="seat-class">{{ seat.seatClass }}</span>
+          <span class="seat-fare">{{ (sch.baseFare * seat.priceModifier).toFixed(2) }}</span>
+        </button>
+      }
+    </div>
+
+    <div class="legend">
+      <span><i class="swatch available"></i> Available</span>
+      <span><i class="swatch selected"></i> Selected</span>
+      <span><i class="swatch unavailable"></i> Held / booked</span>
+    </div>
+  </div>
+
+  @if (isRescheduleMode()) {
+    <div class="card summary">
+      <p class="hint">Rescheduling an existing booking — select the same number of seats as before.</p>
+    </div>
+  }
+
+  @if (selectedSeats().length > 0) {
+    <div class="card summary">
+      <p>{{ selectedSeats().length }} seat(s) selected — estimated total {{ estimatedTotal().toFixed(2) }} {{ sch.currency }}</p>
+      <button class="btn" type="button" [disabled]="rescheduling()" (click)="continueToCheckout()">
+        {{ isRescheduleMode() ? (rescheduling() ? 'Rescheduling…' : 'Confirm reschedule') : 'Continue to checkout' }}
+      </button>
+    </div>
+  }
+}

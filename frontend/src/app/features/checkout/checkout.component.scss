@@ -1,0 +1,40 @@
+.meta {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.seat-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+
+  th,
+  td {
+    text-align: left;
+    padding: 0.5rem 0.4rem;
+    border-bottom: 1px solid #eee;
+  }
+}
+
+.passenger-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 1rem;
+  align-items: end;
+}
+
+.total {
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.readonly-field {
+  background: #f0f0f4;
+  color: #666;
+  cursor: default;
+}
+
+.hint {
+  color: #888;
+  font-size: 0.8rem;
+}

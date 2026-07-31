@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="2026-07-31-11" author="ticketwave">
+        <comment>
+            PromoCodes: discount codes applied at booking creation. Not part
+            of genai.txt's literal DB schema listing, but required to
+            implement the "fare modifiers and promo codes" dynamic pricing
+            deliverable — there is no other way to apply a promo code without
+            somewhere to define one.
+        </comment>
+        <createTable tableName="promo_codes">
+            <column name="promo_code_id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" primaryKeyName="pk_promo_codes"/>
+            </column>
+            <column name="code" type="VARCHAR(30)">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uq_promo_codes_code"/>
+            </column>
+            <column name="discount_type" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="discount_value" type="DECIMAL(12,2)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="valid_from" type="TIMESTAMP WITH TIME ZONE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="valid_to" type="TIMESTAMP WITH TIME ZONE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="max_redemptions" type="INTEGER"/>
+            <column name="redemption_count" type="INTEGER" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="active" type="BOOLEAN" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <sql dbms="postgresql">
+            ALTER TABLE promo_codes ADD CONSTRAINT ck_promo_codes_discount_type
+                CHECK (discount_type IN ('percentage', 'fixed_amount'));
+        </sql>
+
+        <rollback>
+            <dropTable tableName="promo_codes"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

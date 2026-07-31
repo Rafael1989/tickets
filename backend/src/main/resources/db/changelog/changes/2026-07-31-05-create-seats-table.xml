@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="2026-07-31-05" author="ticketwave">
+        <comment>
+            Seats: inventory unit for a schedule. status drives the hold/release mechanism;
+            price_modifier is a multiplier applied to the schedule's base_fare.
+        </comment>
+        <createTable tableName="seats">
+            <column name="seat_id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" primaryKeyName="pk_seats"/>
+            </column>
+            <column name="schedule_id" type="BIGINT">
+                <constraints nullable="false"
+                             foreignKeyName="fk_seats_schedule"
+                             references="schedules(schedule_id)"/>
+            </column>
+            <column name="seat_number" type="VARCHAR(10)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="class" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="VARCHAR(20)" defaultValue="available">
+                <constraints nullable="false"/>
+            </column>
+            <column name="price_modifier" type="DECIMAL(6,3)" defaultValueNumeric="1.000">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <sql dbms="postgresql">
+            ALTER TABLE seats ADD CONSTRAINT ck_seats_status
+                CHECK (status IN ('available', 'held', 'booked'));
+        </sql>
+
+        <addUniqueConstraint tableName="seats"
+                              columnNames="schedule_id, seat_number"
+                              constraintName="uq_seats_schedule_seat_number"/>
+
+        <createIndex tableName="seats" indexName="ix_seats_schedule_status">
+            <column name="schedule_id"/>
+            <column name="status"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable tableName="seats"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

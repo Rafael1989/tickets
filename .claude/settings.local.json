@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm /c/Users/FLNS_/projetos/tickets/backend/src/test/java/com/ticketwave/SchemaValidationSmokeTest.java)",
+      "Bash(rm -f /c/Users/FLNS_/projetos/tickets/backend/target/surefire-reports/*SchemaValidation*)",
+      "Bash(mvn -q -DskipTests clean compile test-compile)",
+      "Bash(mvn -DskipTests clean compile)",
+      "Bash(mvn -q -DskipTests clean compile)",
+      "Bash(node -e ' *)",
+      "Bash(mvn -DskipTests clean compile test-compile)",
+      "Bash(mvn dependency:tree)"
+    ]
+  }
+}

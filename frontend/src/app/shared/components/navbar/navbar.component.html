@@ -1,0 +1,24 @@
+<nav class="navbar">
+  <a class="brand" routerLink="/search">TicketWave</a>
+
+  <div class="links">
+    <a routerLink="/search">Search</a>
+
+    @if (isAuthenticated()) {
+      @if (isOperator()) {
+        <a routerLink="/operator">Operator</a>
+      }
+      @if (isSupport()) {
+        <a routerLink="/support">Support</a>
+      }
+      @if (isAdmin()) {
+        <a routerLink="/admin">Admin</a>
+      }
+      <span class="username">{{ username() }}</span>
+      <button type="button" (click)="logout()">Log out</button>
+    } @else {
+      <a routerLink="/login">Log in</a>
+      <a routerLink="/register">Register</a>
+    }
+  </div>
+</nav>
