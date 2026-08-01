@@ -9,7 +9,6 @@ import { PassengerResponse } from '../../core/models/passenger.model';
 import { RefundResponse } from '../../core/models/payment.model';
 import { BookingService } from '../../core/services/booking.service';
 import { PassengerService } from '../../core/services/passenger.service';
-import { RefundService } from '../../core/services/refund.service';
 import { RescheduleContextService } from '../../core/services/reschedule-context.service';
 import { ScheduleService } from '../../core/services/schedule.service';
 import { BookingDetailsComponent } from './booking-details.component';
@@ -20,7 +19,6 @@ describe('BookingDetailsComponent', () => {
   let bookingService: BookingService;
   let scheduleService: ScheduleService;
   let passengerService: PassengerService;
-  let refundService: RefundService;
   let rescheduleContext: RescheduleContextService;
   let router: Router;
 
@@ -100,8 +98,6 @@ describe('BookingDetailsComponent', () => {
     passengerService = TestBed.inject(PassengerService);
     vi.spyOn(passengerService, 'listMyPassengers').mockReturnValue(of([passenger]));
 
-    refundService = TestBed.inject(RefundService);
-
     rescheduleContext = TestBed.inject(RescheduleContextService);
     router = TestBed.inject(Router);
     vi.spyOn(router, 'navigate').mockResolvedValue(true);
@@ -139,50 +135,90 @@ describe('BookingDetailsComponent', () => {
     expect(component.canRefund()).toBe(false);
   });
 
-  it('requestRefund initiates a refund and updates status to CANCELLED', async () => {
+  it('openCancellationWizard shows the wizard only when canRefund is true', async () => {
+    await createComponent(detailWith('CONFIRMED'));
+
+    component.openCancellationWizard();
+
+    expect(component.showCancellationWizard()).toBe(true);
+  });
+
+  it('openCancellationWizard is a no-op when the booking cannot be refunded', async () => {
+    await createComponent(detailWith('INITIATED'));
+
+    component.openCancellationWizard();
+
+    expect(component.showCancellationWizard()).toBe(false);
+  });
+
+  it('onCancelled records the refund, updates status to CANCELLED, and closes the wizard', async () => {
     await createComponent(detailWith('CONFIRMED'));
     const refund: RefundResponse = {
       id: 1,
       paymentId: 1,
       amount: 20,
-      policyCode: 'FULL',
+      policyCode: 'FULL_REFUND',
       status: 'PENDING',
       processedByUserId: null,
       processedAt: null,
     };
-    vi.spyOn(refundService, 'initiateRefund').mockReturnValue(of(refund));
+    component.openCancellationWizard();
 
-    component.requestRefund();
+    component.onCancelled(refund);
 
     expect(component.refund()).toEqual(refund);
     expect(component.detail()?.booking.status).toBe('CANCELLED');
     expect(component.canRefund()).toBe(false);
+    expect(component.showCancellationWizard()).toBe(false);
   });
 
-  it('canReschedule is true only for an INITIATED booking', async () => {
+  it('renders the cancellation wizard once opened', async () => {
+    await createComponent(detailWith('CONFIRMED'));
+
+    component.openCancellationWizard();
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('tw-cancellation-wizard')).not.toBeNull();
+  });
+
+  it('canReschedule is true for an INITIATED booking', async () => {
     await createComponent(detailWith('INITIATED'));
     expect(component.canReschedule()).toBe(true);
   });
 
-  it('canReschedule is false for a CONFIRMED booking', async () => {
+  it('canReschedule is true for a CONFIRMED booking with no refund yet', async () => {
     await createComponent(detailWith('CONFIRMED'));
+    expect(component.canReschedule()).toBe(true);
+  });
+
+  it('canReschedule is false for a CANCELLED booking', async () => {
+    await createComponent(detailWith('CANCELLED'));
     expect(component.canReschedule()).toBe(false);
   });
 
-  it('startReschedule records the booking id and passenger ids, then navigates to /search', async () => {
+  it('startReschedule records the booking id, passenger ids, and requiresFareSettlement=false for an INITIATED booking', async () => {
     await createComponent(detailWith('INITIATED'));
 
     component.startReschedule();
 
-    expect(rescheduleContext.context()).toEqual({ bookingId: 500, passengerIds: [100] });
+    expect(rescheduleContext.context()).toEqual({ bookingId: 500, passengerIds: [100], requiresFareSettlement: false });
     expect(router.navigate).toHaveBeenCalledWith(['/search']);
   });
 
-  it('the "Change schedule" button is only rendered for an INITIATED booking', async () => {
+  it('startReschedule records requiresFareSettlement=true for a CONFIRMED booking', async () => {
+    await createComponent(detailWith('CONFIRMED'));
+
+    component.startReschedule();
+
+    expect(rescheduleContext.context()).toEqual({ bookingId: 500, passengerIds: [100], requiresFareSettlement: true });
+  });
+
+  it('the "Change schedule" button is rendered for both INITIATED and CONFIRMED bookings', async () => {
     await createComponent(detailWith('CONFIRMED'));
 
     const html = (fixture.nativeElement as HTMLElement).textContent ?? '';
-    expect(html).not.toContain('Change schedule');
+    expect(html).toContain('Change schedule');
   });
 
   it('renders the e-ticket card for a CONFIRMED booking', async () => {

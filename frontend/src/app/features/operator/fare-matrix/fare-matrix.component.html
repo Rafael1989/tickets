@@ -1,0 +1,100 @@
+<div class="card">
+  <h4>Add a fare rule</h4>
+  <form class="grid-form" [formGroup]="ruleForm" (ngSubmit)="createFareRule()">
+    <div class="field">
+      <label for="seatClass">Seat class</label>
+      <input id="seatClass" type="text" formControlName="seatClass" placeholder="economy" />
+    </div>
+    <div class="field">
+      <label for="validFrom">Valid from</label>
+      <input id="validFrom" type="datetime-local" formControlName="validFrom" />
+    </div>
+    <div class="field">
+      <label for="validTo">Valid to</label>
+      <input id="validTo" type="datetime-local" formControlName="validTo" />
+    </div>
+    <div class="field">
+      <label for="surchargeRate">Surcharge rate</label>
+      <input id="surchargeRate" type="number" step="0.01" formControlName="surchargeRate" />
+      <span class="hint">e.g. 0.20 = +20%, -0.10 = -10%</span>
+    </div>
+    <button class="btn" type="submit" [disabled]="ruleForm.invalid || saving()">
+      {{ saving() ? 'Adding…' : 'Add fare rule' }}
+    </button>
+  </form>
+</div>
+
+<div class="card">
+  <h4>Bulk load from CSV</h4>
+  <p class="hint">Header row required: <code>seatClass,validFrom,validTo,surchargeRate</code></p>
+  <input type="file" accept=".csv,text/csv" (change)="onFileSelected($event)" aria-label="Upload fare rules CSV" />
+
+  @if (previewRows().length > 0) {
+    <div class="preview" aria-live="polite">
+      <p class="hint">
+        Previewing {{ previewFileName() }} —
+        {{ hasPreviewErrors() ? 'fix the highlighted rows before uploading.' : 'looks good, ready to upload.' }}
+      </p>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Line</th>
+            <th>Seat class</th>
+            <th>Valid from</th>
+            <th>Valid to</th>
+            <th>Surcharge</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of previewRows(); track row.line) {
+            <tr [class.invalid]="row.error">
+              <td>{{ row.line }}</td>
+              <td>{{ row.seatClass }}</td>
+              <td>{{ row.validFrom }}</td>
+              <td>{{ row.validTo }}</td>
+              <td>{{ row.surchargeRate }}</td>
+              <td>{{ row.error ?? 'OK' }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+      <div class="form-actions">
+        <button type="button" class="btn" [disabled]="hasPreviewErrors() || uploading()" (click)="confirmUpload()">
+          {{ uploading() ? 'Uploading…' : 'Confirm upload (' + previewRows().length + ' rows)' }}
+        </button>
+        <button type="button" class="btn secondary" (click)="clearPreview()">Cancel</button>
+      </div>
+    </div>
+  }
+</div>
+
+<div class="card">
+  <h4>Fare rules</h4>
+  @if (loading()) {
+    <p>Loading…</p>
+  } @else if (fareRules().length === 0) {
+    <p>No fare rules yet.</p>
+  } @else {
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Seat class</th>
+          <th>Valid from</th>
+          <th>Valid to</th>
+          <th>Surcharge rate</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (rule of fareRules(); track rule.id) {
+          <tr>
+            <td>{{ rule.seatClass }}</td>
+            <td>{{ rule.validFrom | date: 'medium' }}</td>
+            <td>{{ rule.validTo | date: 'medium' }}</td>
+            <td>{{ rule.surchargeRate }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  }
+</div>

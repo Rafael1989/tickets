@@ -53,6 +53,23 @@ public class ScheduleManagementController {
                 .body(scheduleManagementService.createSchedule(authentication.getName(), request));
     }
 
+    @PutMapping("/api/schedules/{id}")
+    @Operation(summary = "Update a schedule owned by the authenticated operator")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Schedule updated"),
+            @ApiResponse(responseCode = "400", description = "Validation failed"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid bearer token"),
+            @ApiResponse(responseCode = "403", description = "Caller is not an operator"),
+            @ApiResponse(responseCode = "404", description = "No such schedule, or it belongs to a different operator")
+    })
+    public ResponseEntity<ScheduleResponse> updateSchedule(
+            Authentication authentication,
+            @PathVariable("id") Long scheduleId,
+            @Valid @RequestBody ScheduleRequest request
+    ) {
+        return ResponseEntity.ok(scheduleManagementService.updateSchedule(authentication.getName(), scheduleId, request));
+    }
+
     @PostMapping("/api/seats")
     @Operation(summary = "Add a seat to a schedule owned by the authenticated operator")
     @ApiResponses({

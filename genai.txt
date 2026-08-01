@@ -65,21 +65,23 @@ Admin
 As an admin, I want to manage users, partners, and audit logs. 
 🗃️ Database Schema
 Entities and Relationships
-Users
+Users - Ok
 user_id (PK)
 username
 password_hash
 email
 role (customer, operator, support, admin)
 created_at
-Passengers
+
+Passengers OK
 passenger_id (PK)
 user_id (FK -> Users)
 full_name
 dob
 id_type
 id_number
-Venues/Routes
+
+Venues/Routes Ok
 route_id (PK)
 operator_id (FK -> Users)
 type (flight,bus,train,event)
@@ -87,7 +89,8 @@ origin
 destination
 venue
 duration
-Schedules
+
+Schedules OK
 schedule_id (PK)
 route_id (FK -> Routes)
 departure_time
@@ -95,14 +98,16 @@ arrival_time
 base_fare
 currency
 status
-Seats
+
+Seats OK
 seat_id (PK)
 schedule_id (FK -> Schedules)
 seat_number
 class
 status (available, held, booked)
 price_modifier
-Bookings
+
+Bookings OK
 booking_id (PK)
 user_id (FK -> Users)
 schedule_id (FK -> Schedules)
@@ -110,13 +115,15 @@ pnr
 booking_time
 status (initiated, confirmed, cancelled)
 total_amount
-BookingItems
+
+BookingItems OK
 item_id (PK)
 booking_id (FK -> Bookings)
 seat_id (FK -> Seats)
 passenger_id (FK -> Passengers)
 fare
-Payments
+
+Payments OK
 payment_id (PK)
 booking_id (FK -> Bookings)
 amount
@@ -124,71 +131,99 @@ method
 reference
 status
 paid_at
-Refunds
+
+Refunds OK
 refund_id (PK)
 payment_id (FK -> Payments)
 amount
 policy_code
 processed_by (FK -> Users)
 processed_at
+
 🖥️ Frontend Components (Any UI Framework) - Optional
+
 Pages and Features
+
 Search & Discovery
+
 Filters: date, origin/destination, venue, price, class
 Sorting and real-time availability
 Guest checkout option
+
 Seat Map & Selection
+
 Interactive seat map with accessibility indicators
 Dynamic pricing display
 Hold seats with countdown
+
 Checkout & Payment
+
 Passenger details and saved profiles
 Multiple payment methods and 3DS
 E-ticket generation (PDF/PKPass)
+
 Manage Booking
+
 View itinerary/tickets
 Reschedule/cancel per policy
 Refund status
+
 Operator Portal
+
 Schedule/inventory upload
 Fare rules and promo codes
 Reports
+
 Admin Panel
+
 User/partner management
 Audit logs
 Configuration (refund policies, fees)
+
 🔌 Backend API Endpoints
+
 Authentication & Users
 POST /api/register – Register user
 POST /api/login – Authenticate and return JWT
 GET /api/users/{id} – Retrieve user (admin)
 GET /api/audit – Audit logs (admin)
+
 Catalog & Inventory
 GET /api/search – Query routes/events
 GET /api/schedules/{id} – Schedule details
 GET /api/schedules/{id}/seats – Seat availability
 POST /api/schedules – Create schedule (operator)
 PUT /api/seats/{id} – Update seat status
+
 Booking & Payment
 POST /api/bookings – Create booking and hold seats
 PUT /api/bookings/{id}/confirm – Confirm booking on payment
 POST /api/bookings/{id}/payments – Record payment
 POST /api/bookings/{id}/refunds – Initiate refund
 GET /api/bookings/{id} – Booking details
+
 🛠️ Development
+
 Setup & Performance
+
 Initialize service with CQRS-friendly modules and caching
 Configure relational DB and read replicas for search
 Implement rate limiting and idempotency keys
+
 Inventory & Pricing
+
 Seat inventory model with holds and expirations
 Dynamic pricing engine with modifiers and promo codes
 PNR generation and uniqueness guarantees
+
 Payments & Refunds
+
 Payment intent flow with webhook stubs
 Refund policies and proration logic
 Ledger entries and reconciliation reports
+
 Testing & Reliability
+
 Unit and contract tests for booking/payment
 Load tests for search and seat selection
 >=80% coverage, zero failures, chaos testing (optional)

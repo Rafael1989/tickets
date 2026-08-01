@@ -1,8 +1,10 @@
 package com.ticketwave.catalog.service;
 
+import com.ticketwave.audit.service.AuditService;
 import com.ticketwave.catalog.dto.RouteRequest;
 import com.ticketwave.catalog.dto.RouteResponse;
 import com.ticketwave.catalog.entity.Route;
+import com.ticketwave.catalog.exception.RouteNotFoundException;
 import com.ticketwave.catalog.mapper.RouteMapper;
 import com.ticketwave.catalog.repository.RouteRepository;
 import com.ticketwave.user.entity.User;
@@ -20,11 +22,18 @@ public class RouteServiceImpl implements RouteService {
     private final RouteRepository routeRepository;
     private final UserRepository userRepository;
     private final RouteMapper routeMapper;
+    private final AuditService auditService;
 
-    public RouteServiceImpl(RouteRepository routeRepository, UserRepository userRepository, RouteMapper routeMapper) {
+    public RouteServiceImpl(
+            RouteRepository routeRepository,
+            UserRepository userRepository,
+            RouteMapper routeMapper,
+            AuditService auditService
+    ) {
         this.routeRepository = routeRepository;
         this.userRepository = userRepository;
         this.routeMapper = routeMapper;
+        this.auditService = auditService;
     }
 
     @Override
@@ -35,6 +44,27 @@ public class RouteServiceImpl implements RouteService {
                 .orElseThrow(() -> new UserNotFoundException(operatorUsername));
 
         Route route = routeRepository.save(routeMapper.toEntity(request, operator));
+        auditService.record(operatorUsername, "ROUTE_CREATED", "ROUTE", route.getId(),
+                "type=" + route.getType());
+        return routeMapper.toResponse(route);
+    }
+
+    @Override
+    @PreAuthorize("hasRole('OPERATOR')")
+    @Transactional
+    public RouteResponse updateRoute(String operatorUsername, Long routeId, RouteRequest request) {
+        Route route = routeRepository.findById(routeId)
+                .filter(candidate -> candidate.getOperator().getUsername().equals(operatorUsername))
+                .orElseThrow(() -> new RouteNotFoundException(routeId));
+
+        route.setType(request.type());
+        route.setOrigin(request.origin());
+        route.setDestination(request.destination());
+        route.setVenue(request.venue());
+        route.setDurationMinutes(request.durationMinutes());
+
+        auditService.record(operatorUsername, "ROUTE_UPDATED", "ROUTE", route.getId(),
+                "type=" + route.getType());
         return routeMapper.toResponse(route);
     }
 

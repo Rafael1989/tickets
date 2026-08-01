@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="2026-08-01-09" author="ticketwave">
+        <comment>Drivers: crew owned by an operator, assignable to schedules.</comment>
+        <createTable tableName="drivers">
+            <column name="driver_id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" primaryKeyName="pk_drivers"/>
+            </column>
+            <column name="operator_id" type="BIGINT">
+                <constraints nullable="false"
+                             foreignKeyName="fk_drivers_operator"
+                             references="users(user_id)"/>
+            </column>
+            <column name="full_name" type="VARCHAR(150)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="license_number" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createIndex tableName="drivers" indexName="ix_drivers_operator_id">
+            <column name="operator_id"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable tableName="drivers"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -8,4 +8,8 @@ public class SeatUnavailableException extends TicketwaveException {
     public SeatUnavailableException(Long seatId) {
         super(HttpStatus.CONFLICT, "SEAT_UNAVAILABLE", "Seat " + seatId + " is not available to hold");
     }
+
+    public SeatUnavailableException(Long seatId, String reason) {
+        super(HttpStatus.CONFLICT, "SEAT_UNAVAILABLE", "Seat " + seatId + " " + reason);
+    }
 }

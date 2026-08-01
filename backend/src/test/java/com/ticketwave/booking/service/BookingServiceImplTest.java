@@ -611,8 +611,8 @@ class BookingServiceImplTest {
     }
 
     @Test
-    void rescheduleBooking_whenNotInitiated_throwsInvalidBookingStateException() {
-        Booking booking = Booking.builder().id(500L).status(BookingStatus.CONFIRMED).build();
+    void rescheduleBooking_whenCancelled_throwsInvalidBookingStateException() {
+        Booking booking = Booking.builder().id(500L).status(BookingStatus.CANCELLED).build();
         given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
 
         RescheduleRequest request = new RescheduleRequest(20L, List.of(new SeatSelection(5L, 100L)));
@@ -621,6 +621,44 @@ class BookingServiceImplTest {
                 .isInstanceOf(InvalidBookingStateException.class);
 
         verify(seatHoldService, never()).releaseSeat(anyLong());
+    }
+
+    @Test
+    void rescheduleBooking_whenConfirmed_isAllowedAtThisLayer_eligibilityAndBillingLiveInRescheduleService() {
+        // BookingServiceImpl is just the mechanical swap now; a CONFIRMED
+        // booking's departure-window eligibility and fare-difference
+        // charge/credit are RescheduleService's job, applied before it ever
+        // delegates here. See RescheduleServiceImplTest for that gating.
+        User user = user(1L);
+        Booking booking = Booking.builder().id(500L).user(user).status(BookingStatus.CONFIRMED)
+                .totalAmount(new BigDecimal("20.00")).build();
+        Seat oldSeat = seat(2L, BigDecimal.ONE);
+        BookingItem oldItem = BookingItem.builder().id(1L).booking(booking).seat(oldSeat).build();
+        Schedule newSchedule = schedule(20L, new BigDecimal("30.00"));
+        Passenger passenger = passenger(100L, user);
+        Seat newSeat = seat(5L, new BigDecimal("1.500"));
+
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+        given(bookingItemRepository.findByBookingId(500L)).willReturn(List.of(oldItem));
+        given(scheduleRepository.findById(20L)).willReturn(Optional.of(newSchedule));
+        given(passengerRepository.findById(100L)).willReturn(Optional.of(passenger));
+        given(seatHoldService.holdSeat(5L, user)).willReturn(newSeat);
+        given(pricingService.calculateSeatFare(newSchedule, newSeat)).willReturn(new BigDecimal("45.00"));
+        given(bookingItemRepository.save(any(BookingItem.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+        given(bookingMapper.toResponse(booking)).willReturn(
+                new BookingResponse(500L, 1L, 20L, "ABC234", Instant.now(), BookingStatus.CONFIRMED,
+                        new BigDecimal("45.00"), null));
+        given(bookingItemMapper.toResponse(any(BookingItem.class))).willAnswer(invocation -> {
+            BookingItem item = invocation.getArgument(0);
+            return new BookingItemResponse(null, 500L, item.getSeat().getId(), item.getPassenger().getId(), item.getFare());
+        });
+
+        RescheduleRequest request = new RescheduleRequest(20L, List.of(new SeatSelection(5L, 100L)));
+        BookingDetailResponse response = bookingService.rescheduleBooking(500L, request);
+
+        assertThat(booking.getTotalAmount()).isEqualByComparingTo("45.00");
+        assertThat(response.items()).hasSize(1);
     }
 
     @Test

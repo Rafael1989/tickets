@@ -1,0 +1,115 @@
+<div class="card">
+  <div class="panel-header">
+    <h4>Seat inventory</h4>
+    <button type="button" class="btn secondary" (click)="refresh()" [disabled]="loading()">
+      {{ loading() ? 'Loading…' : 'Refresh' }}
+    </button>
+  </div>
+
+  <div class="legend" aria-hidden="true">
+    <span><i class="swatch available"></i> Available</span>
+    <span><i class="swatch held"></i> Held/Booked</span>
+    <span><i class="swatch blocked"></i> Blocked</span>
+    <span><i class="swatch reserved"></i> Reserved (operator)</span>
+  </div>
+
+  @if (loading()) {
+    <p>Loading seats…</p>
+  } @else if (seats().length === 0) {
+    <p>No seats yet — add the first one below.</p>
+  } @else {
+    <div class="seat-grid" role="group" aria-label="Seat inventory grid">
+      @for (seat of seats(); track seat.id) {
+        <button
+          type="button"
+          class="seat"
+          [class.available]="seat.status === 'AVAILABLE'"
+          [class.held]="seat.status === 'HELD' || seat.status === 'BOOKED'"
+          [class.blocked]="seat.status === 'BLOCKED'"
+          [class.reserved]="seat.status === 'RESERVED_OPERATOR'"
+          [class.selected]="selectedSeatId() === seat.id"
+          [attr.aria-pressed]="selectedSeatId() === seat.id"
+          [attr.aria-label]="seat.seatNumber + ', ' + seat.seatClass + ', status ' + seat.status"
+          (click)="selectSeat(seat)"
+        >
+          <span class="seat-number">{{ seat.seatNumber }}</span>
+          <span class="seat-status">{{ seat.status }}</span>
+        </button>
+      }
+    </div>
+  }
+
+  @if (selectedSeat(); as seat) {
+    <div class="edit-panel" aria-live="polite">
+      <h5>Seat {{ seat.seatNumber }}</h5>
+      @if (selectedSeatLocked(); as reason) {
+        <p class="form-error">{{ reason }}</p>
+      } @else {
+        <form class="grid-form" [formGroup]="editForm" (ngSubmit)="saveSeatEdit()">
+          <div class="field">
+            <label for="seatStatus">Status</label>
+            <select id="seatStatus" formControlName="status">
+              @for (status of operatorStatuses; track status) {
+                <option [value]="status">{{ status }}</option>
+              }
+            </select>
+          </div>
+          <div class="field">
+            <label for="seatPriceModifier">Price modifier</label>
+            <input id="seatPriceModifier" type="number" step="0.001" formControlName="priceModifier" />
+          </div>
+          <button class="btn" type="submit" [disabled]="editForm.invalid || savingSeatId() === seat.id">
+            {{ savingSeatId() === seat.id ? 'Saving…' : 'Save' }}
+          </button>
+        </form>
+      }
+    </div>
+  }
+
+  @if (rows().length > 0) {
+    <div class="batch-actions">
+      <h5>Batch row actions</h5>
+      <div class="field inline">
+        <label for="rowSelect">Row</label>
+        <select id="rowSelect" (change)="onRowSelected($event)">
+          <option value="" [selected]="!selectedRow()">Select a row…</option>
+          @for (row of rows(); track row) {
+            <option [value]="row" [selected]="selectedRow() === row">Row {{ row }}</option>
+          }
+        </select>
+      </div>
+      <div class="batch-buttons">
+        <button type="button" class="btn secondary" [disabled]="!selectedRow() || batchWorking()" (click)="blockRow()">
+          Block entire row
+        </button>
+        <button type="button" class="btn secondary" [disabled]="!selectedRow() || batchWorking()" (click)="reserveRowForOperator()">
+          Reserve row (operator)
+        </button>
+        <button type="button" class="btn secondary" [disabled]="!selectedRow() || batchWorking()" (click)="unblockRow()">
+          Mark row available
+        </button>
+      </div>
+    </div>
+  }
+
+  <div class="card nested">
+    <h5>Add a seat</h5>
+    <form class="grid-form" [formGroup]="addSeatForm" (ngSubmit)="addSeat()">
+      <div class="field">
+        <label for="newSeatNumber">Seat number</label>
+        <input id="newSeatNumber" type="text" formControlName="seatNumber" placeholder="e.g. 12A" />
+      </div>
+      <div class="field">
+        <label for="newSeatClass">Class</label>
+        <input id="newSeatClass" type="text" formControlName="seatClass" placeholder="economy" />
+      </div>
+      <div class="field">
+        <label for="newSeatPriceModifier">Price modifier</label>
+        <input id="newSeatPriceModifier" type="number" step="0.001" formControlName="priceModifier" />
+      </div>
+      <button class="btn" type="submit" [disabled]="addSeatForm.invalid || addingSeat()">
+        {{ addingSeat() ? 'Adding…' : 'Add seat' }}
+      </button>
+    </form>
+  </div>
+</div>

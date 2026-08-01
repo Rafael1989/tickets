@@ -70,11 +70,15 @@ public interface BookingService {
     BookingDetailResponse getBookingByPnr(String pnr);
 
     /**
-     * Changes an INITIATED (unpaid) booking's schedule/seats in place,
-     * releasing the old holds and re-pricing against the new schedule. Not
-     * available once a booking is CONFIRMED — see RescheduleRequest's javadoc.
+     * The mechanical seat/schedule swap for an INITIATED or CONFIRMED
+     * booking: releases the old holds, holds the new seats, and re-prices
+     * against the new schedule. For a CONFIRMED booking, callers should go
+     * through {@code com.ticketwave.payment.service.RescheduleService}
+     * instead of calling this directly — it applies the departure-proximity
+     * eligibility check and the fare-difference charge/credit that this
+     * method knows nothing about.
      *
-     * @throws com.ticketwave.booking.exception.InvalidBookingStateException if the booking isn't currently INITIATED
+     * @throws com.ticketwave.booking.exception.InvalidBookingStateException if the booking isn't currently INITIATED or CONFIRMED
      * @throws com.ticketwave.catalog.exception.ScheduleNotFoundException if the new schedule doesn't exist
      * @throws com.ticketwave.user.exception.PassengerNotFoundException if a passenger doesn't exist or isn't owned by this booking's customer
      */

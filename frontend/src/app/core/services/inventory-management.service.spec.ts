@@ -35,6 +35,24 @@ describe('InventoryManagementService', () => {
     req.flush({});
   });
 
+  it('updateSchedule puts the request to /api/schedules/{id}', () => {
+    const request: ScheduleRequest = {
+      routeId: 1,
+      departureTime: '2026-08-01T10:00:00Z',
+      arrivalTime: '2026-08-01T12:00:00Z',
+      baseFare: 120,
+      currency: 'USD',
+      status: 'DELAYED',
+    };
+
+    service.updateSchedule(7, request).subscribe();
+
+    const req = httpMock.expectOne('/api/schedules/7');
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toEqual(request);
+    req.flush({});
+  });
+
   it('addSeat posts the request to /api/seats', () => {
     const request: SeatRequest = {
       scheduleId: 1,

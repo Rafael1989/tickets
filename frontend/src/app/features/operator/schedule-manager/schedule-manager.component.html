@@ -1,0 +1,103 @@
+<div class="card">
+  <h4>{{ editingScheduleId() ? 'Edit schedule #' + editingScheduleId() : 'Create a schedule' }}</h4>
+  <form class="grid-form" [formGroup]="scheduleForm" (ngSubmit)="submitSchedule()">
+    <div class="field">
+      <label for="departureTime">Departure</label>
+      <input id="departureTime" type="datetime-local" formControlName="departureTime" />
+    </div>
+    <div class="field">
+      <label for="arrivalTime">Arrival</label>
+      <input id="arrivalTime" type="datetime-local" formControlName="arrivalTime" />
+    </div>
+    <div class="field">
+      <label for="baseFare">Base fare</label>
+      <input id="baseFare" type="number" step="0.01" formControlName="baseFare" />
+    </div>
+    <div class="field">
+      <label for="currency">Currency</label>
+      <input id="currency" type="text" maxlength="3" formControlName="currency" />
+    </div>
+    <div class="field">
+      <label for="vehicleId">Vehicle</label>
+      <select id="vehicleId" formControlName="vehicleId">
+        <option [ngValue]="null">None</option>
+        @for (vehicle of vehicles(); track vehicle.id) {
+          <option [ngValue]="vehicle.id">{{ vehicle.identifier }} ({{ vehicle.type }})</option>
+        }
+      </select>
+    </div>
+    <div class="field">
+      <label for="driverId">Driver</label>
+      <select id="driverId" formControlName="driverId">
+        <option [ngValue]="null">None</option>
+        @for (driver of drivers(); track driver.id) {
+          <option [ngValue]="driver.id">{{ driver.fullName }}</option>
+        }
+      </select>
+    </div>
+    @if (editingScheduleId()) {
+      <div class="field">
+        <label for="status">Status</label>
+        <select id="status" formControlName="status">
+          @for (status of scheduleStatuses; track status) {
+            <option [value]="status">{{ status }}</option>
+          }
+        </select>
+      </div>
+    }
+    <div class="form-actions">
+      <button class="btn" type="submit" [disabled]="scheduleForm.invalid || saving()">
+        {{ saving() ? 'Saving…' : editingScheduleId() ? 'Save changes' : 'Create schedule' }}
+      </button>
+      @if (editingScheduleId()) {
+        <button class="btn secondary" type="button" (click)="cancelEdit()">Cancel</button>
+      }
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h4>Schedules</h4>
+  @if (loading()) {
+    <p>Loading…</p>
+  } @else if (schedules().length === 0) {
+    <p>No schedules yet — create one above.</p>
+  } @else {
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Departure</th>
+          <th>Arrival</th>
+          <th>Base fare</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (schedule of schedules(); track schedule.id) {
+          <tr>
+            <td>{{ schedule.id }}</td>
+            <td>{{ schedule.departureTime | date: 'medium' }}</td>
+            <td>{{ schedule.arrivalTime | date: 'medium' }}</td>
+            <td>{{ schedule.baseFare }} {{ schedule.currency }}</td>
+            <td><span class="status" [class]="schedule.status.toLowerCase()">{{ schedule.status }}</span></td>
+            <td class="actions">
+              <button type="button" class="link-btn" (click)="startEdit(schedule)">Edit</button>
+              <button type="button" class="link-btn" (click)="toggleSeatManager(schedule.id)">
+                {{ managingSeatsForScheduleId() === schedule.id ? 'Hide seats' : 'Manage seats' }}
+              </button>
+            </td>
+          </tr>
+          @if (managingSeatsForScheduleId() === schedule.id) {
+            <tr>
+              <td colspan="6">
+                <tw-seat-grid-editor [scheduleId]="schedule.id" />
+              </td>
+            </tr>
+          }
+        }
+      </tbody>
+    </table>
+  }
+</div>

@@ -44,22 +44,38 @@
 
   @if (refund(); as r) {
     <div class="card">
-      <h3>Refund</h3>
-      <p>Status: {{ r.status }}</p>
-      <p>Amount: {{ r.amount }} ({{ r.policyCode }})</p>
+      <h3>Refund status</h3>
+      <tw-refund-status-tracker [refund]="r" />
     </div>
   } @else if (canRefund()) {
     <div class="card">
-      <button class="btn secondary" type="button" [disabled]="requestingRefund()" (click)="requestRefund()">
-        {{ requestingRefund() ? 'Requesting…' : 'Request refund' }}
+      <p class="hint">Plans changed? Review your refund eligibility before cancelling.</p>
+      <button #cancelTrigger class="btn secondary" type="button" (click)="openCancellationWizard()">
+        Cancel booking
       </button>
     </div>
   }
 
   @if (canReschedule()) {
     <div class="card">
-      <p class="hint">This booking hasn't been paid yet — you can freely change its schedule/seats.</p>
+      @if (d.booking.status === 'INITIATED') {
+        <p class="hint">This booking hasn't been paid yet — you can freely change its schedule/seats.</p>
+      } @else {
+        <p class="hint">
+          Need a different date or time? You'll see any fare difference before confirming — an upgrade collects the
+          difference, a downgrade issues a credit.
+        </p>
+      }
       <button class="btn secondary" type="button" (click)="startReschedule()">Change schedule</button>
     </div>
+  }
+
+  @if (showCancellationWizard()) {
+    <tw-cancellation-wizard
+      [bookingId]="d.booking.id"
+      [pnr]="d.booking.pnr"
+      (closed)="closeCancellationWizard()"
+      (cancelled)="onCancelled($event)"
+    />
   }
 }

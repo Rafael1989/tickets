@@ -109,9 +109,69 @@
           <span>Total</span>
           <span>{{ total().toFixed(2) }} {{ sch.currency }}</span>
         </div>
+
+        @if (requiresFareSettlement()) {
+          <div class="fare-settlement" aria-live="polite">
+            @if (rescheduleQuoteLoading()) {
+              <p class="hint">Calculating fare difference…</p>
+            } @else if (rescheduleQuoteError()) {
+              <p class="form-error">{{ rescheduleQuoteError() }}</p>
+            } @else if (rescheduleQuote(); as quote) {
+              @if (!quote.eligible) {
+                <p class="form-error">
+                  This booking is too close to departure to reschedule online. Contact support for help.
+                </p>
+              } @else {
+                <div class="line" [class.discount]="quote.fareDifference < 0">
+                  <span>Fare difference</span>
+                  <span>{{ quote.fareDifference >= 0 ? '+' : '' }}{{ quote.fareDifference.toFixed(2) }} {{ sch.currency }}</span>
+                </div>
+                @if (quote.paymentRequired) {
+                  <p class="hint">This upgrade requires collecting the difference now.</p>
+                  <div class="method-toggle" role="radiogroup" aria-label="Payment method">
+                    <button
+                      type="button"
+                      class="btn secondary"
+                      [class.active]="fareSettlementMethod() === 'card'"
+                      [attr.aria-pressed]="fareSettlementMethod() === 'card'"
+                      (click)="selectFareSettlementMethod('card')"
+                    >
+                      Card
+                    </button>
+                    <button
+                      type="button"
+                      class="btn secondary"
+                      [class.active]="fareSettlementMethod() === 'pix'"
+                      [attr.aria-pressed]="fareSettlementMethod() === 'pix'"
+                      (click)="selectFareSettlementMethod('pix')"
+                    >
+                      Pix
+                    </button>
+                  </div>
+                  @if (fareSettlementMethod() === 'card') {
+                    <form class="field" [formGroup]="fareSettlementForm">
+                      <label for="fareCardNumber">Card number</label>
+                      <input id="fareCardNumber" type="text" formControlName="cardNumber" autocomplete="cc-number" />
+                      @if (fareSettlementForm.controls.cardNumber.invalid && fareSettlementForm.controls.cardNumber.touched) {
+                        <span class="form-error">Enter a valid card number.</span>
+                      }
+                    </form>
+                  }
+                } @else if (quote.fareDifference < 0) {
+                  <p class="hint">A credit refund for the difference will be issued for support review.</p>
+                }
+              }
+            }
+          </div>
+        }
       </div>
 
-      <button class="btn" type="button" [disabled]="rescheduling()" (click)="continueToCheckout()">
+      <button
+        class="btn"
+        type="button"
+        [disabled]="rescheduling() || (requiresFareSettlement() && (rescheduleQuoteLoading() || !rescheduleQuote()?.eligible))"
+        (click)="continueToCheckout()"
+      >
         {{ isRescheduleMode() ? (rescheduling() ? 'Rescheduling…' : 'Confirm reschedule') : 'Continue to checkout' }}
       </button>
     </div>

@@ -1,0 +1,159 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(26, 26, 46, 0.55);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+  z-index: 1000;
+
+  @media (min-width: 640px) {
+    align-items: center;
+    padding: 1.5rem;
+  }
+}
+
+.dialog {
+  background: #fff;
+  width: 100%;
+  max-width: 32rem;
+  max-height: 92vh;
+  overflow-y: auto;
+  border-radius: 0.75rem 0.75rem 0 0;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.2);
+  outline: none;
+
+  @media (min-width: 640px) {
+    border-radius: 0.75rem;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  }
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 1.25rem 0.5rem;
+
+  h2 {
+    font-size: 1.1rem;
+    margin: 0;
+  }
+}
+
+.icon-btn {
+  background: transparent;
+  border: none;
+  font-size: 1.4rem;
+  line-height: 1;
+  color: #666;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.3rem;
+
+  &:hover {
+    background: #f0f1f5;
+  }
+
+  &:focus-visible {
+    outline: 2px solid #2471a3;
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    color: #ccc;
+    cursor: not-allowed;
+  }
+}
+
+.dialog-body {
+  padding: 0.5rem 1.25rem 1.25rem;
+  min-height: 6rem;
+}
+
+.ineligible-message {
+  color: #922b21;
+  background: #f2d7d5;
+  padding: 0.75rem;
+  border-radius: 0.4rem;
+}
+
+.breakdown {
+  margin: 0 0 0.75rem;
+
+  .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.45rem 0;
+    border-bottom: 1px solid #eee;
+
+    dt {
+      color: #555;
+      font-size: 0.9rem;
+    }
+
+    dd {
+      margin: 0;
+      font-weight: 600;
+    }
+
+    &.total {
+      border-bottom: none;
+      padding-top: 0.6rem;
+
+      dt,
+      dd {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #1e8449;
+      }
+    }
+  }
+}
+
+.policy-badge {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 1rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  background: #fdebd0;
+  color: #9c640c;
+
+  &.full {
+    background: #d5f5e3;
+    color: #1e8449;
+  }
+}
+
+.hint {
+  color: #666;
+  font-size: 0.85rem;
+  margin: 0.4rem 0;
+}
+
+.dialog-actions {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 0.6rem;
+  padding: 0.75rem 1.25rem 1.25rem;
+  position: sticky;
+  bottom: 0;
+  background: #fff;
+
+  @media (min-width: 480px) {
+    flex-direction: row;
+    justify-content: flex-end;
+  }
+
+  .btn {
+    width: 100%;
+
+    @media (min-width: 480px) {
+      width: auto;
+    }
+  }
+}

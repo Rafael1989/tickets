@@ -1,5 +1,6 @@
 package com.ticketwave.pricing.service;
 
+import com.ticketwave.catalog.entity.Route;
 import com.ticketwave.catalog.entity.Schedule;
 import com.ticketwave.catalog.entity.Seat;
 import com.ticketwave.catalog.entity.SeatStatus;
@@ -7,9 +8,11 @@ import com.ticketwave.catalog.repository.SeatRepository;
 import com.ticketwave.config.PricingProperties;
 import com.ticketwave.pricing.dto.PromoCodeApplication;
 import com.ticketwave.pricing.entity.DiscountType;
+import com.ticketwave.pricing.entity.FareRule;
 import com.ticketwave.pricing.entity.PromoCode;
 import com.ticketwave.pricing.exception.PromoCodeNotApplicableException;
 import com.ticketwave.pricing.exception.PromoCodeNotFoundException;
+import com.ticketwave.pricing.repository.FareRuleRepository;
 import com.ticketwave.pricing.repository.PromoCodeRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -36,6 +40,9 @@ class PricingServiceImplTest {
     @Mock
     private PromoCodeRepository promoCodeRepository;
 
+    @Mock
+    private FareRuleRepository fareRuleRepository;
+
     private static final PricingProperties PROPERTIES = new PricingProperties(
             24, new BigDecimal("0.25"),
             30, new BigDecimal("0.10"),
@@ -45,19 +52,21 @@ class PricingServiceImplTest {
     private PricingServiceImpl pricingService;
 
     private PricingServiceImpl service(PricingProperties properties) {
-        return new PricingServiceImpl(seatRepository, promoCodeRepository, properties);
+        return new PricingServiceImpl(seatRepository, promoCodeRepository, fareRuleRepository, properties);
     }
 
     private static Schedule scheduleDepartingIn(java.time.Duration untilDeparture) {
+        Route route = Route.builder().id(1L).build();
         return Schedule.builder()
                 .id(1L)
+                .route(route)
                 .baseFare(new BigDecimal("100.00"))
                 .departureTime(Instant.now().plus(untilDeparture))
                 .build();
     }
 
     private static Seat seatWithModifier(BigDecimal modifier) {
-        return Seat.builder().id(1L).priceModifier(modifier).build();
+        return Seat.builder().id(1L).seatClass("economy").priceModifier(modifier).build();
     }
 
     private void givenOccupancy(long total, long available) {
@@ -160,6 +169,46 @@ class PricingServiceImplTest {
 
         // multiplier would be 1 - 0.95 - 0.90 = -0.85 without the floor; clamped to 0.10.
         assertThat(fare).isEqualByComparingTo("10.00");
+    }
+
+    @Test
+    void calculateSeatFare_withActiveFareRule_stacksSurchargeOnTopOfDemandAdjustment() {
+        pricingService = service(PROPERTIES);
+        Schedule schedule = scheduleDepartingIn(java.time.Duration.ofDays(10));
+        givenOccupancy(10, 5); // neutral occupancy, neutral timing
+        FareRule rule = FareRule.builder().id(1L).seatClass("economy").surchargeRate(new BigDecimal("0.30")).build();
+        given(fareRuleRepository.findActive(1L, "economy", schedule.getDepartureTime())).willReturn(List.of(rule));
+
+        BigDecimal fare = pricingService.calculateSeatFare(schedule, seatWithModifier(BigDecimal.ONE));
+
+        assertThat(fare).isEqualByComparingTo("130.00");
+    }
+
+    @Test
+    void calculateSeatFare_withMultipleActiveFareRules_sumsTheirRates() {
+        pricingService = service(PROPERTIES);
+        Schedule schedule = scheduleDepartingIn(java.time.Duration.ofDays(10));
+        givenOccupancy(10, 5);
+        FareRule holidayRule = FareRule.builder().id(1L).seatClass("economy").surchargeRate(new BigDecimal("0.10")).build();
+        FareRule clearanceRule = FareRule.builder().id(2L).seatClass("economy").surchargeRate(new BigDecimal("-0.05")).build();
+        given(fareRuleRepository.findActive(1L, "economy", schedule.getDepartureTime()))
+                .willReturn(List.of(holidayRule, clearanceRule));
+
+        BigDecimal fare = pricingService.calculateSeatFare(schedule, seatWithModifier(BigDecimal.ONE));
+
+        assertThat(fare).isEqualByComparingTo("105.00");
+    }
+
+    @Test
+    void calculateSeatFare_withNoActiveFareRules_appliesNoFareRuleAdjustment() {
+        pricingService = service(PROPERTIES);
+        Schedule schedule = scheduleDepartingIn(java.time.Duration.ofDays(10));
+        givenOccupancy(10, 5);
+        given(fareRuleRepository.findActive(1L, "economy", schedule.getDepartureTime())).willReturn(List.of());
+
+        BigDecimal fare = pricingService.calculateSeatFare(schedule, seatWithModifier(BigDecimal.ONE));
+
+        assertThat(fare).isEqualByComparingTo("100.00");
     }
 
     @Test

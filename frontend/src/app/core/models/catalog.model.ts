@@ -2,7 +2,7 @@ export type RouteType = 'FLIGHT' | 'BUS' | 'TRAIN' | 'EVENT';
 
 export type ScheduleStatus = 'SCHEDULED' | 'DELAYED' | 'CANCELLED' | 'COMPLETED';
 
-export type SeatStatus = 'AVAILABLE' | 'HELD' | 'BOOKED';
+export type SeatStatus = 'AVAILABLE' | 'HELD' | 'BOOKED' | 'BLOCKED' | 'RESERVED_OPERATOR';
 
 export interface ScheduleSearchCriteria {
   type?: RouteType | '';
@@ -49,4 +49,6 @@ export interface ScheduleResponse {
   baseFare: number;
   currency: string;
   status: ScheduleStatus;
+  vehicleId: number | null;
+  driverId: number | null;
 }

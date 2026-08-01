@@ -1,9 +1,25 @@
 package com.ticketwave.payment.service;
 
 import com.ticketwave.payment.dto.RefundDecision;
+import com.ticketwave.payment.dto.RefundQuoteResponse;
 import com.ticketwave.payment.dto.RefundResponse;
 
 public interface RefundService {
+
+    /**
+     * Read-only preview of the cancellation policy outcome for a CONFIRMED
+     * booking - same eligibility window and proration math as
+     * initiateRefund, but never cancels the booking or writes a Refund row.
+     * Unlike initiateRefund, an imminent departure doesn't throw here: it's
+     * reported back as {@code eligible = false} so a UI can render "not
+     * eligible" instead of having to catch an exception just to render a
+     * preview.
+     *
+     * @throws com.ticketwave.booking.exception.BookingNotFoundException if no such booking exists
+     * @throws com.ticketwave.booking.exception.InvalidBookingStateException if the booking isn't currently CONFIRMED
+     * @throws com.ticketwave.payment.exception.PaymentNotFoundException if the booking has no successful payment on record
+     */
+    RefundQuoteResponse previewRefund(Long bookingId);
 
     /**
      * Applies the cancellation policy to a CONFIRMED booking's schedule,

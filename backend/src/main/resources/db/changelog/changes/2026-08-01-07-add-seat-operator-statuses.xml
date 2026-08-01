@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="2026-08-01-07" author="ticketwave">
+        <comment>
+            Seats: adds BLOCKED (operator maintenance hold) and RESERVED_OPERATOR
+            (driver/crew/VIP reserve) statuses, distinct from the customer
+            hold/release lifecycle (available/held/booked), so an operator can take
+            a seat out of sale without it looking like an in-progress customer
+            checkout.
+        </comment>
+        <sql dbms="postgresql">
+            ALTER TABLE seats DROP CONSTRAINT ck_seats_status;
+            ALTER TABLE seats ADD CONSTRAINT ck_seats_status
+                CHECK (status IN ('available', 'held', 'booked', 'blocked', 'reserved_operator'));
+        </sql>
+
+        <rollback>
+            <sql dbms="postgresql">
+                ALTER TABLE seats DROP CONSTRAINT ck_seats_status;
+                ALTER TABLE seats ADD CONSTRAINT ck_seats_status
+                    CHECK (status IN ('available', 'held', 'booked'));
+            </sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

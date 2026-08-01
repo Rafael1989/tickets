@@ -1,0 +1,47 @@
+.grid-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 1rem;
+  align-items: end;
+}
+
+.hint {
+  color: #666;
+  font-size: 0.8rem;
+  margin: 0.2rem 0 0.75rem;
+
+  code {
+    background: #f0f1f5;
+    padding: 0.1rem 0.35rem;
+    border-radius: 0.25rem;
+    font-size: 0.78rem;
+  }
+}
+
+.preview {
+  margin-top: 1rem;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.75rem;
+
+  th,
+  td {
+    text-align: left;
+    padding: 0.5rem 0.4rem;
+    border-bottom: 1px solid #eee;
+  }
+
+  tr.invalid td {
+    background: #f9e2e0;
+    color: #922b21;
+  }
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}

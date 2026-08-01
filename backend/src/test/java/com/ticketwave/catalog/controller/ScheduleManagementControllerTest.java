@@ -85,7 +85,7 @@ class ScheduleManagementControllerTest {
                 new BigDecimal("20.00"), "USD", null);
         given(scheduleManagementService.createSchedule(eq("operator1"), any())).willReturn(
                 new ScheduleResponse(10L, 1L, request.departureTime(), request.arrivalTime(),
-                        new BigDecimal("20.00"), "USD", ScheduleStatus.SCHEDULED));
+                        new BigDecimal("20.00"), "USD", ScheduleStatus.SCHEDULED, null, null));
 
         mockMvc.perform(post("/api/schedules")
                         .header("Authorization", bearerToken)
@@ -93,6 +93,22 @@ class ScheduleManagementControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.routeId").value(1));
+    }
+
+    @Test
+    void updateSchedule_withValidToken_returns200() throws Exception {
+        ScheduleRequest request = new ScheduleRequest(1L, Instant.now(), Instant.now().plusSeconds(7200),
+                new BigDecimal("35.00"), "EUR", ScheduleStatus.DELAYED);
+        given(scheduleManagementService.updateSchedule(eq("operator1"), eq(10L), any())).willReturn(
+                new ScheduleResponse(10L, 1L, request.departureTime(), request.arrivalTime(),
+                        new BigDecimal("35.00"), "EUR", ScheduleStatus.DELAYED, null, null));
+
+        mockMvc.perform(put("/api/schedules/10")
+                        .header("Authorization", bearerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DELAYED"));
     }
 
     @Test

@@ -12,6 +12,10 @@ export class InventoryManagementService {
     return this.http.post<ScheduleResponse>('/api/schedules', request);
   }
 
+  updateSchedule(scheduleId: number, request: ScheduleRequest): Observable<ScheduleResponse> {
+    return this.http.put<ScheduleResponse>(`/api/schedules/${scheduleId}`, request);
+  }
+
   addSeat(request: SeatRequest): Observable<SeatResponse> {
     return this.http.post<SeatResponse>('/api/seats', request);
   }

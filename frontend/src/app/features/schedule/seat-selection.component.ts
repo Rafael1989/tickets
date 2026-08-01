@@ -1,10 +1,11 @@
 import { DatePipe } from '@angular/common';
-import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, computed, effect, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
+import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Subscription, finalize, forkJoin, interval } from 'rxjs';
+import { RescheduleQuoteResponse } from '../../core/models/booking.model';
 import { ScheduleSearchResult, SeatResponse } from '../../core/models/catalog.model';
 import { PromoValidationResponse } from '../../core/models/promo.model';
 import { AuthService } from '../../core/services/auth.service';
@@ -14,6 +15,8 @@ import { NotificationService } from '../../core/services/notification.service';
 import { PromoService } from '../../core/services/promo.service';
 import { RescheduleContextService } from '../../core/services/reschedule-context.service';
 import { ScheduleService } from '../../core/services/schedule.service';
+
+type FareSettlementMethod = 'card' | 'pix';
 
 const POLL_INTERVAL_MS = 6000;
 const TICK_INTERVAL_MS = 1000;
@@ -64,6 +67,13 @@ export class SeatSelectionComponent {
 
   readonly isAuthenticated = this.auth.isAuthenticated;
   readonly isRescheduleMode = computed(() => this.rescheduleContext.context() !== null);
+  readonly requiresFareSettlement = computed(() => this.rescheduleContext.context()?.requiresFareSettlement ?? false);
+
+  readonly rescheduleQuote = signal<RescheduleQuoteResponse | null>(null);
+  readonly rescheduleQuoteLoading = signal(false);
+  readonly rescheduleQuoteError = signal<string | null>(null);
+  readonly fareSettlementMethod = signal<FareSettlementMethod>('card');
+  private lastQuotedKey: string | null = null;
 
   readonly selectedSeats = computed(() =>
     this.isAuthenticated()
@@ -91,9 +101,36 @@ export class SeatSelectionComponent {
     promoCode: [''],
   });
 
+  readonly fareSettlementForm = this.fb.nonNullable.group({
+    cardNumber: ['', [Validators.required, Validators.pattern(/^[0-9 ]{12,24}$/)]],
+  });
+
   readonly seatTier = seatTier;
 
   constructor() {
+    effect(() => {
+      const context = this.rescheduleContext.context();
+      const schedule = this.schedule();
+      if (!context?.requiresFareSettlement || !schedule) {
+        return;
+      }
+
+      const seats = this.selectedSeats();
+      if (seats.length === 0 || seats.length !== context.passengerIds.length) {
+        this.rescheduleQuote.set(null);
+        this.lastQuotedKey = null;
+        return;
+      }
+
+      const seatIds = seats.map((seat) => seat.id).sort((a, b) => a - b);
+      const key = `${schedule.scheduleId}:${seatIds.join(',')}`;
+      if (key === this.lastQuotedKey) {
+        return;
+      }
+      this.lastQuotedKey = key;
+      this.fetchRescheduleQuote(context.bookingId, schedule.scheduleId, seatIds);
+    });
+
     forkJoin({
       schedule: this.scheduleService.getSchedule(this.scheduleId),
       seats: this.scheduleService.getSeats(this.scheduleId),
@@ -284,6 +321,25 @@ export class SeatSelectionComponent {
     this.router.navigate(['/checkout']);
   }
 
+  selectFareSettlementMethod(method: FareSettlementMethod): void {
+    this.fareSettlementMethod.set(method);
+  }
+
+  private fetchRescheduleQuote(bookingId: number, scheduleId: number, seatIds: number[]): void {
+    this.rescheduleQuoteLoading.set(true);
+    this.rescheduleQuoteError.set(null);
+    this.bookingService
+      .getRescheduleQuote(bookingId, scheduleId, seatIds)
+      .pipe(finalize(() => this.rescheduleQuoteLoading.set(false)), takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (quote) => this.rescheduleQuote.set(quote),
+        error: () => {
+          this.rescheduleQuote.set(null);
+          this.rescheduleQuoteError.set("Couldn't calculate the fare difference for this selection.");
+        },
+      });
+  }
+
   private confirmReschedule(bookingId: number, passengerIds: number[], schedule: ScheduleSearchResult): void {
     const selectedSeats = this.selectedSeats();
     if (selectedSeats.length !== passengerIds.length) {
@@ -297,6 +353,27 @@ export class SeatSelectionComponent {
       return;
     }
 
+    const requiresSettlement = this.requiresFareSettlement();
+    const quote = this.rescheduleQuote();
+
+    if (requiresSettlement) {
+      if (this.rescheduleQuoteLoading() || !quote) {
+        this.notifications.error('Please wait for the fare difference to finish calculating.');
+        return;
+      }
+      if (!quote.eligible) {
+        this.notifications.error('This booking is too close to departure to reschedule online.');
+        return;
+      }
+      if (quote.paymentRequired && this.fareSettlementForm.invalid) {
+        this.fareSettlementForm.markAllAsTouched();
+        return;
+      }
+    }
+
+    const paymentRequired = requiresSettlement && (quote?.paymentRequired ?? false);
+    const method = this.fareSettlementMethod();
+
     this.rescheduling.set(true);
     this.bookingService
       .rescheduleBooking(bookingId, {
@@ -305,12 +382,21 @@ export class SeatSelectionComponent {
           seatId: seat.id,
           passengerId: passengerIds[index],
         })),
+        paymentMethod: paymentRequired ? method : null,
+        paymentReference: paymentRequired ? crypto.randomUUID() : null,
+        cardNumber: paymentRequired && method === 'card' ? this.fareSettlementForm.getRawValue().cardNumber : null,
       })
       .pipe(finalize(() => this.rescheduling.set(false)), takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => {
           this.rescheduleContext.clear();
-          this.notifications.success('Booking rescheduled.');
+          if (paymentRequired) {
+            this.notifications.success('Booking rescheduled — the fare difference was charged.');
+          } else if (requiresSettlement && (quote?.fareDifference ?? 0) < 0) {
+            this.notifications.success('Booking rescheduled — a credit refund was issued for the difference.');
+          } else {
+            this.notifications.success('Booking rescheduled.');
+          }
           this.router.navigate(['/bookings', bookingId]);
         },
       });

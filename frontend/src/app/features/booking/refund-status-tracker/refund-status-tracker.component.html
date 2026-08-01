@@ -1,0 +1,35 @@
+<div class="tracker">
+  <ol class="timeline">
+    @for (step of steps(); track step.label) {
+      <li
+        class="step"
+        [class.done]="step.state === 'done'"
+        [class.current]="step.state === 'current'"
+        [class.rejected]="step.state === 'rejected'"
+        [attr.aria-current]="step.state === 'current' ? 'step' : null"
+      >
+        <span class="marker" aria-hidden="true"></span>
+        <span class="label">{{ step.label }}</span>
+      </li>
+    }
+  </ol>
+
+  <p class="status-message" role="status">{{ statusMessage() }}</p>
+
+  <dl class="details">
+    <div class="row">
+      <dt>Amount</dt>
+      <dd>{{ refund().amount | currency }}</dd>
+    </div>
+    <div class="row">
+      <dt>Policy</dt>
+      <dd>{{ refund().policyCode }}</dd>
+    </div>
+    @if (refund().processedAt) {
+      <div class="row">
+        <dt>Resolved</dt>
+        <dd>{{ refund().processedAt | date: 'medium' }}</dd>
+      </div>
+    }
+  </dl>
+</div>

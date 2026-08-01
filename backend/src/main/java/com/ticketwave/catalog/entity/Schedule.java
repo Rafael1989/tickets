@@ -53,4 +53,17 @@ public class Schedule {
 
     @Column(name = "status", nullable = false, length = 20)
     private ScheduleStatus status;
+
+    /** Optional: which vehicle runs this schedule. Assigning one is checked
+     *  against every other schedule already assigned to it for a
+     *  time-overlap - see ScheduleManagementServiceImpl. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "vehicle_id")
+    private Vehicle vehicle;
+
+    /** Optional: which driver/crew runs this schedule. Same overlap check as
+     *  vehicle, independently. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "driver_id")
+    private Driver driver;
 }

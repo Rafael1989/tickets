@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="2026-08-01-08" author="ticketwave">
+        <comment>Vehicles: a fleet unit owned by an operator, assignable to schedules.</comment>
+        <createTable tableName="vehicles">
+            <column name="vehicle_id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" primaryKeyName="pk_vehicles"/>
+            </column>
+            <column name="operator_id" type="BIGINT">
+                <constraints nullable="false"
+                             foreignKeyName="fk_vehicles_operator"
+                             references="users(user_id)"/>
+            </column>
+            <column name="type" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="identifier" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="capacity" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="model" type="VARCHAR(100)"/>
+        </createTable>
+
+        <sql dbms="postgresql">
+            ALTER TABLE vehicles ADD CONSTRAINT ck_vehicles_type
+                CHECK (type IN ('flight', 'bus', 'train', 'event'));
+        </sql>
+
+        <createIndex tableName="vehicles" indexName="ix_vehicles_operator_id">
+            <column name="operator_id"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable tableName="vehicles"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

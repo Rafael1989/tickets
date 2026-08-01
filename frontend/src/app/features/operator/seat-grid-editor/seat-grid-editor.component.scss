@@ -1,0 +1,156 @@
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+
+  h4 {
+    margin: 0;
+  }
+}
+
+.legend {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  color: #666;
+  margin-bottom: 0.75rem;
+
+  .swatch {
+    display: inline-block;
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 0.2rem;
+    margin-right: 0.3rem;
+    vertical-align: middle;
+    border: 1px solid #c8c8d8;
+
+    &.available {
+      background: #fff;
+    }
+
+    &.held {
+      background: #eee;
+      border-color: #ccc;
+    }
+
+    &.blocked {
+      background: #f2d7d5;
+      border-color: #c0392b;
+    }
+
+    &.reserved {
+      background: #fdebd0;
+      border-color: #9c640c;
+    }
+  }
+}
+
+.seat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr));
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.seat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  padding: 0.55rem 0.3rem;
+  border: 1px solid #c8c8d8;
+  border-radius: 0.4rem;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.7rem;
+  min-height: 3rem;
+
+  &:focus-visible {
+    outline: 2px solid #2471a3;
+    outline-offset: 2px;
+  }
+
+  .seat-number {
+    font-weight: 700;
+  }
+
+  .seat-status {
+    font-size: 0.62rem;
+    color: #777;
+    text-transform: uppercase;
+  }
+
+  &.held {
+    background: #f2f2f5;
+    border-color: #ccc;
+    cursor: not-allowed;
+
+    .seat-status {
+      color: #999;
+    }
+  }
+
+  &.blocked {
+    background: #f2d7d5;
+    border-color: #c0392b;
+
+    .seat-status {
+      color: #922b21;
+    }
+  }
+
+  &.reserved {
+    background: #fdebd0;
+    border-color: #9c640c;
+
+    .seat-status {
+      color: #9c640c;
+    }
+  }
+
+  &.selected {
+    box-shadow: 0 0 0 2px #2471a3;
+  }
+}
+
+.edit-panel,
+.batch-actions {
+  background: #f8f9fb;
+  border-radius: 0.5rem;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1rem;
+
+  h5 {
+    margin: 0 0 0.6rem;
+  }
+}
+
+.field.inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-right: 1rem;
+
+  label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #444;
+  }
+}
+
+.batch-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.6rem;
+}
+
+.card.nested {
+  box-shadow: none;
+  border: 1px dashed #e0e0e6;
+  margin-bottom: 0;
+}

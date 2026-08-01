@@ -6,6 +6,7 @@ import com.ticketwave.auth.security.JwtAuthenticationFilter;
 import com.ticketwave.booking.dto.BookingDetailResponse;
 import com.ticketwave.booking.dto.BookingResponse;
 import com.ticketwave.booking.dto.CreateBookingRequest;
+import com.ticketwave.booking.dto.RescheduleQuoteResponse;
 import com.ticketwave.booking.dto.RescheduleRequest;
 import com.ticketwave.booking.dto.SeatSelection;
 import com.ticketwave.booking.entity.BookingStatus;
@@ -14,11 +15,13 @@ import com.ticketwave.config.JwtProperties;
 import com.ticketwave.config.SecurityConfig;
 import com.ticketwave.payment.dto.PaymentRequest;
 import com.ticketwave.payment.dto.PaymentResponse;
+import com.ticketwave.payment.dto.RefundQuoteResponse;
 import com.ticketwave.payment.dto.RefundResponse;
 import com.ticketwave.payment.entity.PaymentStatus;
 import com.ticketwave.payment.entity.RefundStatus;
 import com.ticketwave.payment.service.PaymentService;
 import com.ticketwave.payment.service.RefundService;
+import com.ticketwave.payment.service.RescheduleService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -72,6 +75,8 @@ class BookingControllerTest {
     private PaymentService paymentService;
     @MockitoBean
     private RefundService refundService;
+    @MockitoBean
+    private RescheduleService rescheduleService;
 
     private String bearerToken;
 
@@ -126,6 +131,18 @@ class BookingControllerTest {
     }
 
     @Test
+    void previewRefund_withValidToken_returns200() throws Exception {
+        RefundQuoteResponse response = new RefundQuoteResponse(500L, new BigDecimal("50.00"), "FULL_REFUND",
+                BigDecimal.ONE, new BigDecimal("50.00"), BigDecimal.ZERO, "card", true);
+        given(refundService.previewRefund(500L)).willReturn(response);
+
+        mockMvc.perform(get("/api/bookings/500/refund-quote").header("Authorization", bearerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.eligible").value(true))
+                .andExpect(jsonPath("$.refundAmount").value(50.00));
+    }
+
+    @Test
     void initiateRefund_withValidToken_returns201() throws Exception {
         RefundResponse response = new RefundResponse(1L, 1L, new BigDecimal("50.00"), "FULL_REFUND",
                 RefundStatus.PENDING, null, null);
@@ -157,7 +174,7 @@ class BookingControllerTest {
     @Test
     void rescheduleBooking_withValidToken_returns200() throws Exception {
         RescheduleRequest request = new RescheduleRequest(20L, List.of(new SeatSelection(5L, 100L)));
-        given(bookingService.rescheduleBooking(eq(500L), any())).willReturn(detailResponse());
+        given(rescheduleService.reschedule(eq(500L), any())).willReturn(detailResponse());
 
         mockMvc.perform(put("/api/bookings/500/reschedule")
                         .header("Authorization", bearerToken)
@@ -165,5 +182,20 @@ class BookingControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.booking.pnr").value("ABC234"));
+    }
+
+    @Test
+    void previewReschedule_withValidToken_returns200() throws Exception {
+        RescheduleQuoteResponse response = new RescheduleQuoteResponse(500L, new BigDecimal("50.00"),
+                new BigDecimal("65.00"), new BigDecimal("15.00"), true, true);
+        given(rescheduleService.previewReschedule(500L, 20L, List.of(5L, 6L))).willReturn(response);
+
+        mockMvc.perform(get("/api/bookings/500/reschedule-quote")
+                        .header("Authorization", bearerToken)
+                        .param("scheduleId", "20")
+                        .param("seatIds", "5", "6"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paymentRequired").value(true))
+                .andExpect(jsonPath("$.fareDifference").value(15.00));
     }
 }

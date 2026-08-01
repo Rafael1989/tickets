@@ -1,7 +1,12 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
-import { BookingDetailResponse, CreateBookingRequest, RescheduleRequest } from '../models/booking.model';
+import {
+  BookingDetailResponse,
+  CreateBookingRequest,
+  RescheduleQuoteResponse,
+  RescheduleRequest,
+} from '../models/booking.model';
 
 @Injectable({ providedIn: 'root' })
 export class BookingService {
@@ -21,5 +26,14 @@ export class BookingService {
 
   rescheduleBooking(bookingId: number, request: RescheduleRequest): Observable<BookingDetailResponse> {
     return this.http.put<BookingDetailResponse>(`/api/bookings/${bookingId}/reschedule`, request);
+  }
+
+  getRescheduleQuote(bookingId: number, scheduleId: number, seatIds: number[]): Observable<RescheduleQuoteResponse> {
+    const params = new URLSearchParams();
+    params.set('scheduleId', String(scheduleId));
+    for (const seatId of seatIds) {
+      params.append('seatIds', String(seatId));
+    }
+    return this.http.get<RescheduleQuoteResponse>(`/api/bookings/${bookingId}/reschedule-quote?${params.toString()}`);
   }
 }

@@ -11,10 +11,29 @@ export interface CreateBookingRequest {
   promoCode?: string | null;
 }
 
-/** Only accepted by the backend while the booking is still INITIATED (unpaid). */
+/**
+ * For an INITIATED (unpaid) booking, the payment fields are ignored. For a
+ * CONFIRMED (paid) booking, they're only required when the new seats' fare
+ * is a net increase over the current total (see RescheduleQuoteResponse's
+ * paymentRequired) — the backend collects that difference the same way
+ * checkout collects an initial payment.
+ */
 export interface RescheduleRequest {
   scheduleId: number;
   seatSelections: SeatSelection[];
+  paymentMethod?: string | null;
+  paymentReference?: string | null;
+  cardNumber?: string | null;
+}
+
+/** Non-mutating preview of GET /api/bookings/{id}/reschedule-quote. */
+export interface RescheduleQuoteResponse {
+  bookingId: number;
+  currentTotal: number;
+  newTotal: number;
+  fareDifference: number;
+  eligible: boolean;
+  paymentRequired: boolean;
 }
 
 export interface BookingResponse {

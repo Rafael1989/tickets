@@ -62,4 +62,12 @@ describe('BookingService', () => {
     expect(req.request.body).toEqual(request);
     req.flush({ booking: {}, items: [] });
   });
+
+  it('getRescheduleQuote gets /api/bookings/{id}/reschedule-quote with scheduleId and seatIds', () => {
+    service.getRescheduleQuote(7, 2, [8, 9]).subscribe();
+
+    const req = httpMock.expectOne('/api/bookings/7/reschedule-quote?scheduleId=2&seatIds=8&seatIds=9');
+    expect(req.request.method).toBe('GET');
+    req.flush({});
+  });
 });

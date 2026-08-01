@@ -6,7 +6,11 @@ public enum SeatStatus implements CodedEnum {
 
     AVAILABLE("available"),
     HELD("held"),
-    BOOKED("booked");
+    BOOKED("booked"),
+    /** Operator-blocked, e.g. for maintenance. Never touched by the customer hold/release flow. */
+    BLOCKED("blocked"),
+    /** Operator-reserved, e.g. driver/crew or VIP seating. Never touched by the customer hold/release flow. */
+    RESERVED_OPERATOR("reserved_operator");
 
     private final String code;
 

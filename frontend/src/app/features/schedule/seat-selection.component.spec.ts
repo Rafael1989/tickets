@@ -2,8 +2,8 @@ import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
-import { of, throwError } from 'rxjs';
-import { BookingDetailResponse } from '../../core/models/booking.model';
+import { Subject, of, throwError } from 'rxjs';
+import { BookingDetailResponse, RescheduleQuoteResponse } from '../../core/models/booking.model';
 import { ScheduleSearchResult, SeatResponse } from '../../core/models/catalog.model';
 import { PromoValidationResponse } from '../../core/models/promo.model';
 import { AuthService } from '../../core/services/auth.service';
@@ -334,7 +334,7 @@ describe('SeatSelectionComponent', () => {
       items: [],
     };
 
-    async function createInRescheduleMode(passengerIds: number[]): Promise<void> {
+    async function createInRescheduleMode(passengerIds: number[], requiresFareSettlement = false): Promise<void> {
       localStorage.clear();
       localStorage.setItem('tw.accessToken', fakeJwt('alice'));
       await TestBed.configureTestingModule({
@@ -354,7 +354,7 @@ describe('SeatSelectionComponent', () => {
       vi.spyOn(bookingService, 'rescheduleBooking').mockReturnValue(of(detail));
 
       rescheduleContext = TestBed.inject(RescheduleContextService);
-      rescheduleContext.start(500, passengerIds);
+      rescheduleContext.start(500, passengerIds, requiresFareSettlement);
 
       router = TestBed.inject(Router);
       vi.spyOn(router, 'navigate').mockResolvedValue(true);
@@ -383,7 +383,7 @@ describe('SeatSelectionComponent', () => {
       expect(bookingService.rescheduleBooking).not.toHaveBeenCalled();
     });
 
-    it('continueToCheckout reschedules the booking and navigates to it on success', async () => {
+    it('continueToCheckout reschedules a free (INITIATED) booking with no payment fields and navigates to it', async () => {
       await createInRescheduleMode([100]);
       const held: SeatResponse = { ...availableSeat, status: 'HELD', heldByMe: true };
       vi.spyOn(scheduleService, 'holdSeat').mockReturnValue(of(held));
@@ -394,9 +394,121 @@ describe('SeatSelectionComponent', () => {
       expect(bookingService.rescheduleBooking).toHaveBeenCalledWith(500, {
         scheduleId: schedule.scheduleId,
         seatSelections: [{ seatId: availableSeat.id, passengerId: 100 }],
+        paymentMethod: null,
+        paymentReference: null,
+        cardNumber: null,
       });
       expect(rescheduleContext.context()).toBeNull();
       expect(router.navigate).toHaveBeenCalledWith(['/bookings', 500]);
+    });
+
+    describe('for a CONFIRMED booking (fare settlement required)', () => {
+      const eligibleNoDiff: RescheduleQuoteResponse = {
+        bookingId: 500,
+        currentTotal: 20,
+        newTotal: 20,
+        fareDifference: 0,
+        eligible: true,
+        paymentRequired: false,
+      };
+
+      it('fetches a reschedule quote once the seat count matches the booking passengers', async () => {
+        await createInRescheduleMode([100], true);
+        const quoteSpy = vi.spyOn(bookingService, 'getRescheduleQuote').mockReturnValue(of(eligibleNoDiff));
+        const held: SeatResponse = { ...availableSeat, status: 'HELD', heldByMe: true };
+        vi.spyOn(scheduleService, 'holdSeat').mockReturnValue(of(held));
+
+        component.toggleSeat(availableSeat);
+        fixture.detectChanges();
+
+        expect(quoteSpy).toHaveBeenCalledWith(500, schedule.scheduleId, [availableSeat.id]);
+        expect(component.rescheduleQuote()).toEqual(eligibleNoDiff);
+      });
+
+      it('blocks confirm while the quote is still loading', async () => {
+        await createInRescheduleMode([100], true);
+        vi.spyOn(bookingService, 'getRescheduleQuote').mockReturnValue(new Subject());
+        const held: SeatResponse = { ...availableSeat, status: 'HELD', heldByMe: true };
+        vi.spyOn(scheduleService, 'holdSeat').mockReturnValue(of(held));
+        component.toggleSeat(availableSeat);
+        fixture.detectChanges();
+
+        component.continueToCheckout();
+
+        expect(bookingService.rescheduleBooking).not.toHaveBeenCalled();
+      });
+
+      it('blocks confirm when the quote reports ineligible', async () => {
+        await createInRescheduleMode([100], true);
+        vi.spyOn(bookingService, 'getRescheduleQuote').mockReturnValue(
+          of({ ...eligibleNoDiff, eligible: false }),
+        );
+        const held: SeatResponse = { ...availableSeat, status: 'HELD', heldByMe: true };
+        vi.spyOn(scheduleService, 'holdSeat').mockReturnValue(of(held));
+        component.toggleSeat(availableSeat);
+        fixture.detectChanges();
+
+        component.continueToCheckout();
+
+        expect(bookingService.rescheduleBooking).not.toHaveBeenCalled();
+      });
+
+      it('requires a valid card number before confirming an upgrade', async () => {
+        await createInRescheduleMode([100], true);
+        vi.spyOn(bookingService, 'getRescheduleQuote').mockReturnValue(
+          of({ ...eligibleNoDiff, fareDifference: 15, paymentRequired: true }),
+        );
+        const held: SeatResponse = { ...availableSeat, status: 'HELD', heldByMe: true };
+        vi.spyOn(scheduleService, 'holdSeat').mockReturnValue(of(held));
+        component.toggleSeat(availableSeat);
+        fixture.detectChanges();
+
+        component.continueToCheckout();
+
+        expect(bookingService.rescheduleBooking).not.toHaveBeenCalled();
+        expect(component.fareSettlementForm.controls.cardNumber.touched).toBe(true);
+      });
+
+      it('sends payment details and shows the charged confirmation when the upgrade quote requires payment', async () => {
+        await createInRescheduleMode([100], true);
+        vi.spyOn(bookingService, 'getRescheduleQuote').mockReturnValue(
+          of({ ...eligibleNoDiff, fareDifference: 15, paymentRequired: true }),
+        );
+        const held: SeatResponse = { ...availableSeat, status: 'HELD', heldByMe: true };
+        vi.spyOn(scheduleService, 'holdSeat').mockReturnValue(of(held));
+        component.toggleSeat(availableSeat);
+        fixture.detectChanges();
+        component.fareSettlementForm.setValue({ cardNumber: '4242424242424242' });
+        const successSpy = vi.spyOn(TestBed.inject(NotificationService), 'success');
+
+        component.continueToCheckout();
+
+        expect(bookingService.rescheduleBooking).toHaveBeenCalledWith(
+          500,
+          expect.objectContaining({ paymentMethod: 'card', cardNumber: '4242424242424242' }),
+        );
+        expect(successSpy).toHaveBeenCalledWith(expect.stringContaining('charged'));
+      });
+
+      it('confirms a downgrade without payment fields and shows the credit confirmation', async () => {
+        await createInRescheduleMode([100], true);
+        vi.spyOn(bookingService, 'getRescheduleQuote').mockReturnValue(
+          of({ ...eligibleNoDiff, fareDifference: -10, paymentRequired: false }),
+        );
+        const held: SeatResponse = { ...availableSeat, status: 'HELD', heldByMe: true };
+        vi.spyOn(scheduleService, 'holdSeat').mockReturnValue(of(held));
+        component.toggleSeat(availableSeat);
+        fixture.detectChanges();
+        const successSpy = vi.spyOn(TestBed.inject(NotificationService), 'success');
+
+        component.continueToCheckout();
+
+        expect(bookingService.rescheduleBooking).toHaveBeenCalledWith(
+          500,
+          expect.objectContaining({ paymentMethod: null, cardNumber: null }),
+        );
+        expect(successSpy).toHaveBeenCalledWith(expect.stringContaining('credit'));
+      });
     });
   });
 

@@ -31,6 +31,17 @@ export interface RefundResponse {
   processedAt: string | null;
 }
 
+export interface RefundQuoteResponse {
+  bookingId: number;
+  fareAmount: number;
+  policyCode: string | null;
+  refundRate: number | null;
+  refundAmount: number;
+  nonRefundableAmount: number;
+  paymentMethod: string;
+  eligible: boolean;
+}
+
 export type RefundDecision = 'APPROVE' | 'REJECT';
 
 export interface RefundDecisionRequest {

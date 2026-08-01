@@ -12,6 +12,8 @@ public record ScheduleResponse(
         Instant arrivalTime,
         BigDecimal baseFare,
         String currency,
-        ScheduleStatus status
+        ScheduleStatus status,
+        Long vehicleId,
+        Long driverId
 ) {
 }

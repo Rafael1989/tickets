@@ -17,6 +17,14 @@ describe('RefundService', () => {
 
   afterEach(() => httpMock.verify());
 
+  it('getRefundQuote gets /api/bookings/{id}/refund-quote', () => {
+    service.getRefundQuote(500).subscribe();
+
+    const req = httpMock.expectOne('/api/bookings/500/refund-quote');
+    expect(req.request.method).toBe('GET');
+    req.flush({});
+  });
+
   it('initiateRefund posts to /api/bookings/{id}/refunds', () => {
     service.initiateRefund(500).subscribe();
 

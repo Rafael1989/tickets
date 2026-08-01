@@ -10,6 +10,7 @@ import com.ticketwave.booking.service.BookingService;
 import com.ticketwave.catalog.entity.Schedule;
 import com.ticketwave.config.RefundProperties;
 import com.ticketwave.payment.dto.RefundDecision;
+import com.ticketwave.payment.dto.RefundQuoteResponse;
 import com.ticketwave.payment.dto.RefundResponse;
 import com.ticketwave.payment.entity.Payment;
 import com.ticketwave.payment.entity.PaymentStatus;
@@ -83,7 +84,7 @@ class RefundServiceImplTest {
 
     private RefundServiceImpl newService(RefundProperties properties) {
         return new RefundServiceImpl(refundRepository, paymentRepository, bookingRepository, userRepository,
-                bookingService, properties, refundMapper, auditService);
+                bookingService, new RefundPolicyService(properties), refundMapper, auditService);
     }
 
     private static Booking booking(long id, BookingStatus status, Schedule schedule) {
@@ -218,11 +219,100 @@ class RefundServiceImplTest {
     }
 
     @Test
+    void previewRefund_whenFarFromDeparture_returnsEligibleFullQuoteWithoutCancellingOrSaving() {
+        RefundServiceImpl service = newService(PROPERTIES);
+        Schedule schedule = scheduleDepartingIn(Duration.ofDays(10));
+        Booking booking = booking(500L, BookingStatus.CONFIRMED, schedule);
+        Payment payment = succeededPayment(new BigDecimal("100.00"));
+        payment.setMethod("card");
+
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+        given(paymentRepository.findByBookingId(500L)).willReturn(List.of(payment));
+
+        RefundQuoteResponse quote = service.previewRefund(500L);
+
+        assertThat(quote.eligible()).isTrue();
+        assertThat(quote.fareAmount()).isEqualByComparingTo("100.00");
+        assertThat(quote.refundAmount()).isEqualByComparingTo("100.00");
+        assertThat(quote.nonRefundableAmount()).isEqualByComparingTo("0.00");
+        assertThat(quote.policyCode()).isEqualTo("FULL_REFUND");
+        assertThat(quote.paymentMethod()).isEqualTo("card");
+        verify(refundRepository, never()).save(any());
+        verify(bookingService, never()).cancelBooking(any());
+    }
+
+    @Test
+    void previewRefund_withinPartialWindow_returnsEligiblePartialQuote() {
+        RefundServiceImpl service = newService(PROPERTIES);
+        Schedule schedule = scheduleDepartingIn(Duration.ofHours(48));
+        Booking booking = booking(500L, BookingStatus.CONFIRMED, schedule);
+        Payment payment = succeededPayment(new BigDecimal("100.00"));
+
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+        given(paymentRepository.findByBookingId(500L)).willReturn(List.of(payment));
+
+        RefundQuoteResponse quote = service.previewRefund(500L);
+
+        assertThat(quote.eligible()).isTrue();
+        assertThat(quote.refundAmount()).isEqualByComparingTo("50.00");
+        assertThat(quote.nonRefundableAmount()).isEqualByComparingTo("50.00");
+        assertThat(quote.policyCode()).isEqualTo("PARTIAL_REFUND");
+    }
+
+    @Test
+    void previewRefund_tooCloseToDeparture_returnsIneligibleQuoteInsteadOfThrowing() {
+        RefundServiceImpl service = newService(PROPERTIES);
+        Schedule schedule = scheduleDepartingIn(Duration.ofHours(2));
+        Booking booking = booking(500L, BookingStatus.CONFIRMED, schedule);
+        Payment payment = succeededPayment(new BigDecimal("100.00"));
+
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+        given(paymentRepository.findByBookingId(500L)).willReturn(List.of(payment));
+
+        RefundQuoteResponse quote = service.previewRefund(500L);
+
+        assertThat(quote.eligible()).isFalse();
+        assertThat(quote.policyCode()).isNull();
+        assertThat(quote.refundAmount()).isEqualByComparingTo("0.00");
+        assertThat(quote.nonRefundableAmount()).isEqualByComparingTo("100.00");
+    }
+
+    @Test
+    void previewRefund_whenBookingNotConfirmed_throwsInvalidBookingStateException() {
+        RefundServiceImpl service = newService(PROPERTIES);
+        Booking booking = booking(500L, BookingStatus.INITIATED, scheduleDepartingIn(Duration.ofDays(10)));
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+
+        assertThatThrownBy(() -> service.previewRefund(500L))
+                .isInstanceOf(InvalidBookingStateException.class);
+    }
+
+    @Test
+    void previewRefund_whenNoSuccessfulPaymentExists_throwsPaymentNotFoundException() {
+        RefundServiceImpl service = newService(PROPERTIES);
+        Booking booking = booking(500L, BookingStatus.CONFIRMED, scheduleDepartingIn(Duration.ofDays(10)));
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+        given(paymentRepository.findByBookingId(500L)).willReturn(List.of());
+
+        assertThatThrownBy(() -> service.previewRefund(500L))
+                .isInstanceOf(PaymentNotFoundException.class);
+    }
+
+    @Test
+    void previewRefund_whenBookingMissing_throwsBookingNotFoundException() {
+        RefundServiceImpl service = newService(PROPERTIES);
+        given(bookingRepository.findById(500L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.previewRefund(500L))
+                .isInstanceOf(BookingNotFoundException.class);
+    }
+
+    @Test
     void processRefund_approve_marksProcessedAndRefundsThePayment() {
         RefundServiceImpl service = newService(PROPERTIES);
         Payment payment = succeededPayment(new BigDecimal("100.00"));
         Refund refund = Refund.builder().id(1L).payment(payment).amount(new BigDecimal("100.00"))
-                .status(RefundStatus.PENDING).build();
+                .policyCode("FULL_REFUND").status(RefundStatus.PENDING).build();
         User admin = User.builder().id(9L).username("support1").build();
 
         given(refundRepository.findById(1L)).willReturn(Optional.of(refund));
@@ -241,11 +331,34 @@ class RefundServiceImplTest {
     }
 
     @Test
+    void processRefund_approve_forRescheduleCredit_leavesPaymentSucceeded() {
+        // Unlike a cancellation refund, a RESCHEDULE_CREDIT settles a fare
+        // difference on a booking that's still CONFIRMED - the payment keeps
+        // backing an active booking (at its already-reduced amount), so
+        // approving the credit must not flip it to REFUNDED.
+        RefundServiceImpl service = newService(PROPERTIES);
+        Payment payment = succeededPayment(new BigDecimal("40.00"));
+        Refund refund = Refund.builder().id(1L).payment(payment).amount(new BigDecimal("20.00"))
+                .policyCode("RESCHEDULE_CREDIT").status(RefundStatus.PENDING).build();
+        User admin = User.builder().id(9L).username("support1").build();
+
+        given(refundRepository.findById(1L)).willReturn(Optional.of(refund));
+        given(userRepository.findByUsername("support1")).willReturn(Optional.of(admin));
+        given(refundMapper.toResponse(refund)).willReturn(
+                new RefundResponse(1L, 1L, refund.getAmount(), "RESCHEDULE_CREDIT", RefundStatus.PROCESSED, 9L, Instant.now()));
+
+        service.processRefund(1L, "support1", RefundDecision.APPROVE);
+
+        assertThat(refund.getStatus()).isEqualTo(RefundStatus.PROCESSED);
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED);
+    }
+
+    @Test
     void processRefund_reject_marksRejectedAndLeavesPaymentUntouched() {
         RefundServiceImpl service = newService(PROPERTIES);
         Payment payment = succeededPayment(new BigDecimal("100.00"));
         Refund refund = Refund.builder().id(1L).payment(payment).amount(new BigDecimal("100.00"))
-                .status(RefundStatus.PENDING).build();
+                .policyCode("FULL_REFUND").status(RefundStatus.PENDING).build();
         User admin = User.builder().id(9L).username("support1").build();
 
         given(refundRepository.findById(1L)).willReturn(Optional.of(refund));

@@ -13,6 +13,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
@@ -62,6 +63,18 @@ public class Booking {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "promo_code_id")
     private PromoCode promoCode;
+
+    /**
+     * Optimistic lock: two concurrent requests against the same booking (e.g.
+     * two refund initiations racing each other) can otherwise both read
+     * CONFIRMED before either commits its status change, producing duplicate
+     * refunds. A stale write now fails fast (ObjectOptimisticLockingFailureException,
+     * mapped to 409 by GlobalExceptionHandler) instead of silently overwriting
+     * the other request's change.
+     */
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version;
 
     @PrePersist
     void onCreate() {

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="2026-08-01-10" author="ticketwave">
+        <comment>
+            Schedules: optional vehicle/driver assignment. Both nullable - not
+            every operator tracks fleet/crew per schedule. Assigning either is
+            checked for a time-overlap against that vehicle's/driver's other
+            schedules in ScheduleManagementServiceImpl, not enforced at the DB
+            level (a range-overlap constraint isn't portable/simple in SQL).
+        </comment>
+        <addColumn tableName="schedules">
+            <column name="vehicle_id" type="BIGINT">
+                <constraints nullable="true"
+                             foreignKeyName="fk_schedules_vehicle"
+                             references="vehicles(vehicle_id)"/>
+            </column>
+            <column name="driver_id" type="BIGINT">
+                <constraints nullable="true"
+                             foreignKeyName="fk_schedules_driver"
+                             references="drivers(driver_id)"/>
+            </column>
+        </addColumn>
+
+        <createIndex tableName="schedules" indexName="ix_schedules_vehicle_id">
+            <column name="vehicle_id"/>
+        </createIndex>
+        <createIndex tableName="schedules" indexName="ix_schedules_driver_id">
+            <column name="driver_id"/>
+        </createIndex>
+
+        <rollback>
+            <dropColumn tableName="schedules" columnName="vehicle_id"/>
+            <dropColumn tableName="schedules" columnName="driver_id"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

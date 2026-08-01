@@ -6,9 +6,11 @@ import com.ticketwave.catalog.entity.SeatStatus;
 import com.ticketwave.catalog.repository.SeatRepository;
 import com.ticketwave.config.PricingProperties;
 import com.ticketwave.pricing.dto.PromoCodeApplication;
+import com.ticketwave.pricing.entity.FareRule;
 import com.ticketwave.pricing.entity.PromoCode;
 import com.ticketwave.pricing.exception.PromoCodeNotApplicableException;
 import com.ticketwave.pricing.exception.PromoCodeNotFoundException;
+import com.ticketwave.pricing.repository.FareRuleRepository;
 import com.ticketwave.pricing.repository.PromoCodeRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,6 +19,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 
 @Service
 public class PricingServiceImpl implements PricingService {
@@ -30,21 +33,24 @@ public class PricingServiceImpl implements PricingService {
 
     private final SeatRepository seatRepository;
     private final PromoCodeRepository promoCodeRepository;
+    private final FareRuleRepository fareRuleRepository;
     private final PricingProperties pricingProperties;
 
     public PricingServiceImpl(
             SeatRepository seatRepository,
             PromoCodeRepository promoCodeRepository,
+            FareRuleRepository fareRuleRepository,
             PricingProperties pricingProperties
     ) {
         this.seatRepository = seatRepository;
         this.promoCodeRepository = promoCodeRepository;
+        this.fareRuleRepository = fareRuleRepository;
         this.pricingProperties = pricingProperties;
     }
 
     @Override
     public BigDecimal calculateSeatFare(Schedule schedule, Seat seat) {
-        BigDecimal demandMultiplier = calculateDemandMultiplier(schedule);
+        BigDecimal demandMultiplier = calculateDemandMultiplier(schedule, seat);
         return schedule.getBaseFare()
                 .multiply(seat.getPriceModifier())
                 .multiply(demandMultiplier)
@@ -103,7 +109,7 @@ public class PricingServiceImpl implements PricingService {
         return discount.min(subtotal);
     }
 
-    private BigDecimal calculateDemandMultiplier(Schedule schedule) {
+    private BigDecimal calculateDemandMultiplier(Schedule schedule, Seat seat) {
         BigDecimal adjustment = BigDecimal.ZERO;
 
         Duration untilDeparture = Duration.between(Instant.now(), schedule.getDepartureTime());
@@ -120,8 +126,24 @@ public class PricingServiceImpl implements PricingService {
             adjustment = adjustment.subtract(pricingProperties.lowOccupancyDiscountRate());
         }
 
+        adjustment = adjustment.add(calculateFareRuleAdjustment(schedule, seat));
+
         BigDecimal multiplier = BigDecimal.ONE.add(adjustment);
         return multiplier.max(MIN_DEMAND_MULTIPLIER);
+    }
+
+    /**
+     * Sum of every operator-loaded FareRule active for this route/seat class
+     * at the schedule's departure time (e.g. a holiday-season surcharge on
+     * business class) - stacks additively with the demand-based adjustment
+     * above, same as every other term in it.
+     */
+    private BigDecimal calculateFareRuleAdjustment(Schedule schedule, Seat seat) {
+        List<FareRule> activeRules = fareRuleRepository.findActive(
+                schedule.getRoute().getId(), seat.getSeatClass(), schedule.getDepartureTime());
+        return activeRules.stream()
+                .map(FareRule::getSurchargeRate)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private BigDecimal calculateOccupancy(Schedule schedule) {

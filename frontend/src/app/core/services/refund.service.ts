@@ -1,11 +1,15 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
-import { RefundDecision, RefundResponse } from '../models/payment.model';
+import { RefundDecision, RefundQuoteResponse, RefundResponse } from '../models/payment.model';
 
 @Injectable({ providedIn: 'root' })
 export class RefundService {
   constructor(private readonly http: HttpClient) {}
+
+  getRefundQuote(bookingId: number): Observable<RefundQuoteResponse> {
+    return this.http.get<RefundQuoteResponse>(`/api/bookings/${bookingId}/refund-quote`);
+  }
 
   initiateRefund(bookingId: number): Observable<RefundResponse> {
     return this.http.post<RefundResponse>(`/api/bookings/${bookingId}/refunds`, {});

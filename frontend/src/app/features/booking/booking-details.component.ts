@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, ElementRef, computed, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { finalize, forkJoin } from 'rxjs';
@@ -10,14 +10,15 @@ import { RefundResponse } from '../../core/models/payment.model';
 import { BookingService } from '../../core/services/booking.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { PassengerService } from '../../core/services/passenger.service';
-import { RefundService } from '../../core/services/refund.service';
 import { RescheduleContextService } from '../../core/services/reschedule-context.service';
 import { ScheduleService } from '../../core/services/schedule.service';
 import { ETicketCardComponent } from '../../shared/components/e-ticket-card/e-ticket-card.component';
+import { CancellationWizardComponent } from './cancellation-wizard/cancellation-wizard.component';
+import { RefundStatusTrackerComponent } from './refund-status-tracker/refund-status-tracker.component';
 
 @Component({
   selector: 'tw-booking-details',
-  imports: [DatePipe, RouterLink, ETicketCardComponent],
+  imports: [DatePipe, RouterLink, ETicketCardComponent, CancellationWizardComponent, RefundStatusTrackerComponent],
   templateUrl: './booking-details.component.html',
   styleUrl: './booking-details.component.scss',
 })
@@ -26,11 +27,12 @@ export class BookingDetailsComponent {
   private readonly bookingService = inject(BookingService);
   private readonly scheduleService = inject(ScheduleService);
   private readonly passengerService = inject(PassengerService);
-  private readonly refundService = inject(RefundService);
   private readonly notifications = inject(NotificationService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly rescheduleContext = inject(RescheduleContextService);
   private readonly router = inject(Router);
+
+  private readonly cancelTrigger = viewChild<ElementRef<HTMLButtonElement>>('cancelTrigger');
 
   readonly loading = signal(true);
   readonly loadError = signal(false);
@@ -39,10 +41,13 @@ export class BookingDetailsComponent {
   readonly seats = signal<SeatResponse[]>([]);
   readonly passengers = signal<PassengerResponse[]>([]);
   readonly refund = signal<RefundResponse | null>(null);
-  readonly requestingRefund = signal(false);
+  readonly showCancellationWizard = signal(false);
 
   readonly canRefund = computed(() => this.detail()?.booking.status === 'CONFIRMED' && !this.refund());
-  readonly canReschedule = computed(() => this.detail()?.booking.status === 'INITIATED');
+  readonly canReschedule = computed(() => {
+    const status = this.detail()?.booking.status;
+    return (status === 'INITIATED' || status === 'CONFIRMED') && !this.refund();
+  });
 
   constructor() {
     const bookingId = Number(this.route.snapshot.paramMap.get('id'));
@@ -82,25 +87,25 @@ export class BookingDetailsComponent {
     return this.passengers().find((p) => p.id === passengerId)?.fullName ?? `#${passengerId}`;
   }
 
-  requestRefund(): void {
-    const detail = this.detail();
-    if (!detail || this.requestingRefund()) {
+  openCancellationWizard(): void {
+    if (!this.canRefund()) {
       return;
     }
+    this.showCancellationWizard.set(true);
+  }
 
-    this.requestingRefund.set(true);
-    this.refundService
-      .initiateRefund(detail.booking.id)
-      .pipe(finalize(() => this.requestingRefund.set(false)), takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (refund) => {
-          this.refund.set(refund);
-          this.detail.update((current) =>
-            current ? { ...current, booking: { ...current.booking, status: 'CANCELLED' } } : current,
-          );
-          this.notifications.success('Refund initiated.');
-        },
-      });
+  closeCancellationWizard(): void {
+    this.showCancellationWizard.set(false);
+    this.cancelTrigger()?.nativeElement.focus();
+  }
+
+  onCancelled(refund: RefundResponse): void {
+    this.refund.set(refund);
+    this.detail.update((current) =>
+      current ? { ...current, booking: { ...current.booking, status: 'CANCELLED' } } : current,
+    );
+    this.notifications.success('Cancellation submitted. Our support team will review your refund shortly.');
+    this.closeCancellationWizard();
   }
 
   startReschedule(): void {
@@ -111,6 +116,7 @@ export class BookingDetailsComponent {
     this.rescheduleContext.start(
       detail.booking.id,
       detail.items.map((item) => item.passengerId),
+      detail.booking.status === 'CONFIRMED',
     );
     this.router.navigate(['/search']);
   }

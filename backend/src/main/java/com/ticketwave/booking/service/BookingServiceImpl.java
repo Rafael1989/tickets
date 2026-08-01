@@ -209,15 +209,20 @@ public class BookingServiceImpl implements BookingService {
     }
 
     /**
-     * Only usable while INITIATED (unpaid) — see RescheduleRequest's javadoc
-     * for why a CONFIRMED (paid) booking isn't handled here.
+     * The mechanical seat/schedule swap: release old holds, hold the new
+     * seats, recompute the total from scratch. Usable on an INITIATED
+     * (unpaid) booking directly and for free. Also usable on a CONFIRMED
+     * (paid) booking, but only as the swap step inside RescheduleService's
+     * orchestration — that's where the departure-proximity eligibility check
+     * and the fare-difference charge/credit live, since this method has no
+     * idea what the old total was before it started overwriting it.
      */
     @Override
     @PreAuthorize("hasAnyRole('SUPPORT', 'ADMIN') or @bookingOwnership.isOwnedBy(#bookingId, authentication.name)")
     @Transactional
     public BookingDetailResponse rescheduleBooking(Long bookingId, RescheduleRequest request) {
         Booking booking = getBookingOrThrow(bookingId);
-        requireStatus(booking, BookingStatus.INITIATED, BookingStatus.INITIATED);
+        requireStatus(booking, EnumSet.of(BookingStatus.INITIATED, BookingStatus.CONFIRMED), BookingStatus.INITIATED);
 
         Schedule newSchedule = scheduleRepository.findById(request.scheduleId())
                 .orElseThrow(() -> new ScheduleNotFoundException(request.scheduleId()));

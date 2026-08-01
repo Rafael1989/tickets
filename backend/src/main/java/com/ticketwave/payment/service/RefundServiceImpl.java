@@ -8,8 +8,8 @@ import com.ticketwave.booking.exception.InvalidBookingStateException;
 import com.ticketwave.booking.repository.BookingRepository;
 import com.ticketwave.booking.service.BookingService;
 import com.ticketwave.catalog.entity.Schedule;
-import com.ticketwave.config.RefundProperties;
 import com.ticketwave.payment.dto.RefundDecision;
+import com.ticketwave.payment.dto.RefundQuoteResponse;
 import com.ticketwave.payment.dto.RefundResponse;
 import com.ticketwave.payment.entity.Payment;
 import com.ticketwave.payment.entity.PaymentStatus;
@@ -22,6 +22,7 @@ import com.ticketwave.payment.exception.RefundNotFoundException;
 import com.ticketwave.payment.mapper.RefundMapper;
 import com.ticketwave.payment.repository.PaymentRepository;
 import com.ticketwave.payment.repository.RefundRepository;
+import com.ticketwave.payment.service.RefundPolicyService.RefundQuote;
 import com.ticketwave.user.entity.User;
 import com.ticketwave.user.exception.UserNotFoundException;
 import com.ticketwave.user.repository.UserRepository;
@@ -34,19 +35,17 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Optional;
 
 @Service
 public class RefundServiceImpl implements RefundService {
-
-    private static final String FULL_REFUND_POLICY = "FULL_REFUND";
-    private static final String PARTIAL_REFUND_POLICY = "PARTIAL_REFUND";
 
     private final RefundRepository refundRepository;
     private final PaymentRepository paymentRepository;
     private final BookingRepository bookingRepository;
     private final UserRepository userRepository;
     private final BookingService bookingService;
-    private final RefundProperties refundProperties;
+    private final RefundPolicyService refundPolicyService;
     private final RefundMapper refundMapper;
     private final AuditService auditService;
 
@@ -56,7 +55,7 @@ public class RefundServiceImpl implements RefundService {
             BookingRepository bookingRepository,
             UserRepository userRepository,
             BookingService bookingService,
-            RefundProperties refundProperties,
+            RefundPolicyService refundPolicyService,
             RefundMapper refundMapper,
             AuditService auditService
     ) {
@@ -65,9 +64,40 @@ public class RefundServiceImpl implements RefundService {
         this.bookingRepository = bookingRepository;
         this.userRepository = userRepository;
         this.bookingService = bookingService;
-        this.refundProperties = refundProperties;
+        this.refundPolicyService = refundPolicyService;
         this.refundMapper = refundMapper;
         this.auditService = auditService;
+    }
+
+    @Override
+    @PreAuthorize("hasAnyRole('SUPPORT', 'ADMIN') or @bookingOwnership.isOwnedBy(#bookingId, authentication.name)")
+    @Transactional(readOnly = true)
+    public RefundQuoteResponse previewRefund(Long bookingId) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new BookingNotFoundException(bookingId));
+
+        if (booking.getStatus() != BookingStatus.CONFIRMED) {
+            throw new InvalidBookingStateException(bookingId, booking.getStatus(), BookingStatus.CANCELLED);
+        }
+
+        Payment payment = paymentRepository.findByBookingId(bookingId).stream()
+                .filter(p -> p.getStatus() == PaymentStatus.SUCCEEDED)
+                .findFirst()
+                .orElseThrow(() -> new PaymentNotFoundException(bookingId));
+
+        Duration untilDeparture = Duration.between(Instant.now(), booking.getSchedule().getDepartureTime());
+        Optional<RefundQuote> quote = refundPolicyService.quoteFor(untilDeparture);
+
+        if (quote.isEmpty()) {
+            return new RefundQuoteResponse(bookingId, payment.getAmount(), null, null,
+                    BigDecimal.ZERO, payment.getAmount(), payment.getMethod(), false);
+        }
+
+        RefundQuote q = quote.get();
+        BigDecimal refundAmount = payment.getAmount().multiply(q.rate()).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal nonRefundable = payment.getAmount().subtract(refundAmount);
+        return new RefundQuoteResponse(bookingId, payment.getAmount(), q.policyCode(), q.rate(),
+                refundAmount, nonRefundable, payment.getMethod(), true);
     }
 
     @Override
@@ -127,7 +157,14 @@ public class RefundServiceImpl implements RefundService {
         refund.setProcessedBy(processedBy);
         refund.setProcessedAt(Instant.now());
 
-        if (decision == RefundDecision.APPROVE) {
+        // A RESCHEDULE_CREDIT refund settles a fare-difference credit on a
+        // booking that's still CONFIRMED and travelling - the payment still
+        // backs an active booking, just at its (already-reduced) net amount,
+        // so it must stay SUCCEEDED. Only a cancellation refund (FULL/PARTIAL)
+        // means the booking's payment has actually been given back.
+        boolean isCancellationRefund = RefundPolicyService.FULL_REFUND_POLICY.equals(refund.getPolicyCode())
+                || RefundPolicyService.PARTIAL_REFUND_POLICY.equals(refund.getPolicyCode());
+        if (decision == RefundDecision.APPROVE && isCancellationRefund) {
             refund.getPayment().setStatus(PaymentStatus.REFUNDED);
         }
 
@@ -145,19 +182,7 @@ public class RefundServiceImpl implements RefundService {
      */
     private RefundQuote calculateRefundQuote(Long bookingId, Schedule schedule) {
         Duration untilDeparture = Duration.between(Instant.now(), schedule.getDepartureTime());
-
-        if (untilDeparture.isNegative()) {
-            throw new CancellationNotAllowedException(bookingId, schedule.getDepartureTime());
-        }
-        if (untilDeparture.toDays() >= refundProperties.fullRefundThresholdDays()) {
-            return new RefundQuote(BigDecimal.ONE, FULL_REFUND_POLICY);
-        }
-        if (untilDeparture.toHours() >= refundProperties.partialRefundThresholdHours()) {
-            return new RefundQuote(refundProperties.partialRefundRate(), PARTIAL_REFUND_POLICY);
-        }
-        throw new CancellationNotAllowedException(bookingId, schedule.getDepartureTime());
-    }
-
-    private record RefundQuote(BigDecimal rate, String policyCode) {
+        return refundPolicyService.quoteFor(untilDeparture)
+                .orElseThrow(() -> new CancellationNotAllowedException(bookingId, schedule.getDepartureTime()));
     }
 }

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="2026-08-01-06" author="ticketwave">
+        <comment>
+            Bookings: optimistic-lock version column. Without it, two concurrent
+            requests against the same booking (e.g. two refund initiations racing
+            each other) can both read CONFIRMED before either commits its status
+            change, producing duplicate refunds. JPA bumps/checks this on every
+            update; a stale write now fails fast with a 409 instead of silently
+            overwriting the other request's change.
+        </comment>
+        <addColumn tableName="bookings">
+            <column name="version" type="BIGINT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+
+        <rollback>
+            <dropColumn tableName="bookings" columnName="version"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -5,10 +5,15 @@ import com.ticketwave.auth.JwtService;
 import com.ticketwave.auth.security.JwtAuthenticationFilter;
 import com.ticketwave.catalog.dto.RouteRequest;
 import com.ticketwave.catalog.dto.RouteResponse;
+import com.ticketwave.catalog.dto.ScheduleResponse;
 import com.ticketwave.catalog.entity.RouteType;
+import com.ticketwave.catalog.entity.ScheduleStatus;
 import com.ticketwave.catalog.service.RouteService;
+import com.ticketwave.catalog.service.ScheduleManagementService;
 import com.ticketwave.config.JwtProperties;
 import com.ticketwave.config.SecurityConfig;
+import com.ticketwave.pricing.dto.FareRuleResponse;
+import com.ticketwave.pricing.service.FareRuleService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,6 +32,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -50,6 +56,10 @@ class RouteControllerTest {
 
     @MockitoBean
     private RouteService routeService;
+    @MockitoBean
+    private ScheduleManagementService scheduleManagementService;
+    @MockitoBean
+    private FareRuleService fareRuleService;
 
     private String bearerToken;
 
@@ -80,6 +90,42 @@ class RouteControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.origin").value("NYC"));
+    }
+
+    @Test
+    void updateRoute_withValidToken_returns200() throws Exception {
+        RouteRequest request = new RouteRequest(RouteType.TRAIN, "Boston", "NYC", null, 200);
+        RouteResponse response = new RouteResponse(1L, 1L, RouteType.TRAIN, "Boston", "NYC", null, 200);
+        given(routeService.updateRoute(eq("operator1"), eq(1L), any())).willReturn(response);
+
+        mockMvc.perform(put("/api/routes/1")
+                        .header("Authorization", bearerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.type").value("TRAIN"));
+    }
+
+    @Test
+    void listSchedulesForRoute_withValidToken_returns200() throws Exception {
+        given(scheduleManagementService.listSchedulesForRoute("operator1", 1L)).willReturn(List.of(
+                new ScheduleResponse(10L, 1L, java.time.Instant.now(), java.time.Instant.now().plusSeconds(3600),
+                        new java.math.BigDecimal("20.00"), "USD", ScheduleStatus.SCHEDULED, null, null)));
+
+        mockMvc.perform(get("/api/routes/1/schedules").header("Authorization", bearerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(10));
+    }
+
+    @Test
+    void listFareRulesForRoute_withValidToken_returns200() throws Exception {
+        given(fareRuleService.listFareRulesForRoute("operator1", 1L)).willReturn(List.of(
+                new FareRuleResponse(1L, 1L, "economy", java.time.Instant.now(), java.time.Instant.now().plusSeconds(3600),
+                        new java.math.BigDecimal("0.2000"))));
+
+        mockMvc.perform(get("/api/routes/1/fare-rules").header("Authorization", bearerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].seatClass").value("economy"));
     }
 
     @Test

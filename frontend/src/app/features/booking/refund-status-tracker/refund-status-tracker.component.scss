@@ -1,0 +1,116 @@
+.tracker {
+  margin-top: 0.25rem;
+}
+
+.timeline {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0 0 1rem;
+  padding: 0;
+
+  @media (min-width: 480px) {
+    flex-direction: row;
+  }
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  position: relative;
+  padding: 0.4rem 0;
+  color: #999;
+
+  @media (min-width: 480px) {
+    flex: 1;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.4rem;
+
+    &:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      top: 0.45rem;
+      left: 1.3rem;
+      right: -50%;
+      height: 2px;
+      background: #e2e4ea;
+    }
+
+    &.done:not(:last-child)::after {
+      background: #1e8449;
+    }
+  }
+
+  .marker {
+    width: 0.9rem;
+    height: 0.9rem;
+    border-radius: 50%;
+    background: #e2e4ea;
+    flex-shrink: 0;
+    z-index: 1;
+  }
+
+  .label {
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+
+  &.done {
+    color: #1e8449;
+
+    .marker {
+      background: #1e8449;
+    }
+  }
+
+  &.current {
+    color: #9c640c;
+
+    .marker {
+      background: #f5b041;
+      box-shadow: 0 0 0 3px #fdebd0;
+    }
+  }
+
+  &.rejected {
+    color: #922b21;
+
+    .marker {
+      background: #c0392b;
+    }
+  }
+}
+
+.status-message {
+  font-size: 0.9rem;
+  color: #444;
+  margin: 0 0 0.75rem;
+}
+
+.details {
+  margin: 0;
+
+  .row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.35rem 0;
+    border-bottom: 1px solid #eee;
+    font-size: 0.9rem;
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    dt {
+      color: #666;
+    }
+
+    dd {
+      margin: 0;
+      font-weight: 600;
+    }
+  }
+}

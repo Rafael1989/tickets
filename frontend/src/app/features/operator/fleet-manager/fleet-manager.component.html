@@ -1,0 +1,101 @@
+<div class="fleet-grid">
+  <div class="card">
+    <h3>Vehicles</h3>
+    <form class="grid-form" [formGroup]="vehicleForm" (ngSubmit)="createVehicle()">
+      <div class="field">
+        <label for="vehicleType">Type</label>
+        <select id="vehicleType" formControlName="type">
+          <option value="FLIGHT">Flight</option>
+          <option value="BUS">Bus</option>
+          <option value="TRAIN">Train</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="vehicleIdentifier">Identifier</label>
+        <input id="vehicleIdentifier" type="text" formControlName="identifier" placeholder="e.g. BUS-1234" />
+      </div>
+      <div class="field">
+        <label for="vehicleCapacity">Capacity</label>
+        <input id="vehicleCapacity" type="number" formControlName="capacity" />
+      </div>
+      <div class="field">
+        <label for="vehicleModel">Model</label>
+        <input id="vehicleModel" type="text" formControlName="model" placeholder="e.g. Volvo 9800" />
+      </div>
+      <button class="btn" type="submit" [disabled]="vehicleForm.invalid || savingVehicle()">
+        {{ savingVehicle() ? 'Adding…' : 'Add vehicle' }}
+      </button>
+    </form>
+
+    @if (loadingVehicles()) {
+      <p>Loading…</p>
+    } @else if (vehicles().length === 0) {
+      <p>No vehicles yet.</p>
+    } @else {
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Type</th>
+            <th>Identifier</th>
+            <th>Capacity</th>
+            <th>Model</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (vehicle of vehicles(); track vehicle.id) {
+            <tr>
+              <td>{{ vehicle.id }}</td>
+              <td>{{ vehicle.type }}</td>
+              <td>{{ vehicle.identifier }}</td>
+              <td>{{ vehicle.capacity }}</td>
+              <td>{{ vehicle.model ?? '—' }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+  </div>
+
+  <div class="card">
+    <h3>Drivers</h3>
+    <form class="grid-form" [formGroup]="driverForm" (ngSubmit)="createDriver()">
+      <div class="field">
+        <label for="driverFullName">Full name</label>
+        <input id="driverFullName" type="text" formControlName="fullName" />
+      </div>
+      <div class="field">
+        <label for="driverLicense">License number</label>
+        <input id="driverLicense" type="text" formControlName="licenseNumber" />
+      </div>
+      <button class="btn" type="submit" [disabled]="driverForm.invalid || savingDriver()">
+        {{ savingDriver() ? 'Adding…' : 'Add driver' }}
+      </button>
+    </form>
+
+    @if (loadingDrivers()) {
+      <p>Loading…</p>
+    } @else if (drivers().length === 0) {
+      <p>No drivers yet.</p>
+    } @else {
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Full name</th>
+            <th>License #</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (driver of drivers(); track driver.id) {
+            <tr>
+              <td>{{ driver.id }}</td>
+              <td>{{ driver.fullName }}</td>
+              <td>{{ driver.licenseNumber }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+  </div>
+</div>

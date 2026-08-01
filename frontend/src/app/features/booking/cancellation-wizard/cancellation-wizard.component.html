@@ -1,0 +1,81 @@
+<div class="backdrop" (click)="close()">
+  <div
+    #dialog
+    class="dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="cancellation-wizard-title"
+    tabindex="-1"
+    (click)="$event.stopPropagation()"
+    (keydown)="onKeydown($event)"
+  >
+    <div class="dialog-header">
+      <h2 id="cancellation-wizard-title">Cancel booking {{ pnr() }}</h2>
+      <button type="button" class="icon-btn" (click)="close()" aria-label="Close dialog" [disabled]="submitting()">
+        &times;
+      </button>
+    </div>
+
+    <div class="dialog-body" aria-live="polite">
+      @switch (step()) {
+        @case ('loading') {
+          <div class="skeleton" style="height: 1rem; margin-bottom: 0.6rem"></div>
+          <div class="skeleton" style="height: 1rem; width: 70%; margin-bottom: 0.6rem"></div>
+          <div class="skeleton" style="height: 1rem; width: 50%"></div>
+          <p class="sr-only">Checking your cancellation eligibility…</p>
+        }
+        @case ('load-error') {
+          <p class="form-error" role="alert">We couldn't load your cancellation policy details.</p>
+          <button type="button" class="btn secondary" (click)="retryLoad()">Try again</button>
+        }
+        @case ('ineligible') {
+          <p class="ineligible-message" role="alert">
+            This booking is too close to departure to be cancelled online. Please contact support for assistance.
+          </p>
+        }
+        @case ('review') {
+          @if (quote(); as q) {
+            <dl class="breakdown">
+              <div class="row">
+                <dt>Fare paid</dt>
+                <dd>{{ q.fareAmount | currency }}</dd>
+              </div>
+              <div class="row">
+                <dt>Policy applied</dt>
+                <dd>
+                  <span class="policy-badge" [class.full]="q.policyCode === 'FULL_REFUND'">
+                    {{ q.policyCode === 'FULL_REFUND' ? 'Full refund' : 'Partial refund — ' + refundRatePercent() + '%' }}
+                  </span>
+                </dd>
+              </div>
+              <div class="row">
+                <dt>Non-refundable amount</dt>
+                <dd>{{ q.nonRefundableAmount | currency }}</dd>
+              </div>
+              <div class="row total">
+                <dt>You'll receive</dt>
+                <dd>{{ q.refundAmount | currency }}</dd>
+              </div>
+            </dl>
+            <p class="hint">{{ payoutMessage() }}</p>
+            <p class="hint">Refund requests are reviewed by our support team before funds are released.</p>
+            @if (submitError(); as err) {
+              <p class="form-error" role="alert">{{ err }}</p>
+            }
+          }
+        }
+      }
+    </div>
+
+    <div class="dialog-actions">
+      <button type="button" class="btn secondary" (click)="close()" [disabled]="submitting()">
+        {{ step() === 'review' ? 'Keep booking' : 'Close' }}
+      </button>
+      @if (step() === 'review') {
+        <button type="button" class="btn" (click)="confirmCancellation()" [disabled]="submitting()">
+          {{ submitting() ? 'Cancelling…' : 'Confirm cancellation' }}
+        </button>
+      }
+    </div>
+  </div>
+</div>

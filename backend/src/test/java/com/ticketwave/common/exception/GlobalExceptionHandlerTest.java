@@ -3,6 +3,7 @@ package com.ticketwave.common.exception;
 import com.ticketwave.booking.exception.BookingNotFoundException;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
@@ -47,6 +48,15 @@ class GlobalExceptionHandlerTest {
 
         assertThat(response.getStatusCode().value()).isEqualTo(403);
         assertThat(response.getBody().error()).isEqualTo("ACCESS_DENIED");
+    }
+
+    @Test
+    void handleOptimisticLock_returns409WithoutLeakingTheOriginalMessage() {
+        ResponseEntity<ErrorResponse> response = handler.handleOptimisticLock(
+                new ObjectOptimisticLockingFailureException(Object.class, 500L));
+
+        assertThat(response.getStatusCode().value()).isEqualTo(409);
+        assertThat(response.getBody().error()).isEqualTo("CONCURRENT_UPDATE");
     }
 
     @Test
