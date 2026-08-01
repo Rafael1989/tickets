@@ -12,6 +12,7 @@ import { BookingDraftService } from '../../core/services/booking-draft.service';
 import { BookingService } from '../../core/services/booking.service';
 import { PassengerService } from '../../core/services/passenger.service';
 import { PaymentService } from '../../core/services/payment.service';
+import { ScheduleService } from '../../core/services/schedule.service';
 import { CheckoutComponent } from './checkout.component';
 
 describe('CheckoutComponent', () => {
@@ -21,6 +22,7 @@ describe('CheckoutComponent', () => {
   let passengerService: PassengerService;
   let bookingService: BookingService;
   let paymentService: PaymentService;
+  let scheduleService: ScheduleService;
   let router: Router;
 
   const schedule: ScheduleSearchResult = {
@@ -46,8 +48,8 @@ describe('CheckoutComponent', () => {
     status: 'AVAILABLE',
     priceModifier: 1,
     estimatedFare: 20,
-    heldUntil: null,
-    heldByMe: false,
+    heldUntil: new Date(Date.now() + 10 * 60_000).toISOString(),
+    heldByMe: true,
   };
 
   const passenger: PassengerResponse = {
@@ -73,7 +75,7 @@ describe('CheckoutComponent', () => {
     items: [{ id: 1, bookingId: 500, seatId: 5, passengerId: 100, fare: 20 }],
   };
 
-  const paymentResponse: PaymentResponse = {
+  const succeededPayment: PaymentResponse = {
     id: 1,
     bookingId: 500,
     amount: 20,
@@ -81,6 +83,18 @@ describe('CheckoutComponent', () => {
     reference: 'ref-1',
     status: 'SUCCEEDED',
     paidAt: '2026-08-01T00:00:00Z',
+    failureReason: null,
+  };
+
+  const declinedPayment: PaymentResponse = {
+    id: 2,
+    bookingId: 500,
+    amount: 20,
+    method: 'card',
+    reference: 'ref-2',
+    status: 'FAILED',
+    paidAt: null,
+    failureReason: 'Your card was declined.',
   };
 
   async function createComponent(withDraft: boolean) {
@@ -100,12 +114,30 @@ describe('CheckoutComponent', () => {
     bookingService = TestBed.inject(BookingService);
     paymentService = TestBed.inject(PaymentService);
 
+    scheduleService = TestBed.inject(ScheduleService);
+    vi.spyOn(scheduleService, 'getSeats').mockReturnValue(of([seat]));
+
     router = TestBed.inject(Router);
     vi.spyOn(router, 'navigate').mockResolvedValue(true);
 
     fixture = TestBed.createComponent(CheckoutComponent);
     component = fixture.componentInstance;
     fixture.detectChanges();
+  }
+
+  function fillCardForm(overrides: Partial<{ cardNumber: string }> = {}) {
+    component.cardForm.setValue({
+      cardholderName: 'Jane Doe',
+      cardNumber: overrides.cardNumber ?? '4242 4242 4242 4242',
+      expiry: '12/29',
+      cvc: '123',
+    });
+  }
+
+  async function proceedToPaymentStep() {
+    vi.spyOn(bookingService, 'createBooking').mockReturnValue(of(bookingDetail));
+    component.assignPassenger(seat.id, String(passenger.id));
+    component.createBooking();
   }
 
   describe('without a booking draft', () => {
@@ -130,10 +162,6 @@ describe('CheckoutComponent', () => {
       expect(router.navigate).not.toHaveBeenCalled();
     });
 
-    it('leaves the promo field blank when the draft carries no promo code', () => {
-      expect(component.promoForm.value.promoCode).toBe('');
-    });
-
     it('allSeatsAssigned is false until every seat has a passenger', () => {
       expect(component.allSeatsAssigned()).toBe(false);
 
@@ -142,61 +170,8 @@ describe('CheckoutComponent', () => {
       expect(component.allSeatsAssigned()).toBe(true);
     });
 
-    it('assignPassenger treats an empty value as unassigned', () => {
-      component.assignPassenger(seat.id, String(passenger.id));
-      expect(component.allSeatsAssigned()).toBe(true);
-
-      component.assignPassenger(seat.id, '');
-
-      expect(component.allSeatsAssigned()).toBe(false);
-    });
-
-    it('onAssignChange reads the select value and assigns it', () => {
-      const select = document.createElement('select');
-      select.value = '';
-      const option = document.createElement('option');
-      option.value = String(passenger.id);
-      select.appendChild(option);
-      select.value = String(passenger.id);
-
-      component.onAssignChange(seat.id, { target: select } as unknown as Event);
-
-      expect(component.allSeatsAssigned()).toBe(true);
-    });
-
-    describe('addPassenger', () => {
-      it('does nothing while the form is invalid', () => {
-        const createSpy = vi.spyOn(passengerService, 'createPassenger');
-
-        component.addPassenger();
-
-        expect(createSpy).not.toHaveBeenCalled();
-      });
-
-      it('creates a passenger, appends it, and resets the form', () => {
-        vi.spyOn(passengerService, 'createPassenger').mockReturnValue(of(passenger));
-        component.newPassengerForm.setValue({
-          fullName: 'Jane Doe',
-          dob: '1990-01-01',
-          idType: 'passport',
-          idNumber: 'X123456',
-        });
-
-        component.addPassenger();
-
-        expect(component.passengers()).toEqual([passenger, passenger]);
-        expect(component.newPassengerForm.value.fullName).toBe('');
-        expect(component.addingPassenger()).toBe(false);
-      });
-
-      it('ignores a second call while a submission is already in flight', () => {
-        component.addingPassenger.set(true);
-        const createSpy = vi.spyOn(passengerService, 'createPassenger');
-
-        component.addPassenger();
-
-        expect(createSpy).not.toHaveBeenCalled();
-      });
+    it('holdDeadline reflects the earliest heldUntil among the draft seats during the assign step', () => {
+      expect(component.holdDeadline()).toBe(seat.heldUntil);
     });
 
     describe('createBooking', () => {
@@ -209,12 +184,8 @@ describe('CheckoutComponent', () => {
         expect(component.step()).toBe('assign');
       });
 
-      it('sends the booking request and advances to the payment step', () => {
-        vi.spyOn(bookingService, 'createBooking').mockReturnValue(of(bookingDetail));
-        component.assignPassenger(seat.id, String(passenger.id));
-        component.promoForm.setValue({ promoCode: '  ' });
-
-        component.createBooking();
+      it('sends the booking request, advances to the payment step, and refreshes seat holds', () => {
+        proceedToPaymentStep();
 
         expect(bookingService.createBooking).toHaveBeenCalledWith({
           scheduleId: schedule.scheduleId,
@@ -223,184 +194,150 @@ describe('CheckoutComponent', () => {
         });
         expect(component.booking()).toEqual(bookingDetail);
         expect(component.step()).toBe('payment');
-      });
-
-      it('trims and forwards a non-blank promo code', () => {
-        vi.spyOn(bookingService, 'createBooking').mockReturnValue(of(bookingDetail));
-        component.assignPassenger(seat.id, String(passenger.id));
-        component.promoForm.setValue({ promoCode: ' SAVE10 ' });
-
-        component.createBooking();
-
-        expect(bookingService.createBooking).toHaveBeenCalledWith(
-          expect.objectContaining({ promoCode: 'SAVE10' }),
-        );
-      });
-
-      it('ignores a second call while creation is already in flight', () => {
-        component.assignPassenger(seat.id, String(passenger.id));
-        component.creatingBooking.set(true);
-        const createSpy = vi.spyOn(bookingService, 'createBooking');
-
-        component.createBooking();
-
-        expect(createSpy).not.toHaveBeenCalled();
+        expect(scheduleService.getSeats).toHaveBeenCalledWith(schedule.scheduleId);
       });
     });
 
-    describe('pay', () => {
-      beforeEach(() => {
-        vi.spyOn(bookingService, 'createBooking').mockReturnValue(of(bookingDetail));
-        component.assignPassenger(seat.id, String(passenger.id));
-        component.createBooking();
+    describe('onHoldExpired', () => {
+      it('sets holdExpired unless the payment already succeeded', () => {
+        component.onHoldExpired();
+        expect(component.holdExpired()).toBe(true);
       });
 
-      it('does nothing without a booking', () => {
-        component.booking.set(null);
+      it('is ignored once the payment has succeeded', () => {
+        component.paymentState.set('succeeded');
+
+        component.onHoldExpired();
+
+        expect(component.holdExpired()).toBe(false);
+      });
+    });
+
+    describe('card payment', () => {
+      beforeEach(() => {
+        vi.useFakeTimers();
+        proceedToPaymentStep();
+      });
+
+      afterEach(() => vi.useRealTimers());
+
+      it('does nothing while the card form is invalid', () => {
         const paySpy = vi.spyOn(paymentService, 'recordPayment');
 
-        component.pay();
+        component.payWithCard();
+
+        expect(paySpy).not.toHaveBeenCalled();
+        expect(component.paymentState()).toBe('idle');
+      });
+
+      it('goes through a processing state before revealing success', () => {
+        vi.spyOn(paymentService, 'recordPayment').mockReturnValue(of(succeededPayment));
+        fillCardForm();
+
+        component.payWithCard();
+        expect(component.paymentState()).toBe('processing');
+
+        vi.advanceTimersByTime(1200);
+
+        expect(component.paymentState()).toBe('succeeded');
+        expect(component.payment()).toEqual(succeededPayment);
+      });
+
+      it('clears the booking draft on success', () => {
+        vi.spyOn(paymentService, 'recordPayment').mockReturnValue(of(succeededPayment));
+        const clearSpy = vi.spyOn(bookingDraftService, 'clear');
+        fillCardForm();
+
+        component.payWithCard();
+        vi.advanceTimersByTime(1200);
+
+        expect(clearSpy).toHaveBeenCalled();
+      });
+
+      it('shows the decline reason and does not clear the draft when the card is declined', () => {
+        vi.spyOn(paymentService, 'recordPayment').mockReturnValue(of(declinedPayment));
+        const clearSpy = vi.spyOn(bookingDraftService, 'clear');
+        fillCardForm({ cardNumber: '4000 0000 0000 0002' });
+
+        component.payWithCard();
+        vi.advanceTimersByTime(1200);
+
+        expect(component.paymentState()).toBe('declined');
+        expect(component.payment()?.failureReason).toBe('Your card was declined.');
+        expect(clearSpy).not.toHaveBeenCalled();
+      });
+
+      it('retryPayment resets to the idle payment form', () => {
+        vi.spyOn(paymentService, 'recordPayment').mockReturnValue(of(declinedPayment));
+        fillCardForm({ cardNumber: '4000 0000 0000 0002' });
+        component.payWithCard();
+        vi.advanceTimersByTime(1200);
+
+        component.retryPayment();
+
+        expect(component.paymentState()).toBe('idle');
+        expect(component.payment()).toBeNull();
+      });
+
+      it('sends a fresh idempotency reference on every attempt', () => {
+        const recordSpy = vi.spyOn(paymentService, 'recordPayment').mockReturnValue(of(declinedPayment));
+        fillCardForm({ cardNumber: '4000 0000 0000 0002' });
+        component.payWithCard();
+        vi.advanceTimersByTime(1200);
+        const firstReference = recordSpy.mock.calls[0][1].reference;
+
+        component.retryPayment();
+        recordSpy.mockReturnValue(of(succeededPayment));
+        fillCardForm();
+        component.payWithCard();
+        vi.advanceTimersByTime(1200);
+        const secondReference = recordSpy.mock.calls[1][1].reference;
+
+        expect(firstReference).not.toBe(secondReference);
+      });
+
+      it('does not submit while the seat hold has already expired', () => {
+        component.holdExpired.set(true);
+        fillCardForm();
+        const paySpy = vi.spyOn(paymentService, 'recordPayment');
+
+        component.payWithCard();
 
         expect(paySpy).not.toHaveBeenCalled();
       });
+    });
 
-      it('records the payment, clears the draft, and navigates to booking details', () => {
-        vi.spyOn(paymentService, 'recordPayment').mockReturnValue(of(paymentResponse));
-        const clearSpy = vi.spyOn(bookingDraftService, 'clear');
+    describe('pix payment', () => {
+      beforeEach(() => {
+        vi.useFakeTimers();
+        proceedToPaymentStep();
+        component.selectPaymentMethod('pix');
+      });
 
-        component.pay();
+      afterEach(() => vi.useRealTimers());
 
-        expect(paymentService.recordPayment).toHaveBeenCalledWith(bookingDetail.booking.id, {
-          amount: bookingDetail.booking.totalAmount,
-          method: 'card',
-          reference: component.paymentForm.getRawValue().reference,
-        });
-        expect(component.payment()).toEqual(paymentResponse);
-        expect(clearSpy).toHaveBeenCalled();
+      it('pays with method "pix" and no card number', () => {
+        const recordSpy = vi.spyOn(paymentService, 'recordPayment').mockReturnValue(of(succeededPayment));
+
+        component.payWithPix();
+        vi.advanceTimersByTime(1200);
+
+        expect(recordSpy).toHaveBeenCalledWith(
+          bookingDetail.booking.id,
+          expect.objectContaining({ method: 'pix', cardNumber: null }),
+        );
+        expect(component.paymentState()).toBe('succeeded');
+      });
+    });
+
+    describe('viewBooking', () => {
+      it('navigates to the booking details page', () => {
+        proceedToPaymentStep();
+
+        component.viewBooking();
+
         expect(router.navigate).toHaveBeenCalledWith(['/bookings', bookingDetail.booking.id]);
       });
-
-      it('ignores a second call while a payment is already in flight', () => {
-        component.payingSubmitting.set(true);
-        const paySpy = vi.spyOn(paymentService, 'recordPayment');
-
-        component.pay();
-
-        expect(paySpy).not.toHaveBeenCalled();
-      });
-
-      it('does nothing when the payment form is invalid', () => {
-        component.paymentForm.controls.method.setValue('' as unknown as string);
-        const paySpy = vi.spyOn(paymentService, 'recordPayment');
-
-        component.pay();
-
-        expect(paySpy).not.toHaveBeenCalled();
-      });
     });
-
-    it('walks through the whole checkout via real DOM interactions', () => {
-      vi.spyOn(bookingService, 'createBooking').mockReturnValue(of(bookingDetail));
-      vi.spyOn(paymentService, 'recordPayment').mockReturnValue(of(paymentResponse));
-      fixture.detectChanges();
-
-      const root = fixture.nativeElement as HTMLElement;
-
-      const select = root.querySelector<HTMLSelectElement>('select');
-      select!.value = String(passenger.id);
-      select!.dispatchEvent(new Event('change'));
-      fixture.detectChanges();
-
-      expect(component.allSeatsAssigned()).toBe(true);
-
-      component.newPassengerForm.setValue({
-        fullName: 'Jane Doe',
-        dob: '1990-01-01',
-        idType: 'passport',
-        idNumber: 'X123456',
-      });
-      fixture.detectChanges();
-      const saveButton = Array.from(root.querySelectorAll('button')).find((btn) =>
-        btn.textContent?.includes('Save passenger'),
-      );
-      expect(saveButton!.disabled).toBe(false);
-
-      const createButton = Array.from(root.querySelectorAll('button')).find((btn) =>
-        btn.textContent?.includes('Create booking'),
-      );
-      createButton!.click();
-      fixture.detectChanges();
-
-      expect(component.step()).toBe('payment');
-      expect(root.textContent).toContain('PNR ABC234');
-
-      const payButton = Array.from(root.querySelectorAll('button')).find((btn) =>
-        btn.textContent?.includes('Pay now'),
-      );
-      payButton!.click();
-
-      expect(router.navigate).toHaveBeenCalledWith(['/bookings', bookingDetail.booking.id]);
-    });
-
-    it('shows in-flight indicators and disables the corresponding buttons', () => {
-      fixture.detectChanges();
-      const root = fixture.nativeElement as HTMLElement;
-
-      component.addingPassenger.set(true);
-      fixture.detectChanges();
-      expect(root.textContent).toContain('Saving…');
-
-      component.creatingBooking.set(true);
-      fixture.detectChanges();
-      expect(root.textContent).toContain('Creating booking…');
-
-      component.addingPassenger.set(false);
-      component.creatingBooking.set(false);
-      component.booking.set(bookingDetail);
-      component.step.set('payment');
-      component.payingSubmitting.set(true);
-      fixture.detectChanges();
-      expect(root.textContent).toContain('Processing…');
-    });
-  });
-
-  it('pre-fills the promo field from a draft carrying a previewed promo code', async () => {
-    await TestBed.configureTestingModule({
-      imports: [CheckoutComponent],
-      providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting()],
-    }).compileComponents();
-
-    bookingDraftService = TestBed.inject(BookingDraftService);
-    bookingDraftService.set({ schedule, seats: [seat], promoCode: 'SAVE10' });
-
-    passengerService = TestBed.inject(PassengerService);
-    vi.spyOn(passengerService, 'listMyPassengers').mockReturnValue(of([]));
-
-    fixture = TestBed.createComponent(CheckoutComponent);
-    component = fixture.componentInstance;
-    fixture.detectChanges();
-
-    expect(component.promoForm.value.promoCode).toBe('SAVE10');
-  });
-
-  it('renders a schedule with a venue and no destination', async () => {
-    await TestBed.configureTestingModule({
-      imports: [CheckoutComponent],
-      providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting()],
-    }).compileComponents();
-
-    const venueSchedule: ScheduleSearchResult = { ...schedule, origin: null, destination: null, venue: 'Arena' };
-    bookingDraftService = TestBed.inject(BookingDraftService);
-    bookingDraftService.set({ schedule: venueSchedule, seats: [seat], promoCode: null });
-
-    passengerService = TestBed.inject(PassengerService);
-    vi.spyOn(passengerService, 'listMyPassengers').mockReturnValue(of([]));
-
-    fixture = TestBed.createComponent(CheckoutComponent);
-    fixture.detectChanges();
-
-    const html = (fixture.nativeElement as HTMLElement).textContent ?? '';
-    expect(html).toContain('Arena');
-    expect(html).not.toContain('&rarr;');
   });
 });

@@ -6,37 +6,41 @@
     <a class="btn secondary" routerLink="/search">Back to search</a>
   </div>
 } @else if (detail(); as d) {
-  <div class="card">
-    <h2>Booking {{ d.booking.pnr }}</h2>
-    <p class="status" [class]="d.booking.status.toLowerCase()">{{ d.booking.status }}</p>
-    <p class="meta">Booked {{ d.booking.bookingTime | date: 'medium' }}</p>
-    @if (d.booking.promoCode) {
-      <p class="meta">Promo code: {{ d.booking.promoCode }}</p>
-    }
-    <p class="total">Total: {{ d.booking.totalAmount }}</p>
-  </div>
+  @if (d.booking.status === 'CONFIRMED') {
+    <tw-e-ticket-card [booking]="d" [schedule]="schedule()" [seats]="seats()" [passengers]="passengers()" />
+  } @else {
+    <div class="card">
+      <h2>Booking {{ d.booking.pnr }}</h2>
+      <p class="status" [class]="d.booking.status.toLowerCase()">{{ d.booking.status }}</p>
+      <p class="meta">Booked {{ d.booking.bookingTime | date: 'medium' }}</p>
+      @if (d.booking.promoCode) {
+        <p class="meta">Promo code: {{ d.booking.promoCode }}</p>
+      }
+      <p class="total">Total: {{ d.booking.totalAmount }}</p>
+    </div>
 
-  <div class="card">
-    <h3>Items</h3>
-    <table class="item-table">
-      <thead>
-        <tr>
-          <th>Seat</th>
-          <th>Passenger</th>
-          <th>Fare</th>
-        </tr>
-      </thead>
-      <tbody>
-        @for (item of d.items; track item.id) {
+    <div class="card">
+      <h3>Items</h3>
+      <table class="item-table">
+        <thead>
           <tr>
-            <td>{{ seatNumber(item.seatId) }}</td>
-            <td>{{ passengerName(item.passengerId) }}</td>
-            <td>{{ item.fare }}</td>
+            <th>Seat</th>
+            <th>Passenger</th>
+            <th>Fare</th>
           </tr>
-        }
-      </tbody>
-    </table>
-  </div>
+        </thead>
+        <tbody>
+          @for (item of d.items; track item.id) {
+            <tr>
+              <td>{{ seatNumber(item.seatId) }}</td>
+              <td>{{ passengerName(item.passengerId) }}</td>
+              <td>{{ item.fare }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
 
   @if (refund(); as r) {
     <div class="card">

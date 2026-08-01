@@ -29,6 +29,10 @@ export class NotificationService {
     this.show('success', message);
   }
 
+  info(message: string): void {
+    this.show('info', message);
+  }
+
   dismiss(id: number): void {
     this.notificationsSignal.update((current) => current.filter((n) => n.id !== id));
   }

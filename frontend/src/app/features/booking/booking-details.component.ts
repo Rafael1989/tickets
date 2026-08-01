@@ -4,7 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { finalize, forkJoin } from 'rxjs';
 import { BookingDetailResponse } from '../../core/models/booking.model';
-import { SeatResponse } from '../../core/models/catalog.model';
+import { ScheduleSearchResult, SeatResponse } from '../../core/models/catalog.model';
 import { PassengerResponse } from '../../core/models/passenger.model';
 import { RefundResponse } from '../../core/models/payment.model';
 import { BookingService } from '../../core/services/booking.service';
@@ -13,10 +13,11 @@ import { PassengerService } from '../../core/services/passenger.service';
 import { RefundService } from '../../core/services/refund.service';
 import { RescheduleContextService } from '../../core/services/reschedule-context.service';
 import { ScheduleService } from '../../core/services/schedule.service';
+import { ETicketCardComponent } from '../../shared/components/e-ticket-card/e-ticket-card.component';
 
 @Component({
   selector: 'tw-booking-details',
-  imports: [DatePipe, RouterLink],
+  imports: [DatePipe, RouterLink, ETicketCardComponent],
   templateUrl: './booking-details.component.html',
   styleUrl: './booking-details.component.scss',
 })
@@ -34,6 +35,7 @@ export class BookingDetailsComponent {
   readonly loading = signal(true);
   readonly loadError = signal(false);
   readonly detail = signal<BookingDetailResponse | null>(null);
+  readonly schedule = signal<ScheduleSearchResult | null>(null);
   readonly seats = signal<SeatResponse[]>([]);
   readonly passengers = signal<PassengerResponse[]>([]);
   readonly refund = signal<RefundResponse | null>(null);
@@ -52,12 +54,14 @@ export class BookingDetailsComponent {
         next: (detail) => {
           this.detail.set(detail);
           forkJoin({
+            schedule: this.scheduleService.getSchedule(detail.booking.scheduleId),
             seats: this.scheduleService.getSeats(detail.booking.scheduleId),
             passengers: this.passengerService.listMyPassengers(),
           })
             .pipe(finalize(() => this.loading.set(false)), takeUntilDestroyed(this.destroyRef))
             .subscribe({
-              next: ({ seats, passengers }) => {
+              next: ({ schedule, seats, passengers }) => {
+                this.schedule.set(schedule);
                 this.seats.set(seats);
                 this.passengers.set(passengers);
               },

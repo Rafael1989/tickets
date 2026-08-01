@@ -1,115 +1,219 @@
 @if (draft(); as d) {
-  @if (step() === 'assign') {
-    <div class="card">
-      <h2>Assign passengers</h2>
-      <p class="meta">
-        {{ d.schedule.origin ?? d.schedule.venue }}
-        @if (d.schedule.destination) {
-          &rarr; {{ d.schedule.destination }}
-        }
-      </p>
+  @if (holdExpired()) {
+    <div class="card hold-expired" role="alert">
+      <h2>Your held seats expired</h2>
+      <p>The hold on your selected seats ran out before checkout finished. Head back to search and pick seats again.</p>
+      <a class="btn" routerLink="/search">Back to search</a>
+    </div>
+  } @else {
+    @if (holdDeadline(); as deadline) {
+      <div class="hold-banner">
+        <span>Seats held for</span>
+        <tw-countdown [expiresAt]="deadline" (expired)="onHoldExpired()" />
+      </div>
+    }
 
-      <table class="seat-table">
-        <thead>
-          <tr>
-            <th>Seat</th>
-            <th>Class</th>
-            <th>Passenger</th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (seat of d.seats; track seat.id) {
-            <tr>
-              <td>{{ seat.seatNumber }}</td>
-              <td>{{ seat.seatClass }}</td>
-              <td>
-                <select (change)="onAssignChange(seat.id, $event)">
-                  <option value="">Select passenger…</option>
-                  @for (passenger of passengers(); track passenger.id) {
-                    <option [value]="passenger.id">{{ passenger.fullName }}</option>
-                  }
-                </select>
-              </td>
-            </tr>
+    @if (step() === 'assign') {
+      <div class="card">
+        <h2>Assign passengers</h2>
+        <p class="meta">
+          {{ d.schedule.origin ?? d.schedule.venue }}
+          @if (d.schedule.destination) {
+            &rarr; {{ d.schedule.destination }}
           }
-        </tbody>
-      </table>
-    </div>
+        </p>
 
-    <div class="card">
-      <h3>Add a passenger</h3>
-      <form class="passenger-form" [formGroup]="newPassengerForm" (ngSubmit)="addPassenger()">
-        <div class="field">
-          <label for="fullName">Full name</label>
-          <input id="fullName" type="text" formControlName="fullName" />
-        </div>
-        <div class="field">
-          <label for="dob">Date of birth</label>
-          <input id="dob" type="date" formControlName="dob" />
-        </div>
-        <div class="field">
-          <label for="idType">ID type</label>
-          <select id="idType" formControlName="idType">
-            <option value="passport">Passport</option>
-            <option value="national_id">National ID</option>
-            <option value="driver_license">Driver's license</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="idNumber">ID number</label>
-          <input id="idNumber" type="text" formControlName="idNumber" />
-        </div>
-        <button class="btn secondary" type="submit" [disabled]="newPassengerForm.invalid || addingPassenger()">
-          {{ addingPassenger() ? 'Saving…' : 'Save passenger' }}
+        <table class="seat-table">
+          <thead>
+            <tr>
+              <th>Seat</th>
+              <th>Class</th>
+              <th>Passenger</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (seat of d.seats; track seat.id) {
+              <tr>
+                <td>{{ seat.seatNumber }}</td>
+                <td>{{ seat.seatClass }}</td>
+                <td>
+                  <select (change)="onAssignChange(seat.id, $event)">
+                    <option value="">Select passenger…</option>
+                    @for (passenger of passengers(); track passenger.id) {
+                      <option [value]="passenger.id">{{ passenger.fullName }}</option>
+                    }
+                  </select>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h3>Add a passenger</h3>
+        <form class="passenger-form" [formGroup]="newPassengerForm" (ngSubmit)="addPassenger()">
+          <div class="field">
+            <label for="fullName">Full name</label>
+            <input id="fullName" type="text" formControlName="fullName" />
+          </div>
+          <div class="field">
+            <label for="dob">Date of birth</label>
+            <input id="dob" type="date" formControlName="dob" />
+          </div>
+          <div class="field">
+            <label for="idType">ID type</label>
+            <select id="idType" formControlName="idType">
+              <option value="passport">Passport</option>
+              <option value="national_id">National ID</option>
+              <option value="driver_license">Driver's license</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="idNumber">ID number</label>
+            <input id="idNumber" type="text" formControlName="idNumber" />
+          </div>
+          <button class="btn secondary" type="submit" [disabled]="newPassengerForm.invalid || addingPassenger()">
+            {{ addingPassenger() ? 'Saving…' : 'Save passenger' }}
+          </button>
+        </form>
+      </div>
+
+      <div class="card">
+        <form [formGroup]="promoForm">
+          <div class="field">
+            <label for="promoCode">Promo code (optional)</label>
+            <input id="promoCode" type="text" formControlName="promoCode" />
+          </div>
+        </form>
+
+        <button
+          class="btn"
+          type="button"
+          [disabled]="!allSeatsAssigned() || creatingBooking()"
+          (click)="createBooking()"
+        >
+          {{ creatingBooking() ? 'Creating booking…' : 'Create booking' }}
         </button>
-      </form>
-    </div>
+      </div>
+    }
 
-    <div class="card">
-      <form [formGroup]="promoForm">
-        <div class="field">
-          <label for="promoCode">Promo code (optional)</label>
-          <input id="promoCode" type="text" formControlName="promoCode" />
-        </div>
-      </form>
+    @if (step() === 'payment' && booking(); as b) {
+      <div class="card">
+        <h2>Payment</h2>
+        <p class="meta">PNR {{ b.booking.pnr }}</p>
+        <p class="total">Total due: {{ b.booking.totalAmount }}</p>
 
-      <button
-        class="btn"
-        type="button"
-        [disabled]="!allSeatsAssigned() || creatingBooking()"
-        (click)="createBooking()"
-      >
-        {{ creatingBooking() ? 'Creating booking…' : 'Create booking' }}
-      </button>
-    </div>
-  }
+        @switch (paymentState()) {
+          @case ('succeeded') {
+            <div class="payment-result payment-result--success" role="status">
+              <div class="checkmark" aria-hidden="true">
+                <svg viewBox="0 0 52 52">
+                  <circle class="checkmark__circle" cx="26" cy="26" r="24" fill="none" />
+                  <path class="checkmark__check" fill="none" d="M14 27l7 7 16-16" />
+                </svg>
+                <span class="confetti" aria-hidden="true"></span>
+              </div>
+              <h3 tabindex="-1" #resultHeading>Payment successful</h3>
 
-  @if (step() === 'payment' && booking(); as b) {
-    <div class="card">
-      <h2>Payment</h2>
-      <p class="meta">PNR {{ b.booking.pnr }}</p>
-      <p class="total">Total due: {{ b.booking.totalAmount }}</p>
+              <tw-e-ticket-card [booking]="b" [schedule]="d.schedule" [seats]="d.seats" [passengers]="passengers()" />
 
-      <form [formGroup]="paymentForm" (ngSubmit)="pay()">
-        <div class="field">
-          <label for="method">Payment method</label>
-          <select id="method" formControlName="method">
-            <option value="card">Card</option>
-            <option value="paypal">PayPal</option>
-            <option value="wallet">Wallet</option>
-          </select>
-        </div>
+              <button class="btn" type="button" (click)="viewBooking()">View my booking</button>
+            </div>
+          }
+          @case ('declined') {
+            <div class="payment-result payment-result--declined" role="alert">
+              <h3 tabindex="-1" #resultHeading>Payment declined</h3>
+              <p>{{ payment()?.failureReason ?? 'This payment could not be completed.' }}</p>
+              <p class="hint">Your seats are still held — try again with a different card.</p>
+              <button class="btn" type="button" (click)="retryPayment()">Try again</button>
+            </div>
+          }
+          @default {
+            <div class="payment-methods">
+              <div class="payment-method-tabs" role="tablist" aria-label="Payment method">
+                <button
+                  type="button"
+                  role="tab"
+                  class="btn secondary"
+                  [class.active]="paymentMethod() === 'card'"
+                  [attr.aria-selected]="paymentMethod() === 'card'"
+                  (click)="selectPaymentMethod('card')"
+                >
+                  Credit card
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  class="btn secondary"
+                  [class.active]="paymentMethod() === 'pix'"
+                  [attr.aria-selected]="paymentMethod() === 'pix'"
+                  (click)="selectPaymentMethod('pix')"
+                >
+                  Pix / QR wallet
+                </button>
+              </div>
 
-        <div class="field">
-          <label for="reference">Payment reference</label>
-          <input id="reference" type="text" formControlName="reference" readonly class="readonly-field" />
-          <span class="hint">Generated automatically — prevents this payment from being charged twice on retry.</span>
-        </div>
+              @if (paymentMethod() === 'card') {
+                <div class="secure-panel">
+                  <p class="secure-badge">🔒 Encrypted demo card entry — no real card data is stored</p>
+                  <form [formGroup]="cardForm" (ngSubmit)="payWithCard()">
+                    <div class="field">
+                      <label for="cardholderName">Cardholder name</label>
+                      <input id="cardholderName" type="text" formControlName="cardholderName" autocomplete="cc-name" />
+                    </div>
+                    <div class="field">
+                      <label for="cardNumber">Card number</label>
+                      <input
+                        id="cardNumber"
+                        type="text"
+                        inputmode="numeric"
+                        autocomplete="cc-number"
+                        formControlName="cardNumber"
+                        (input)="formatCardNumberInput($event)"
+                        placeholder="4242 4242 4242 4242"
+                      />
+                      @if (cardForm.controls.cardNumber.touched && cardForm.controls.cardNumber.invalid) {
+                        <span class="form-error">Enter a card number.</span>
+                      }
+                    </div>
+                    <div class="card-row">
+                      <div class="field">
+                        <label for="expiry">Expiry (MM/YY)</label>
+                        <input id="expiry" type="text" formControlName="expiry" autocomplete="cc-exp" placeholder="12/29" />
+                      </div>
+                      <div class="field">
+                        <label for="cvc">CVC</label>
+                        <input id="cvc" type="text" inputmode="numeric" formControlName="cvc" autocomplete="cc-csc" placeholder="123" />
+                      </div>
+                    </div>
+                    <p class="hint">
+                      Demo mode — {{ demoApproveCard }} approves · {{ demoDeclineCard }} declines.
+                    </p>
+                    <button class="btn" type="submit" [disabled]="paymentState() === 'processing'">
+                      {{ paymentState() === 'processing' ? 'Processing…' : 'Pay now' }}
+                    </button>
+                  </form>
+                </div>
+              } @else {
+                <div class="secure-panel pix-panel">
+                  <p class="secure-badge">🔒 Demo Pix key — no real payment provider is connected</p>
+                  <tw-qr-code [value]="demoPixKey" [size]="140" />
+                  <p class="pix-key">{{ demoPixKey }}</p>
+                  <button class="btn secondary" type="button" (click)="copyPixKey()">Copy Pix key</button>
+                  <button class="btn" type="button" [disabled]="paymentState() === 'processing'" (click)="payWithPix()">
+                    {{ paymentState() === 'processing' ? 'Processing…' : "I've paid" }}
+                  </button>
+                </div>
+              }
 
-        <button class="btn" type="submit" [disabled]="paymentForm.invalid || payingSubmitting()">
-          {{ payingSubmitting() ? 'Processing…' : 'Pay now' }}
-        </button>
-      </form>
-    </div>
+              @if (paymentState() === 'processing') {
+                <p class="processing-status" role="status" aria-live="polite">Processing your payment…</p>
+              }
+            </div>
+          }
+        }
+      </div>
+    }
   }
 }

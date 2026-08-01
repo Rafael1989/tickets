@@ -526,7 +526,8 @@ public class DevDataSeeder implements ApplicationRunner {
     private void payForBooking(String username, BookingDetailResponse booking) {
         SeedAuthContext.runAs(username, "CUSTOMER", () -> paymentService.recordPayment(
                 booking.booking().id(),
-                new PaymentRequest(booking.booking().totalAmount(), "card", "SEED-PAY-" + booking.booking().id())));
+                new PaymentRequest(booking.booking().totalAmount(), "card", "SEED-PAY-" + booking.booking().id(),
+                        "4242424242424242")));
     }
 
     private void settleRefund(List<User> support, int index, Long refundId, RefundDecision decision) {

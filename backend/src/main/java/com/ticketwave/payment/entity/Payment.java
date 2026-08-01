@@ -54,4 +54,7 @@ public class Payment {
 
     @Column(name = "paid_at")
     private Instant paidAt;
+
+    @Column(name = "failure_reason", length = 100)
+    private String failureReason;
 }

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="2026-08-01-04" author="ticketwave">
+        <comment>
+            Bookings: adds payment_processing (set for the duration of a payment
+            attempt) and failed (set when a payment attempt is declined, and
+            retryable back into payment_processing) to the status state machine.
+        </comment>
+        <sql dbms="postgresql">
+            ALTER TABLE bookings DROP CONSTRAINT ck_bookings_status;
+            ALTER TABLE bookings ADD CONSTRAINT ck_bookings_status
+                CHECK (status IN ('initiated', 'payment_processing', 'confirmed', 'failed', 'cancelled'));
+        </sql>
+
+        <rollback>
+            <sql dbms="postgresql">
+                ALTER TABLE bookings DROP CONSTRAINT ck_bookings_status;
+                ALTER TABLE bookings ADD CONSTRAINT ck_bookings_status
+                    CHECK (status IN ('initiated', 'confirmed', 'cancelled'));
+            </sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -140,7 +140,7 @@ class RefundFlowIT {
                 schedule.getId(), List.of(new SeatSelection(seat.getId(), passenger.getId())), null));
 
         paymentService.recordPayment(created.booking().id(),
-                new PaymentRequest(created.booking().totalAmount(), "card", "PAY-REFUND-" + suffix));
+                new PaymentRequest(created.booking().totalAmount(), "card", "PAY-REFUND-" + suffix, "4242424242424242"));
 
         return created;
     }

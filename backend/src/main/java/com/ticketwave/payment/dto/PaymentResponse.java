@@ -12,6 +12,7 @@ public record PaymentResponse(
         String method,
         String reference,
         PaymentStatus status,
-        Instant paidAt
+        Instant paidAt,
+        String failureReason
 ) {
 }

@@ -1,9 +1,7 @@
 package com.ticketwave.payment.service;
 
 import com.ticketwave.booking.entity.Booking;
-import com.ticketwave.booking.entity.BookingStatus;
 import com.ticketwave.booking.exception.BookingNotFoundException;
-import com.ticketwave.booking.exception.InvalidBookingStateException;
 import com.ticketwave.booking.repository.BookingRepository;
 import com.ticketwave.booking.service.BookingService;
 import com.ticketwave.payment.dto.PaymentRequest;
@@ -18,21 +16,29 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.Optional;
 
 /**
  * Deliberately has no method-level @Transactional spanning the whole flow:
- * the payment insert and the booking confirmation are two independently
- * transactional steps (each repository call, and BookingService.confirmBooking,
- * already has its own boundary). This matters for idempotency — if the insert
- * hits the reference's UNIQUE constraint, only that one operation's
- * transaction rolls back, so the recovery read just afterward runs cleanly
- * instead of hitting "transaction aborted" against a poisoned outer
- * transaction (PostgreSQL aborts the whole transaction on a constraint
+ * the payment insert and the booking state transition are independently
+ * transactional steps (each repository call, and BookingService's own
+ * methods, already have their own boundary). This matters for idempotency —
+ * if the insert hits the reference's UNIQUE constraint, only that one
+ * operation's transaction rolls back, so the recovery read just afterward
+ * runs cleanly instead of hitting "transaction aborted" against a poisoned
+ * outer transaction (PostgreSQL aborts the whole transaction on a constraint
  * violation, not just the failed statement). The tradeoff is a small
- * eventual-consistency window if the process dies between the two steps
- * (payment recorded, booking not yet confirmed) — acceptable for now, and
- * a reconciliation job is the right place to close that gap later, not this
- * method.
+ * eventual-consistency window if the process dies between steps (e.g.
+ * booking left at PAYMENT_PROCESSING with no payment row) — acceptable for
+ * now, and a reconciliation job is the right place to close that gap later,
+ * not this method.
+ *
+ * There is no real payment gateway behind this (no Stripe/PSP integration in
+ * this stack) — CardDeclineSimulator stands in for one, deciding
+ * approve/decline from a card number that's never persisted. The whole
+ * decision is made synchronously within this one request, so
+ * PAYMENT_PROCESSING never actually sits open across requests, which is why
+ * there's no need to guard against the seat hold expiring mid-flight.
  */
 @Service
 public class PaymentServiceImpl implements PaymentService {
@@ -40,17 +46,20 @@ public class PaymentServiceImpl implements PaymentService {
     private final PaymentRepository paymentRepository;
     private final BookingRepository bookingRepository;
     private final BookingService bookingService;
+    private final CardDeclineSimulator cardDeclineSimulator;
     private final PaymentMapper paymentMapper;
 
     public PaymentServiceImpl(
             PaymentRepository paymentRepository,
             BookingRepository bookingRepository,
             BookingService bookingService,
+            CardDeclineSimulator cardDeclineSimulator,
             PaymentMapper paymentMapper
     ) {
         this.paymentRepository = paymentRepository;
         this.bookingRepository = bookingRepository;
         this.bookingService = bookingService;
+        this.cardDeclineSimulator = cardDeclineSimulator;
         this.paymentMapper = paymentMapper;
     }
 
@@ -65,13 +74,21 @@ public class PaymentServiceImpl implements PaymentService {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new BookingNotFoundException(bookingId));
 
-        if (booking.getStatus() != BookingStatus.INITIATED) {
-            throw new InvalidBookingStateException(bookingId, booking.getStatus(), BookingStatus.CONFIRMED);
-        }
-
+        // Checked before markPaymentProcessing so a mismatched request never
+        // leaves the booking stuck in PAYMENT_PROCESSING with no payment
+        // attempt actually underway to resolve it.
         if (request.amount().compareTo(booking.getTotalAmount()) != 0) {
             throw new PaymentAmountMismatchException(bookingId, booking.getTotalAmount(), request.amount());
         }
+
+        // Also what stops a stray payment attempt from reopening a booking
+        // that's already been settled: throws InvalidBookingStateException
+        // if the booking is CONFIRMED or CANCELLED. A concurrent request
+        // racing this same in-flight attempt (e.g. the same-reference retry
+        // below) re-affirms PAYMENT_PROCESSING rather than erroring.
+        bookingService.markPaymentProcessing(bookingId);
+
+        Optional<String> declineReason = cardDeclineSimulator.declineReasonFor(request.cardNumber());
 
         Payment payment;
         try {
@@ -80,8 +97,9 @@ public class PaymentServiceImpl implements PaymentService {
                     .amount(request.amount())
                     .method(request.method())
                     .reference(request.reference())
-                    .status(PaymentStatus.SUCCEEDED)
-                    .paidAt(Instant.now())
+                    .status(declineReason.isPresent() ? PaymentStatus.FAILED : PaymentStatus.SUCCEEDED)
+                    .failureReason(declineReason.orElse(null))
+                    .paidAt(declineReason.isPresent() ? null : Instant.now())
                     .build());
         } catch (DataIntegrityViolationException ex) {
             // Lost a race to a concurrent request carrying the same reference.
@@ -89,7 +107,11 @@ public class PaymentServiceImpl implements PaymentService {
                     .orElseThrow(() -> ex));
         }
 
-        bookingService.confirmBooking(bookingId);
+        if (declineReason.isPresent()) {
+            bookingService.failBooking(bookingId);
+        } else {
+            bookingService.confirmBooking(bookingId);
+        }
 
         return paymentMapper.toResponse(payment);
     }

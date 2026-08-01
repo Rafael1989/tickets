@@ -176,11 +176,71 @@ Angular Modern Standards: Ensured explicit mention of reactive patterns (RxJS/An
 
 ==========================================================
 
-   Please review and verify the entire implementation of the system against the following User Storie. Perform a code & functionality audit to confirm that the backend endpoints, database models, business logic, and Angular frontend components exist and work as expected:
+   > **Role:** Act as a Senior Full-Stack Engineer, Security Specialist, and UX/UI Designer specialized in Angular, Financial Integration Architecture, and Scalable Backend Systems.
+> I need you to perform a complete audit, architecture validation, and UI refactor based on **US4**:
+> ---
+> 
+> 
+> ### **Task 1: Code & Architecture Audit (US4)**
+> 
+> 
+> Please review and verify the entire system implementation against this User Story:
+> **US4 [Customer]: Secure payment processing and e-ticket generation.**
+> 1. **Payment Integration, Idempotency & Security:**
+> * Audit endpoints for initiating and processing payments (e.g., `POST /api/v1/payments/checkout`, `POST /api/v1/payments/webhook`).
+> * Verify **Idempotency Key mechanisms** (e.g., Redis-backed idempotency headers) to prevent duplicate charges on network retries or double-clicks.
+> * Check security best practices (PCI-DSS compliance scope reduction, webhook signature validation, secure payload handling, and handling of failed/declined transactions).
+> 
+> 
+> 2. **Booking State Machine & Concurrency Control:**
+> * Audit DB models (`Booking`, `Payment`, `Ticket`, `Passenger`) and verify state transitions (e.g., `PENDING` $\rightarrow$ `PAYMENT_PROCESSING` $\rightarrow$ `CONFIRMED` or `FAILED`).
+> * Confirm atomic DB transactions (ACID guarantees) to ensure seat holds transition to permanent bookings without race conditions or orphaned reservations.
+> 
+> 
+> 3. **PNR & E-Ticket Generation Engine:**
+> * Audit logic for generating unique, collision-free **PNR (Passenger Name Record)** codes.
+> * Verify background processing/queuing strategies (e.g., BullMQ, RabbitMQ, or async workers) for generating asynchronous E-Tickets (PDF format with QR Codes/Barcodes) and sending email/SMS notifications.
+> 
+> 
+> 
+> 
+> ---
+> 
+> 
+> ### **Task 2: Complete UI/UX Redesign & Implementation (Angular Frontend)**
+> 
+> 
+> The current payment checkout flow, confirmation screen, and e-ticket preview look outdated and lack proper feedback states. I need you to refactor and upgrade the Angular checkout and ticket components (`.html`, `.scss/Tailwind`, and `.ts`).
+> **UI/UX Requirements:**
+> * **Secure Payment Checkout Experience:**
+> * Modern payment checkout interface supporting multiple payment options (Credit Card with PCI-compliant iframe/Stripe Elements container, Instant Pix/Digital Wallet QR Code with copy-paste key, etc.).
+> * Built-in dynamic state indicators for payment processing (loading spinners, secure encryption badges, immediate visual error alerts for declined cards).
+> 
+> 
+> * **Real-Time Payment Countdown & Session Timeout:**
+> * Visual timer indicator for the remaining time to complete the payment before the held seats expire.
+> 
+> 
+> * **E-Ticket & Booking Confirmation View:**
+> * Clean, printable, and mobile-friendly **E-Ticket Card** featuring customer details, trip schedule, route, clear PNR code display, seat numbers, and a high-contrast **QR Code** for check-in scanning.
+> * Instant actions: "Download PDF", "Add to Apple/Google Wallet", and "Email Ticket".
+> 
+> 
+> * **State Management & Modern Angular Patterns:**
+> * Reactive state control using **Angular Signals** and **RxJS**.
+> * Robust handling for async payment confirmation states (e.g., polling or WebSockets waiting for payment webhook confirmation).
+> * Skeleton loaders, success celebration micro-animations (confetti or checkmark transitions), and clear failure recovery flows.
+> 
+> 
+> * **Accessibility & Mobile-First Design:**
+> * Fully responsive across mobile and desktop viewports, WCAG 2.1 AA compliant (high contrast, full keyboard navigation, screen-reader friendly).
+> 
+> 
+> 
+> 
+> Please output the audit feedback alongside the revised Angular component code.
 
-4. US4 [Customer]: Secure payment processing and e-ticket generation.
-   - Verify payment integration/recording with idempotency guarantees.
-   - Confirm booking state transition to CONFIRMED and PNR / e-ticket generation.
+   ================================================
 
    Please review and verify the entire implementation of the system against the following User Storie. Perform a code & functionality audit to confirm that the backend endpoints, database models, business logic, and Angular frontend components exist and work as expected:
 

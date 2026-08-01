@@ -112,9 +112,9 @@ class BookingControllerTest {
 
     @Test
     void recordPayment_withValidTokenAndPayload_returns201() throws Exception {
-        PaymentRequest request = new PaymentRequest(new BigDecimal("50.00"), "card", "REF-1");
+        PaymentRequest request = new PaymentRequest(new BigDecimal("50.00"), "card", "REF-1", "4242424242424242");
         PaymentResponse response = new PaymentResponse(1L, 500L, new BigDecimal("50.00"), "card", "REF-1",
-                PaymentStatus.SUCCEEDED, Instant.now());
+                PaymentStatus.SUCCEEDED, Instant.now(), null);
         given(paymentService.recordPayment(eq(500L), any())).willReturn(response);
 
         mockMvc.perform(post("/api/bookings/500/payments")

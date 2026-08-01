@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="2026-08-01-05" author="ticketwave">
+        <comment>
+            Payments: failure_reason records the simulated gateway's decline
+            reason for a FAILED payment (e.g. "Your card was declined."). Never
+            populated for a SUCCEEDED payment.
+        </comment>
+        <addColumn tableName="payments">
+            <column name="failure_reason" type="VARCHAR(100)">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+
+        <rollback>
+            <dropColumn tableName="payments" columnName="failure_reason"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

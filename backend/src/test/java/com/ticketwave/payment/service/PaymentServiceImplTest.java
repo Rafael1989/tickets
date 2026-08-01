@@ -41,6 +41,8 @@ class PaymentServiceImplTest {
     @Mock
     private BookingService bookingService;
     @Mock
+    private CardDeclineSimulator cardDeclineSimulator;
+    @Mock
     private PaymentMapper paymentMapper;
 
     @InjectMocks
@@ -60,11 +62,11 @@ class PaymentServiceImplTest {
         Payment existing = payment(1L, "REF-1");
         given(paymentRepository.findByReference("REF-1")).willReturn(Optional.of(existing));
         PaymentResponse expectedResponse = new PaymentResponse(1L, 500L, new BigDecimal("50.00"), "card", "REF-1",
-                PaymentStatus.SUCCEEDED, Instant.now());
+                PaymentStatus.SUCCEEDED, Instant.now(), null);
         given(paymentMapper.toResponse(existing)).willReturn(expectedResponse);
 
         PaymentResponse response = paymentService.recordPayment(500L,
-                new PaymentRequest(new BigDecimal("50.00"), "card", "REF-1"));
+                new PaymentRequest(new BigDecimal("50.00"), "card", "REF-1", null));
 
         assertThat(response).isEqualTo(expectedResponse);
         verify(bookingRepository, never()).findById(any());
@@ -78,34 +80,37 @@ class PaymentServiceImplTest {
         given(bookingRepository.findById(500L)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> paymentService.recordPayment(500L,
-                new PaymentRequest(new BigDecimal("50.00"), "card", "REF-1")))
+                new PaymentRequest(new BigDecimal("50.00"), "card", "REF-1", null)))
                 .isInstanceOf(BookingNotFoundException.class);
     }
 
     @Test
-    void recordPayment_whenBookingNotInitiated_throwsInvalidBookingStateException() {
+    void recordPayment_whenBookingNotAwaitingPayment_throwsInvalidBookingStateException() {
+        Booking booking = booking(500L, BookingStatus.CANCELLED, new BigDecimal("50.00"));
         given(paymentRepository.findByReference("REF-1")).willReturn(Optional.empty());
-        given(bookingRepository.findById(500L))
-                .willReturn(Optional.of(booking(500L, BookingStatus.CANCELLED, new BigDecimal("50.00"))));
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+        given(bookingService.markPaymentProcessing(500L))
+                .willThrow(new InvalidBookingStateException(500L, BookingStatus.CANCELLED, BookingStatus.PAYMENT_PROCESSING));
 
         assertThatThrownBy(() -> paymentService.recordPayment(500L,
-                new PaymentRequest(new BigDecimal("50.00"), "card", "REF-1")))
+                new PaymentRequest(new BigDecimal("50.00"), "card", "REF-1", null)))
                 .isInstanceOf(InvalidBookingStateException.class);
 
         verify(paymentRepository, never()).save(any());
     }
 
     @Test
-    void recordPayment_whenAmountDoesNotMatchBookingTotal_throwsPaymentAmountMismatchException() {
+    void recordPayment_whenAmountDoesNotMatchBookingTotal_throwsPaymentAmountMismatchExceptionWithoutMarkingProcessing() {
         given(paymentRepository.findByReference("REF-1")).willReturn(Optional.empty());
         given(bookingRepository.findById(500L))
                 .willReturn(Optional.of(booking(500L, BookingStatus.INITIATED, new BigDecimal("50.00"))));
 
         assertThatThrownBy(() -> paymentService.recordPayment(500L,
-                new PaymentRequest(new BigDecimal("49.00"), "card", "REF-1")))
+                new PaymentRequest(new BigDecimal("49.00"), "card", "REF-1", null)))
                 .isInstanceOf(PaymentAmountMismatchException.class);
 
         verify(paymentRepository, never()).save(any());
+        verify(bookingService, never()).markPaymentProcessing(any());
         verify(bookingService, never()).confirmBooking(any());
     }
 
@@ -116,19 +121,49 @@ class PaymentServiceImplTest {
         given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
         given(paymentRepository.save(any(Payment.class))).willAnswer(invocation -> invocation.getArgument(0));
         PaymentResponse expectedResponse = new PaymentResponse(1L, 500L, new BigDecimal("50.00"), "card", "REF-1",
-                PaymentStatus.SUCCEEDED, Instant.now());
+                PaymentStatus.SUCCEEDED, Instant.now(), null);
         given(paymentMapper.toResponse(any(Payment.class))).willReturn(expectedResponse);
 
         PaymentResponse response = paymentService.recordPayment(500L,
-                new PaymentRequest(new BigDecimal("50.00"), "card", "REF-1"));
+                new PaymentRequest(new BigDecimal("50.00"), "card", "REF-1", "4242424242424242"));
 
         assertThat(response).isEqualTo(expectedResponse);
+        verify(bookingService).markPaymentProcessing(500L);
         verify(bookingService).confirmBooking(500L);
+        verify(bookingService, never()).failBooking(any());
 
         var captor = org.mockito.ArgumentCaptor.forClass(Payment.class);
         verify(paymentRepository).save(captor.capture());
         assertThat(captor.getValue().getStatus()).isEqualTo(PaymentStatus.SUCCEEDED);
         assertThat(captor.getValue().getPaidAt()).isNotNull();
+        assertThat(captor.getValue().getFailureReason()).isNull();
+    }
+
+    @Test
+    void recordPayment_withKnownDeclineCard_savesFailedPaymentAndFailsBookingWithoutConfirming() {
+        Booking booking = booking(500L, BookingStatus.INITIATED, new BigDecimal("50.00"));
+        given(paymentRepository.findByReference("REF-1")).willReturn(Optional.empty());
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+        given(cardDeclineSimulator.declineReasonFor("4000000000000002"))
+                .willReturn(Optional.of("Your card was declined."));
+        given(paymentRepository.save(any(Payment.class))).willAnswer(invocation -> invocation.getArgument(0));
+        PaymentResponse expectedResponse = new PaymentResponse(1L, 500L, new BigDecimal("50.00"), "card", "REF-1",
+                PaymentStatus.FAILED, null, "Your card was declined.");
+        given(paymentMapper.toResponse(any(Payment.class))).willReturn(expectedResponse);
+
+        PaymentResponse response = paymentService.recordPayment(500L,
+                new PaymentRequest(new BigDecimal("50.00"), "card", "REF-1", "4000000000000002"));
+
+        assertThat(response).isEqualTo(expectedResponse);
+        verify(bookingService).markPaymentProcessing(500L);
+        verify(bookingService).failBooking(500L);
+        verify(bookingService, never()).confirmBooking(any());
+
+        var captor = org.mockito.ArgumentCaptor.forClass(Payment.class);
+        verify(paymentRepository).save(captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo(PaymentStatus.FAILED);
+        assertThat(captor.getValue().getFailureReason()).isEqualTo("Your card was declined.");
+        assertThat(captor.getValue().getPaidAt()).isNull();
     }
 
     @Test
@@ -140,11 +175,11 @@ class PaymentServiceImplTest {
         given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
         given(paymentRepository.save(any(Payment.class))).willThrow(new DataIntegrityViolationException("duplicate key"));
         PaymentResponse expectedResponse = new PaymentResponse(1L, 500L, new BigDecimal("50.00"), "card", "REF-1",
-                PaymentStatus.SUCCEEDED, Instant.now());
+                PaymentStatus.SUCCEEDED, Instant.now(), null);
         given(paymentMapper.toResponse(any(Payment.class))).willReturn(expectedResponse);
 
         PaymentResponse response = paymentService.recordPayment(500L,
-                new PaymentRequest(new BigDecimal("50.00"), "card", "REF-1"));
+                new PaymentRequest(new BigDecimal("50.00"), "card", "REF-1", null));
 
         assertThat(response).isEqualTo(expectedResponse);
         verify(bookingService, never()).confirmBooking(any());
@@ -159,7 +194,7 @@ class PaymentServiceImplTest {
         given(paymentRepository.save(any(Payment.class))).willThrow(original);
 
         assertThatThrownBy(() -> paymentService.recordPayment(500L,
-                new PaymentRequest(new BigDecimal("50.00"), "card", "REF-1")))
+                new PaymentRequest(new BigDecimal("50.00"), "card", "REF-1", null)))
                 .isSameAs(original);
     }
 }

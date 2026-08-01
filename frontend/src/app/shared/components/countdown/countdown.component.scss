@@ -1,0 +1,21 @@
+.countdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  padding: 0.2rem 0.6rem;
+  border-radius: 0.3rem;
+  background: #eaf2f8;
+  color: #1f618d;
+
+  &.urgent {
+    background: #fdebd0;
+    color: #9c5a00;
+  }
+
+  &.expired {
+    background: #f9e2e0;
+    color: #c0392b;
+  }
+}

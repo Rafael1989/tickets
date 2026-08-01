@@ -1,0 +1,5 @@
+@if (formatted(); as time) {
+  <span class="countdown" [class.urgent]="isUrgent()" [class.expired]="isExpired()" role="timer" aria-live="off">
+    {{ isExpired() ? 'Expired' : time }}
+  </span>
+}

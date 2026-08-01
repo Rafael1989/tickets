@@ -1,4 +1,4 @@
-export type BookingStatus = 'INITIATED' | 'CONFIRMED' | 'CANCELLED';
+export type BookingStatus = 'INITIATED' | 'PAYMENT_PROCESSING' | 'CONFIRMED' | 'FAILED' | 'CANCELLED';
 
 export interface SeatSelection {
   seatId: number;

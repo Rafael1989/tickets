@@ -19,7 +19,7 @@ class PaymentMapperTest {
     @Test
     void toEntity_setsBookingAndAmountMethodReference_ignoresServerControlledFields() {
         Booking booking = Booking.builder().id(500L).build();
-        PaymentRequest request = new PaymentRequest(new BigDecimal("50.00"), "card", "REF-1");
+        PaymentRequest request = new PaymentRequest(new BigDecimal("50.00"), "card", "REF-1", "4242424242424242");
 
         Payment payment = mapper.toEntity(request, booking);
 
@@ -30,6 +30,7 @@ class PaymentMapperTest {
         assertThat(payment.getId()).isNull();
         assertThat(payment.getStatus()).isNull();
         assertThat(payment.getPaidAt()).isNull();
+        assertThat(payment.getFailureReason()).isNull();
     }
 
     @Test
@@ -82,5 +83,24 @@ class PaymentMapperTest {
         assertThat(response.reference()).isEqualTo("REF-1");
         assertThat(response.status()).isEqualTo(PaymentStatus.SUCCEEDED);
         assertThat(response.paidAt()).isEqualTo(Instant.parse("2026-08-01T00:00:00Z"));
+        assertThat(response.failureReason()).isNull();
+    }
+
+    @Test
+    void toResponse_forFailedPayment_carriesFailureReason() {
+        Payment payment = Payment.builder()
+                .id(1L)
+                .booking(Booking.builder().id(500L).build())
+                .amount(new BigDecimal("50.00"))
+                .method("card")
+                .reference("REF-1")
+                .status(PaymentStatus.FAILED)
+                .failureReason("Your card was declined.")
+                .build();
+
+        PaymentResponse response = mapper.toResponse(payment);
+
+        assertThat(response.status()).isEqualTo(PaymentStatus.FAILED);
+        assertThat(response.failureReason()).isEqualTo("Your card was declined.");
     }
 }

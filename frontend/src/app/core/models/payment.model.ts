@@ -6,6 +6,8 @@ export interface PaymentRequest {
   amount: number;
   method: string;
   reference: string;
+  /** Only meaningful for method "card" — never persisted server-side, only used to decide the simulated gateway's outcome. */
+  cardNumber?: string | null;
 }
 
 export interface PaymentResponse {
@@ -15,7 +17,8 @@ export interface PaymentResponse {
   method: string;
   reference: string;
   status: PaymentStatus;
-  paidAt: string;
+  paidAt: string | null;
+  failureReason: string | null;
 }
 
 export interface RefundResponse {

@@ -1,21 +1,39 @@
-import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, ElementRef, OnInit, afterRenderEffect, computed, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Router } from '@angular/router';
-import { finalize } from 'rxjs';
+import { Router, RouterLink } from '@angular/router';
+import { delay, finalize } from 'rxjs';
 import { BookingDetailResponse } from '../../core/models/booking.model';
+import { SeatResponse } from '../../core/models/catalog.model';
 import { PassengerResponse } from '../../core/models/passenger.model';
 import { PaymentResponse } from '../../core/models/payment.model';
 import { BookingDraft, BookingDraftService } from '../../core/services/booking-draft.service';
 import { BookingService } from '../../core/services/booking.service';
+import { NotificationService } from '../../core/services/notification.service';
 import { PassengerService } from '../../core/services/passenger.service';
 import { PaymentService } from '../../core/services/payment.service';
+import { ScheduleService } from '../../core/services/schedule.service';
+import { CountdownComponent } from '../../shared/components/countdown/countdown.component';
+import { ETicketCardComponent } from '../../shared/components/e-ticket-card/e-ticket-card.component';
+import { QrCodeComponent } from '../../shared/components/qr-code/qr-code.component';
 
 type CheckoutStep = 'assign' | 'payment';
+type PaymentMethod = 'card' | 'pix';
+type PaymentState = 'idle' | 'processing' | 'succeeded' | 'declined';
+
+/** Simulated gateway's own test PANs (see backend CardDeclineSimulator) — surfaced so a demo user can actually exercise both outcomes. */
+const DEMO_APPROVE_CARD = '4242 4242 4242 4242';
+const DEMO_DECLINE_CARD = '4000 0000 0000 0002';
+
+/** Static, obviously-fake demo Pix key — no real payment provider is wired up. */
+const DEMO_PIX_KEY = 'ticketwave-demo-pix@example.com';
+
+/** A short, perceptible minimum "processing" time on top of whatever the (synchronous, usually near-instant) API actually takes. */
+const MIN_PROCESSING_MS = 1200;
 
 @Component({
   selector: 'tw-checkout',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, RouterLink, CountdownComponent, ETicketCardComponent, QrCodeComponent],
   templateUrl: './checkout.component.html',
   styleUrl: './checkout.component.scss',
 })
@@ -26,7 +44,13 @@ export class CheckoutComponent implements OnInit {
   private readonly passengerService = inject(PassengerService);
   private readonly bookingService = inject(BookingService);
   private readonly paymentService = inject(PaymentService);
+  private readonly scheduleService = inject(ScheduleService);
+  private readonly notifications = inject(NotificationService);
   private readonly destroyRef = inject(DestroyRef);
+
+  readonly demoApproveCard = DEMO_APPROVE_CARD;
+  readonly demoDeclineCard = DEMO_DECLINE_CARD;
+  readonly demoPixKey = DEMO_PIX_KEY;
 
   readonly draft = signal<BookingDraft | null>(null);
   readonly passengers = signal<PassengerResponse[]>([]);
@@ -35,8 +59,16 @@ export class CheckoutComponent implements OnInit {
   readonly booking = signal<BookingDetailResponse | null>(null);
   readonly payment = signal<PaymentResponse | null>(null);
   readonly creatingBooking = signal(false);
-  readonly payingSubmitting = signal(false);
   readonly addingPassenger = signal(false);
+
+  readonly paymentMethod = signal<PaymentMethod>('card');
+  readonly paymentState = signal<PaymentState>('idle');
+  readonly holdExpired = signal(false);
+
+  /** Re-fetched after createBooking so the payment-step countdown reflects the fresh hold TTL createBooking's holdSeat() renews, not the stale one from seat-selection. */
+  private readonly paymentStepSeats = signal<SeatResponse[] | null>(null);
+
+  private readonly resultHeading = viewChild<ElementRef<HTMLElement>>('resultHeading');
 
   readonly allSeatsAssigned = computed(() => {
     const draft = this.draft();
@@ -45,6 +77,15 @@ export class CheckoutComponent implements OnInit {
     }
     const assignments = this.seatAssignments();
     return draft.seats.every((seat) => !!assignments[seat.id]);
+  });
+
+  readonly holdDeadline = computed(() => {
+    const seats = this.step() === 'payment' ? (this.paymentStepSeats() ?? []) : (this.draft()?.seats ?? []);
+    const deadlines = seats.map((seat) => seat.heldUntil).filter((value): value is string => value !== null);
+    if (deadlines.length === 0) {
+      return null;
+    }
+    return deadlines.reduce((earliest, current) => (current < earliest ? current : earliest));
   });
 
   readonly promoForm = this.fb.nonNullable.group({
@@ -58,10 +99,21 @@ export class CheckoutComponent implements OnInit {
     idNumber: ['', Validators.required],
   });
 
-  readonly paymentForm = this.fb.nonNullable.group({
-    method: ['card', Validators.required],
-    reference: [crypto.randomUUID(), Validators.required],
+  readonly cardForm = this.fb.nonNullable.group({
+    cardholderName: ['', Validators.required],
+    cardNumber: ['', [Validators.required, Validators.pattern(/^[0-9 ]{12,24}$/)]],
+    expiry: ['', [Validators.required, Validators.pattern(/^\d{2}\/\d{2}$/)]],
+    cvc: ['', [Validators.required, Validators.pattern(/^\d{3,4}$/)]],
   });
+
+  constructor() {
+    afterRenderEffect(() => {
+      const state = this.paymentState();
+      if (state === 'succeeded' || state === 'declined') {
+        this.resultHeading()?.nativeElement.focus();
+      }
+    });
+  }
 
   ngOnInit(): void {
     const draft = this.bookingDraftService.draft();
@@ -135,29 +187,98 @@ export class CheckoutComponent implements OnInit {
         next: (booking) => {
           this.booking.set(booking);
           this.step.set('payment');
+          this.refreshPaymentStepSeats(draft.schedule.scheduleId, booking);
         },
       });
   }
 
-  pay(): void {
+  private refreshPaymentStepSeats(scheduleId: number, booking: BookingDetailResponse): void {
+    const bookedSeatIds = new Set(booking.items.map((item) => item.seatId));
+    this.scheduleService
+      .getSeats(scheduleId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (seats) => this.paymentStepSeats.set(seats.filter((seat) => bookedSeatIds.has(seat.id))),
+      });
+  }
+
+  onHoldExpired(): void {
+    if (this.paymentState() !== 'succeeded') {
+      this.holdExpired.set(true);
+    }
+  }
+
+  selectPaymentMethod(method: PaymentMethod): void {
+    if (this.paymentState() === 'processing') {
+      return;
+    }
+    this.paymentMethod.set(method);
+  }
+
+  formatCardNumberInput(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const digitsOnly = input.value.replace(/\D/g, '').slice(0, 19);
+    const grouped = (digitsOnly.match(/.{1,4}/g) ?? []).join(' ');
+    this.cardForm.controls.cardNumber.setValue(grouped);
+  }
+
+  payWithCard(): void {
+    if (this.cardForm.invalid) {
+      this.cardForm.markAllAsTouched();
+      return;
+    }
+    this.submitPayment('card', this.cardForm.getRawValue().cardNumber);
+  }
+
+  payWithPix(): void {
+    this.submitPayment('pix', null);
+  }
+
+  copyPixKey(): void {
+    navigator.clipboard
+      ?.writeText(this.demoPixKey)
+      .then(() => this.notifications.info('Pix key copied.'))
+      .catch(() => this.notifications.error('Could not copy the Pix key.'));
+  }
+
+  private submitPayment(method: PaymentMethod, cardNumber: string | null): void {
     const booking = this.booking();
-    if (!booking || this.paymentForm.invalid || this.payingSubmitting()) {
+    if (!booking || this.paymentState() === 'processing' || this.holdExpired()) {
       return;
     }
 
-    this.payingSubmitting.set(true);
+    this.paymentState.set('processing');
     this.paymentService
       .recordPayment(booking.booking.id, {
         amount: booking.booking.totalAmount,
-        ...this.paymentForm.getRawValue(),
+        method,
+        reference: crypto.randomUUID(),
+        cardNumber,
       })
-      .pipe(finalize(() => this.payingSubmitting.set(false)), takeUntilDestroyed(this.destroyRef))
+      .pipe(delay(MIN_PROCESSING_MS), takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (payment) => {
           this.payment.set(payment);
-          this.bookingDraftService.clear();
-          this.router.navigate(['/bookings', booking.booking.id]);
+          if (payment.status === 'SUCCEEDED') {
+            this.paymentState.set('succeeded');
+            this.bookingDraftService.clear();
+          } else {
+            this.paymentState.set('declined');
+          }
         },
+        error: () => this.paymentState.set('idle'),
       });
+  }
+
+  retryPayment(): void {
+    this.payment.set(null);
+    this.paymentState.set('idle');
+  }
+
+  viewBooking(): void {
+    const booking = this.booking();
+    if (booking) {
+      this.router.navigate(['/bookings', booking.booking.id]);
+    }
   }
 }

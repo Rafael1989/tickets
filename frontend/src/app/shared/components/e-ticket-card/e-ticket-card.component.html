@@ -1,0 +1,62 @@
+<article class="e-ticket" aria-label="E-ticket">
+  <div class="e-ticket__main">
+    <header class="e-ticket__header">
+      <div>
+        @if (schedule(); as s) {
+          <p class="e-ticket__route">
+            {{ s.origin ?? s.venue }}
+            @if (s.destination) {
+              <span aria-hidden="true"> &rarr; </span>
+              <span class="sr-only">to</span>
+              {{ s.destination }}
+            }
+          </p>
+          <p class="e-ticket__time">Departs {{ s.departureTime | date: 'medium' }}</p>
+        } @else {
+          <p class="e-ticket__route skeleton">&nbsp;</p>
+        }
+      </div>
+      <div class="e-ticket__pnr">
+        <span class="e-ticket__pnr-label">PNR</span>
+        <span class="e-ticket__pnr-code">{{ booking().booking.pnr }}</span>
+      </div>
+    </header>
+
+    <table class="e-ticket__items">
+      <caption class="sr-only">Seats and passengers on this booking</caption>
+      <thead>
+        <tr>
+          <th scope="col">Seat</th>
+          <th scope="col">Passenger</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (item of booking().items; track item.id) {
+          <tr>
+            <td>{{ seatLabel(item.seatId) }}</td>
+            <td>{{ passengerName(item.passengerId) }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <div class="e-ticket__stub">
+    <tw-qr-code [value]="checkInCode()" [size]="120" />
+    <p class="e-ticket__stub-hint">Scan at check-in</p>
+
+    <div class="e-ticket__actions">
+      <button type="button" class="btn secondary" (click)="downloadPdf()">Download PDF</button>
+      <button type="button" class="btn secondary" (click)="emailTicket()">Email ticket</button>
+      <button
+        type="button"
+        class="btn secondary"
+        disabled
+        title="Apple/Google Wallet passes need signing credentials that aren't configured for this demo"
+        aria-label="Add to Wallet — unavailable in this demo, requires wallet signing credentials"
+      >
+        Add to Wallet
+      </button>
+    </div>
+  </div>
+</article>

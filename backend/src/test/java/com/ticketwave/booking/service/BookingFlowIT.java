@@ -159,6 +159,7 @@ class BookingFlowIT {
         assertThat(created.booking().totalAmount()).isEqualByComparingTo("30.00");
         assertThat(seatRepository.findById(seat.getId()).orElseThrow().getStatus()).isEqualTo(SeatStatus.HELD);
 
+        bookingService.markPaymentProcessing(created.booking().id());
         BookingDetailResponse confirmed = bookingService.confirmBooking(created.booking().id());
 
         assertThat(confirmed.booking().status()).isEqualTo(BookingStatus.CONFIRMED);

@@ -314,8 +314,8 @@ class BookingServiceImplTest {
     }
 
     @Test
-    void confirmBooking_whenInitiated_confirmsEachSeatAndTransitionsToConfirmed() {
-        Booking booking = Booking.builder().id(500L).status(BookingStatus.INITIATED)
+    void confirmBooking_whenPaymentProcessing_confirmsEachSeatAndTransitionsToConfirmed() {
+        Booking booking = Booking.builder().id(500L).status(BookingStatus.PAYMENT_PROCESSING)
                 .totalAmount(new BigDecimal("50.00")).build();
         BookingItem item1 = BookingItem.builder().id(1L).booking(booking).seat(seat(2L, BigDecimal.ONE)).build();
         BookingItem item2 = BookingItem.builder().id(2L).booking(booking).seat(seat(5L, BigDecimal.ONE)).build();
@@ -335,8 +335,10 @@ class BookingServiceImplTest {
     }
 
     @Test
-    void confirmBooking_whenNotInitiated_throwsInvalidBookingStateExceptionWithoutTouchingSeats() {
-        Booking booking = Booking.builder().id(500L).status(BookingStatus.CANCELLED).build();
+    void confirmBooking_whenNotPaymentProcessing_throwsInvalidBookingStateExceptionWithoutTouchingSeats() {
+        // INITIATED itself is no longer enough - a payment attempt must have
+        // been marked in flight first via markPaymentProcessing.
+        Booking booking = Booking.builder().id(500L).status(BookingStatus.INITIATED).build();
         given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
 
         assertThatThrownBy(() -> bookingService.confirmBooking(500L))
@@ -351,6 +353,89 @@ class BookingServiceImplTest {
 
         assertThatThrownBy(() -> bookingService.confirmBooking(999L))
                 .isInstanceOf(BookingNotFoundException.class);
+    }
+
+    @Test
+    void markPaymentProcessing_whenInitiated_transitionsToPaymentProcessing() {
+        Booking booking = Booking.builder().id(500L).status(BookingStatus.INITIATED)
+                .totalAmount(new BigDecimal("50.00")).build();
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+        given(bookingItemRepository.findByBookingId(500L)).willReturn(List.of());
+        given(bookingMapper.toResponse(booking)).willReturn(
+                new BookingResponse(500L, 1L, 10L, "ABC234", Instant.now(), BookingStatus.PAYMENT_PROCESSING, booking.getTotalAmount(), null));
+
+        bookingService.markPaymentProcessing(500L);
+
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.PAYMENT_PROCESSING);
+    }
+
+    @Test
+    void markPaymentProcessing_whenFailed_transitionsToPaymentProcessingAsARetry() {
+        Booking booking = Booking.builder().id(500L).status(BookingStatus.FAILED)
+                .totalAmount(new BigDecimal("50.00")).build();
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+        given(bookingItemRepository.findByBookingId(500L)).willReturn(List.of());
+        given(bookingMapper.toResponse(booking)).willReturn(
+                new BookingResponse(500L, 1L, 10L, "ABC234", Instant.now(), BookingStatus.PAYMENT_PROCESSING, booking.getTotalAmount(), null));
+
+        bookingService.markPaymentProcessing(500L);
+
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.PAYMENT_PROCESSING);
+    }
+
+    @Test
+    void markPaymentProcessing_whenAlreadyConfirmed_throwsInvalidBookingStateException() {
+        Booking booking = Booking.builder().id(500L).status(BookingStatus.CONFIRMED).build();
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+
+        assertThatThrownBy(() -> bookingService.markPaymentProcessing(500L))
+                .isInstanceOf(InvalidBookingStateException.class);
+    }
+
+    @Test
+    void markPaymentProcessing_whenAlreadyPaymentProcessing_isANoOpReaffirm() {
+        // A concurrent request racing the same in-flight attempt (e.g. a
+        // same-reference retry) must re-affirm rather than error, or the
+        // idempotent-reference recovery path in PaymentServiceImpl would
+        // never get a chance to run.
+        Booking booking = Booking.builder().id(500L).status(BookingStatus.PAYMENT_PROCESSING)
+                .totalAmount(new BigDecimal("50.00")).build();
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+        given(bookingItemRepository.findByBookingId(500L)).willReturn(List.of());
+        given(bookingMapper.toResponse(booking)).willReturn(
+                new BookingResponse(500L, 1L, 10L, "ABC234", Instant.now(), BookingStatus.PAYMENT_PROCESSING, booking.getTotalAmount(), null));
+
+        bookingService.markPaymentProcessing(500L);
+
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.PAYMENT_PROCESSING);
+    }
+
+    @Test
+    void failBooking_whenPaymentProcessing_transitionsToFailedWithoutReleasingSeats() {
+        Booking booking = Booking.builder().id(500L).status(BookingStatus.PAYMENT_PROCESSING)
+                .totalAmount(new BigDecimal("50.00")).build();
+        BookingItem item = BookingItem.builder().id(1L).booking(booking).seat(seat(2L, BigDecimal.ONE)).build();
+
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+        given(bookingItemRepository.findByBookingId(500L)).willReturn(List.of(item));
+        given(bookingMapper.toResponse(booking)).willReturn(
+                new BookingResponse(500L, 1L, 10L, "ABC234", Instant.now(), BookingStatus.FAILED, booking.getTotalAmount(), null));
+        given(bookingItemMapper.toResponse(any(BookingItem.class))).willReturn(
+                new BookingItemResponse(1L, 500L, 2L, 100L, BigDecimal.ONE));
+
+        bookingService.failBooking(500L);
+
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.FAILED);
+        verify(seatHoldService, never()).releaseSeat(anyLong());
+    }
+
+    @Test
+    void failBooking_whenNotPaymentProcessing_throwsInvalidBookingStateException() {
+        Booking booking = Booking.builder().id(500L).status(BookingStatus.INITIATED).build();
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+
+        assertThatThrownBy(() -> bookingService.failBooking(500L))
+                .isInstanceOf(InvalidBookingStateException.class);
     }
 
     @Test
@@ -403,6 +488,36 @@ class BookingServiceImplTest {
                 .isInstanceOf(InvalidBookingStateException.class);
 
         verify(seatHoldService, never()).releaseSeat(anyLong());
+    }
+
+    @Test
+    void cancelBooking_whenPaymentProcessing_throwsInvalidBookingStateExceptionWithoutTouchingSeats() {
+        Booking booking = Booking.builder().id(500L).status(BookingStatus.PAYMENT_PROCESSING).build();
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+
+        assertThatThrownBy(() -> bookingService.cancelBooking(500L))
+                .isInstanceOf(InvalidBookingStateException.class);
+
+        verify(seatHoldService, never()).releaseSeat(anyLong());
+    }
+
+    @Test
+    void cancelBooking_whenFailed_releasesEachSeatAndTransitionsToCancelled() {
+        Booking booking = Booking.builder().id(500L).status(BookingStatus.FAILED)
+                .totalAmount(new BigDecimal("50.00")).build();
+        BookingItem item = BookingItem.builder().id(1L).booking(booking).seat(seat(2L, BigDecimal.ONE)).build();
+
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+        given(bookingItemRepository.findByBookingId(500L)).willReturn(List.of(item));
+        given(bookingMapper.toResponse(booking)).willReturn(
+                new BookingResponse(500L, 1L, 10L, "ABC234", Instant.now(), BookingStatus.CANCELLED, booking.getTotalAmount(), null));
+        given(bookingItemMapper.toResponse(any(BookingItem.class))).willReturn(
+                new BookingItemResponse(1L, 500L, 2L, 100L, BigDecimal.ONE));
+
+        bookingService.cancelBooking(500L);
+
+        verify(seatHoldService).releaseSeat(2L);
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.CANCELLED);
     }
 
     @Test

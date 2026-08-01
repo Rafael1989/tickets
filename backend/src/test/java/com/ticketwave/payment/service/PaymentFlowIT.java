@@ -149,7 +149,7 @@ class PaymentFlowIT {
         BigDecimal total = created.booking().totalAmount();
 
         PaymentResponse response = paymentService.recordPayment(bookingId,
-                new PaymentRequest(total, "card", "PAY-HAPPY-1"));
+                new PaymentRequest(total, "card", "PAY-HAPPY-1", "4242424242424242"));
 
         assertThat(response.status().name()).isEqualTo("SUCCEEDED");
         assertThat(seatRepository.findById(seatId).orElseThrow().getStatus()).isEqualTo(SeatStatus.BOOKED);
@@ -165,7 +165,7 @@ class PaymentFlowIT {
         BookingDetailResponse created = newInitiatedBooking("idem");
         Long bookingId = created.booking().id();
         BigDecimal total = created.booking().totalAmount();
-        PaymentRequest request = new PaymentRequest(total, "card", "PAY-IDEMPOTENT-1");
+        PaymentRequest request = new PaymentRequest(total, "card", "PAY-IDEMPOTENT-1", "4242424242424242");
 
         PaymentResponse first = paymentService.recordPayment(bookingId, request);
         PaymentResponse second = paymentService.recordPayment(bookingId, request);
@@ -181,7 +181,7 @@ class PaymentFlowIT {
         BookingDetailResponse created = newInitiatedBooking("race");
         Long bookingId = created.booking().id();
         BigDecimal total = created.booking().totalAmount();
-        PaymentRequest request = new PaymentRequest(total, "card", "PAY-RACE-1");
+        PaymentRequest request = new PaymentRequest(total, "card", "PAY-RACE-1", "4242424242424242");
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
         CountDownLatch start = new CountDownLatch(1);
@@ -205,5 +205,28 @@ class PaymentFlowIT {
 
         assertThat(result1.id()).isEqualTo(result2.id());
         assertThat(paymentRepository.findByBookingId(bookingId)).hasSize(1);
+    }
+
+    @Test
+    void recordPayment_withDeclineCardThenRetryWithGoodCard_failsThenConfirmsWithoutLosingTheSeat() {
+        BookingDetailResponse created = newInitiatedBooking("decline-retry");
+        Long bookingId = created.booking().id();
+        Long seatId = created.items().get(0).seatId();
+        BigDecimal total = created.booking().totalAmount();
+
+        PaymentResponse declined = paymentService.recordPayment(bookingId,
+                new PaymentRequest(total, "card", "PAY-DECLINE-1", "4000000000000002"));
+
+        assertThat(declined.status().name()).isEqualTo("FAILED");
+        assertThat(declined.failureReason()).isEqualTo("Your card was declined.");
+        // The seat is still held (not released) so the same booking can be retried.
+        assertThat(seatRepository.findById(seatId).orElseThrow().getStatus()).isEqualTo(SeatStatus.HELD);
+
+        PaymentResponse retried = paymentService.recordPayment(bookingId,
+                new PaymentRequest(total, "card", "PAY-DECLINE-RETRY-1", "4242424242424242"));
+
+        assertThat(retried.status().name()).isEqualTo("SUCCEEDED");
+        assertThat(seatRepository.findById(seatId).orElseThrow().getStatus()).isEqualTo(SeatStatus.BOOKED);
+        assertThat(paymentRepository.findByBookingId(bookingId)).hasSize(2);
     }
 }

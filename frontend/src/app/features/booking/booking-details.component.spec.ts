@@ -4,7 +4,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { BookingDetailResponse } from '../../core/models/booking.model';
-import { SeatResponse } from '../../core/models/catalog.model';
+import { ScheduleSearchResult, SeatResponse } from '../../core/models/catalog.model';
 import { PassengerResponse } from '../../core/models/passenger.model';
 import { RefundResponse } from '../../core/models/payment.model';
 import { BookingService } from '../../core/services/booking.service';
@@ -45,6 +45,21 @@ describe('BookingDetailsComponent', () => {
     idNumber: 'X123',
   };
 
+  const schedule: ScheduleSearchResult = {
+    scheduleId: 1,
+    routeId: 1,
+    type: 'BUS',
+    origin: 'NYC',
+    destination: 'Boston',
+    venue: null,
+    departureTime: '2026-08-10T00:00:00Z',
+    arrivalTime: '2026-08-10T04:00:00Z',
+    baseFare: 20,
+    currency: 'USD',
+    status: 'SCHEDULED',
+    availableSeats: 2,
+  };
+
   function detailWith(status: 'INITIATED' | 'CONFIRMED' | 'CANCELLED'): BookingDetailResponse {
     return {
       booking: {
@@ -80,6 +95,7 @@ describe('BookingDetailsComponent', () => {
 
     scheduleService = TestBed.inject(ScheduleService);
     vi.spyOn(scheduleService, 'getSeats').mockReturnValue(of([seat]));
+    vi.spyOn(scheduleService, 'getSchedule').mockReturnValue(of(schedule));
 
     passengerService = TestBed.inject(PassengerService);
     vi.spyOn(passengerService, 'listMyPassengers').mockReturnValue(of([passenger]));
@@ -167,5 +183,20 @@ describe('BookingDetailsComponent', () => {
 
     const html = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(html).not.toContain('Change schedule');
+  });
+
+  it('renders the e-ticket card for a CONFIRMED booking', async () => {
+    await createComponent(detailWith('CONFIRMED'));
+
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('tw-e-ticket-card')).not.toBeNull();
+  });
+
+  it('renders the plain items table (not the e-ticket card) for an INITIATED booking', async () => {
+    await createComponent(detailWith('INITIATED'));
+
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('tw-e-ticket-card')).toBeNull();
+    expect(root.querySelector('.item-table')).not.toBeNull();
   });
 });

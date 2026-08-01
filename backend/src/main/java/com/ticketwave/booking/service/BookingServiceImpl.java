@@ -33,7 +33,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 
 @Service
 public class BookingServiceImpl implements BookingService {
@@ -127,11 +129,32 @@ public class BookingServiceImpl implements BookingService {
         return toDetailResponse(booking, items);
     }
 
+    /**
+     * INITIATED (first attempt), FAILED (retry after a decline), or already
+     * PAYMENT_PROCESSING (idempotent no-op - a concurrent request racing the
+     * same in-flight attempt, e.g. PaymentServiceImpl's own same-reference
+     * retry, re-affirms rather than errors) -> PAYMENT_PROCESSING. Rejects
+     * CONFIRMED and CANCELLED outright, which is what actually stops a stray
+     * payment attempt from reopening a booking that's already been settled.
+     */
+    @Override
+    @Transactional
+    public BookingDetailResponse markPaymentProcessing(Long bookingId) {
+        Booking booking = getBookingOrThrow(bookingId);
+        requireStatus(booking,
+                EnumSet.of(BookingStatus.INITIATED, BookingStatus.FAILED, BookingStatus.PAYMENT_PROCESSING),
+                BookingStatus.PAYMENT_PROCESSING);
+
+        booking.setStatus(BookingStatus.PAYMENT_PROCESSING);
+        List<BookingItem> items = bookingItemRepository.findByBookingId(bookingId);
+        return toDetailResponse(booking, items);
+    }
+
     @Override
     @Transactional
     public BookingDetailResponse confirmBooking(Long bookingId) {
         Booking booking = getBookingOrThrow(bookingId);
-        requireStatus(booking, BookingStatus.INITIATED, BookingStatus.CONFIRMED);
+        requireStatus(booking, BookingStatus.PAYMENT_PROCESSING, BookingStatus.CONFIRMED);
 
         List<BookingItem> items = bookingItemRepository.findByBookingId(bookingId);
         for (BookingItem item : items) {
@@ -143,9 +166,26 @@ public class BookingServiceImpl implements BookingService {
     }
 
     /**
-     * Accepts both INITIATED (pre-payment abandonment) and CONFIRMED
-     * (post-payment) bookings — with only three possible statuses, "not
-     * already CANCELLED" is equivalent to "INITIATED or CONFIRMED". Whether
+     * PAYMENT_PROCESSING -> FAILED. Deliberately does not release the seat
+     * holds (unlike cancelBooking) - a decline should let the customer retry
+     * the same seats, not lose them.
+     */
+    @Override
+    @Transactional
+    public BookingDetailResponse failBooking(Long bookingId) {
+        Booking booking = getBookingOrThrow(bookingId);
+        requireStatus(booking, BookingStatus.PAYMENT_PROCESSING, BookingStatus.FAILED);
+
+        booking.setStatus(BookingStatus.FAILED);
+        List<BookingItem> items = bookingItemRepository.findByBookingId(bookingId);
+        return toDetailResponse(booking, items);
+    }
+
+    /**
+     * Accepts INITIATED (pre-payment abandonment), CONFIRMED (post-payment),
+     * and FAILED (customer walking away after a decline) bookings - anything
+     * except CANCELLED itself or PAYMENT_PROCESSING, since a payment attempt
+     * actively in flight shouldn't be cancelled out from under it. Whether
      * cancelling a CONFIRMED booking also needs a refund is the refund
      * flow's decision (policy checks, proration), made before it ever calls
      * this method — this method only knows how to free the seats and flip
@@ -155,7 +195,7 @@ public class BookingServiceImpl implements BookingService {
     @Transactional
     public BookingDetailResponse cancelBooking(Long bookingId) {
         Booking booking = getBookingOrThrow(bookingId);
-        if (booking.getStatus() == BookingStatus.CANCELLED) {
+        if (booking.getStatus() == BookingStatus.CANCELLED || booking.getStatus() == BookingStatus.PAYMENT_PROCESSING) {
             throw new InvalidBookingStateException(booking.getId(), booking.getStatus(), BookingStatus.CANCELLED);
         }
 
@@ -249,7 +289,11 @@ public class BookingServiceImpl implements BookingService {
     }
 
     private void requireStatus(Booking booking, BookingStatus required, BookingStatus attempted) {
-        if (booking.getStatus() != required) {
+        requireStatus(booking, EnumSet.of(required), attempted);
+    }
+
+    private void requireStatus(Booking booking, Set<BookingStatus> allowed, BookingStatus attempted) {
+        if (!allowed.contains(booking.getStatus())) {
             throw new InvalidBookingStateException(booking.getId(), booking.getStatus(), attempted);
         }
     }
