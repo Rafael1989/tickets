@@ -31,6 +31,9 @@ describe('BookingDetailsComponent', () => {
     seatClass: 'economy',
     status: 'BOOKED',
     priceModifier: 1,
+    estimatedFare: 20,
+    heldUntil: null,
+    heldByMe: false,
   };
 
   const passenger: PassengerResponse = {

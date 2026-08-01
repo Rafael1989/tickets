@@ -68,13 +68,25 @@ class ScheduleSpecificationsTest {
     }
 
     @Test
-    void hasOrigin_withValue_buildsCaseInsensitiveEqualityPredicate() {
+    void hasOrigin_withValue_buildsCaseInsensitivePartialMatchPredicate() {
         given(root.get("route")).willReturn(routePath);
         given(routePath.get("origin")).willReturn(fieldPath);
         given(cb.lower(fieldPath)).willReturn(fieldPath);
-        given(cb.equal(fieldPath, "boston")).willReturn(predicate);
+        given(cb.like(fieldPath, "%boston%", '\\')).willReturn(predicate);
 
         Predicate result = ScheduleSpecifications.hasOrigin("Boston").toPredicate(root, query, cb);
+
+        assertThat(result).isSameAs(predicate);
+    }
+
+    @Test
+    void hasOrigin_withLikeWildcardsInValue_escapesThemInThePattern() {
+        given(root.get("route")).willReturn(routePath);
+        given(routePath.get("origin")).willReturn(fieldPath);
+        given(cb.lower(fieldPath)).willReturn(fieldPath);
+        given(cb.like(fieldPath, "%50\\%\\_off%", '\\')).willReturn(predicate);
+
+        Predicate result = ScheduleSpecifications.hasOrigin("50%_off").toPredicate(root, query, cb);
 
         assertThat(result).isSameAs(predicate);
     }
@@ -90,11 +102,11 @@ class ScheduleSpecificationsTest {
     }
 
     @Test
-    void hasDestination_withValue_buildsCaseInsensitiveEqualityPredicate() {
+    void hasDestination_withValue_buildsCaseInsensitivePartialMatchPredicate() {
         given(root.get("route")).willReturn(routePath);
         given(routePath.get("destination")).willReturn(fieldPath);
         given(cb.lower(fieldPath)).willReturn(fieldPath);
-        given(cb.equal(fieldPath, "chicago")).willReturn(predicate);
+        given(cb.like(fieldPath, "%chicago%", '\\')).willReturn(predicate);
 
         Predicate result = ScheduleSpecifications.hasDestination("Chicago").toPredicate(root, query, cb);
 
@@ -112,11 +124,11 @@ class ScheduleSpecificationsTest {
     }
 
     @Test
-    void hasVenue_withValue_buildsCaseInsensitiveEqualityPredicate() {
+    void hasVenue_withValue_buildsCaseInsensitivePartialMatchPredicate() {
         given(root.get("route")).willReturn(routePath);
         given(routePath.get("venue")).willReturn(fieldPath);
         given(cb.lower(fieldPath)).willReturn(fieldPath);
-        given(cb.equal(fieldPath, "arena")).willReturn(predicate);
+        given(cb.like(fieldPath, "%arena%", '\\')).willReturn(predicate);
 
         Predicate result = ScheduleSpecifications.hasVenue("Arena").toPredicate(root, query, cb);
 
@@ -154,11 +166,22 @@ class ScheduleSpecificationsTest {
     }
 
     @Test
+    void departsInFuture_buildsGreaterThanOrEqualPredicateAgainstNow() {
+        Instant now = Instant.parse("2026-01-15T00:00:00Z");
+        given(root.get("departureTime")).willReturn(fieldPath);
+        given(cb.greaterThanOrEqualTo(fieldPath, now)).willReturn(predicate);
+
+        Predicate result = ScheduleSpecifications.departsInFuture(now).toPredicate(root, query, cb);
+
+        assertThat(result).isSameAs(predicate);
+    }
+
+    @Test
     void matching_combinesAllCriteriaIntoASingleSpecification() {
         ScheduleSearchCriteria criteria = new ScheduleSearchCriteria(
                 RouteType.BUS, "Boston", "Chicago", "Arena", LocalDate.of(2026, 1, 15));
 
-        Specification<Schedule> specification = ScheduleSpecifications.matching(criteria);
+        Specification<Schedule> specification = ScheduleSpecifications.matching(criteria, Instant.now());
 
         assertThat(specification).isNotNull();
     }
@@ -167,7 +190,7 @@ class ScheduleSpecificationsTest {
     void matching_withAllNullCriteria_stillReturnsASpecification() {
         ScheduleSearchCriteria criteria = new ScheduleSearchCriteria(null, null, null, null, null);
 
-        Specification<Schedule> specification = ScheduleSpecifications.matching(criteria);
+        Specification<Schedule> specification = ScheduleSpecifications.matching(criteria, Instant.now());
 
         assertThat(specification).isNotNull();
     }

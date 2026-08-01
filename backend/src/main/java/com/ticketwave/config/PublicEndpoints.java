@@ -24,13 +24,23 @@ public final class PublicEndpoints {
 
     /**
      * GET-only: guest browsing (search, schedule details, seat availability) per US1.
+     * Note that /api/schedules/** also covers the seat hold/release endpoints
+     * (POST/DELETE .../seats/{id}/hold) — those stay authenticated because
+     * this list is wired into SecurityConfig as GET-only permitAll.
      */
     public static final String[] CATALOG = {
             "/api/search",
             "/api/schedules/**"
     };
 
+    /**
+     * POST-only: promo code preview — read-only, doesn't require an account.
+     */
+    public static final String[] PROMO = {
+            "/api/promos/validate"
+    };
+
     public static List<String> all() {
-        return Stream.concat(Arrays.stream(AUTH), Arrays.stream(CATALOG)).toList();
+        return Stream.of(AUTH, CATALOG, PROMO).flatMap(Arrays::stream).toList();
     }
 }

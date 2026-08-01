@@ -32,4 +32,20 @@ describe('ScheduleService', () => {
     expect(req.request.method).toBe('GET');
     req.flush([]);
   });
+
+  it('holdSeat posts to /api/schedules/{id}/seats/{seatId}/hold', () => {
+    service.holdSeat(42, 7).subscribe();
+
+    const req = httpMock.expectOne('/api/schedules/42/seats/7/hold');
+    expect(req.request.method).toBe('POST');
+    req.flush({});
+  });
+
+  it('releaseSeat deletes /api/schedules/{id}/seats/{seatId}/hold', () => {
+    service.releaseSeat(42, 7).subscribe();
+
+    const req = httpMock.expectOne('/api/schedules/42/seats/7/hold');
+    expect(req.request.method).toBe('DELETE');
+    req.flush(null);
+  });
 });

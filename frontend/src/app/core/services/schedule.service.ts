@@ -14,4 +14,12 @@ export class ScheduleService {
   getSeats(scheduleId: number): Observable<SeatResponse[]> {
     return this.http.get<SeatResponse[]>(`/api/schedules/${scheduleId}/seats`);
   }
+
+  holdSeat(scheduleId: number, seatId: number): Observable<SeatResponse> {
+    return this.http.post<SeatResponse>(`/api/schedules/${scheduleId}/seats/${seatId}/hold`, {});
+  }
+
+  releaseSeat(scheduleId: number, seatId: number): Observable<void> {
+    return this.http.delete<void>(`/api/schedules/${scheduleId}/seats/${seatId}/hold`);
+  }
 }

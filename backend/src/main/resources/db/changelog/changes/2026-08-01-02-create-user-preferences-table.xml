@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="2026-08-01-02" author="ticketwave">
+        <comment>User preferences: 1:1 with users, sharing its primary key (user_id) rather than a separate surrogate id, since every row here is owned by exactly one account and never referenced from elsewhere.</comment>
+        <createTable tableName="user_preferences">
+            <column name="user_id" type="BIGINT">
+                <constraints primaryKey="true" primaryKeyName="pk_user_preferences"
+                             nullable="false"
+                             foreignKeyName="fk_user_preferences_user"
+                             references="users(user_id)"/>
+            </column>
+            <column name="preferred_currency" type="VARCHAR(3)" defaultValue="USD">
+                <constraints nullable="false"/>
+            </column>
+            <column name="seat_preference" type="VARCHAR(20)"/>
+            <column name="notifications_enabled" type="BOOLEAN" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <rollback>
+            <dropTable tableName="user_preferences"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

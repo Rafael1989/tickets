@@ -57,8 +57,10 @@ class ScheduleSpecificationsIT {
     @Autowired
     private ScheduleRepository scheduleRepository;
 
+    private static final Instant NOW = Instant.parse("2026-08-01T00:00:00Z");
+
     @Test
-    void matching_filtersCaseInsensitivelyByRouteAndExcludesCancelled() {
+    void matching_filtersCaseInsensitivelyByPartialRouteMatchAndExcludesCancelled() {
         User operator = userRepository.save(operator("operator1"));
 
         Route nycToBoston = routeRepository.save(route(operator, RouteType.BUS, "NYC", "Boston"));
@@ -72,9 +74,9 @@ class ScheduleSpecificationsIT {
                 schedule(laToSf, Instant.parse("2026-08-10T09:00:00Z"), ScheduleStatus.SCHEDULED));
 
         ScheduleSearchCriteria criteria =
-                new ScheduleSearchCriteria(null, "nyc", "boston", null, LocalDate.of(2026, 8, 10));
+                new ScheduleSearchCriteria(null, "yc", "osto", null, LocalDate.of(2026, 8, 10));
 
-        List<Schedule> results = scheduleRepository.findAll(ScheduleSpecifications.matching(criteria));
+        List<Schedule> results = scheduleRepository.findAll(ScheduleSpecifications.matching(criteria, NOW));
 
         assertThat(results).extracting(Schedule::getId).containsExactly(matching.getId());
         assertThat(results).extracting(Schedule::getId).doesNotContain(cancelled.getId(), otherRoute.getId());
@@ -93,10 +95,28 @@ class ScheduleSpecificationsIT {
         ScheduleSearchCriteria criteria =
                 new ScheduleSearchCriteria(null, null, null, null, LocalDate.of(2026, 8, 10));
 
-        List<Schedule> results = scheduleRepository.findAll(ScheduleSpecifications.matching(criteria));
+        List<Schedule> results = scheduleRepository.findAll(ScheduleSpecifications.matching(criteria, NOW));
 
         assertThat(results).extracting(Schedule::getId).containsExactly(sameDay.getId());
         assertThat(results).extracting(Schedule::getId).doesNotContain(nextDay.getId());
+    }
+
+    @Test
+    void matching_excludesSchedulesThatHaveAlreadyDeparted() {
+        User operator = userRepository.save(operator("operator3"));
+        Route route = routeRepository.save(route(operator, RouteType.BUS, "C", "D"));
+
+        Schedule departed = scheduleRepository.save(
+                schedule(route, NOW.minusSeconds(3600), ScheduleStatus.SCHEDULED));
+        Schedule upcoming = scheduleRepository.save(
+                schedule(route, NOW.plusSeconds(3600), ScheduleStatus.SCHEDULED));
+
+        ScheduleSearchCriteria criteria = new ScheduleSearchCriteria(null, null, null, null, null);
+
+        List<Schedule> results = scheduleRepository.findAll(ScheduleSpecifications.matching(criteria, NOW));
+
+        assertThat(results).extracting(Schedule::getId).containsExactly(upcoming.getId());
+        assertThat(results).extracting(Schedule::getId).doesNotContain(departed.getId());
     }
 
     private static User operator(String username) {

@@ -17,12 +17,23 @@ public interface PricingService {
     /**
      * Validates the code (exists, active, within its validity window, under
      * its redemption limit), reserves one redemption, and returns the
-     * discount to subtract from subtotal. There is no separate "preview"
-     * method — this always consumes a redemption, since booking creation is
-     * the only caller right now.
+     * discount to subtract from subtotal. Always consumes a redemption —
+     * only booking creation should call this. For a non-consuming preview,
+     * see {@link #previewPromoCode(String, BigDecimal)}.
      *
      * @throws com.ticketwave.pricing.exception.PromoCodeNotFoundException if no such code exists
      * @throws com.ticketwave.pricing.exception.PromoCodeNotApplicableException if the code exists but can't currently be used
      */
     PromoCodeApplication applyPromoCode(String code, BigDecimal subtotal);
+
+    /**
+     * Same validation as {@link #applyPromoCode(String, BigDecimal)} — exists,
+     * active, within its validity window, under its redemption limit — but
+     * never reserves a redemption. For a promo-code input to show "valid,
+     * saves you $X" before the caller has committed to a booking.
+     *
+     * @throws com.ticketwave.pricing.exception.PromoCodeNotFoundException if no such code exists
+     * @throws com.ticketwave.pricing.exception.PromoCodeNotApplicableException if the code exists but can't currently be used
+     */
+    PromoCodeApplication previewPromoCode(String code, BigDecimal subtotal);
 }

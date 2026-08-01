@@ -50,7 +50,7 @@ class SeatManagementServiceImplTest {
         SeatRequest request = new SeatRequest(1L, "1A", "economy", null, new BigDecimal("1.000"));
         Seat mapped = Seat.builder().schedule(schedule).seatNumber("1A").build();
         Seat saved = Seat.builder().id(5L).schedule(schedule).status(SeatStatus.AVAILABLE).build();
-        SeatResponse response = new SeatResponse(5L, 1L, "1A", "economy", SeatStatus.AVAILABLE, new BigDecimal("1.000"));
+        SeatResponse response = new SeatResponse(5L, 1L, "1A", "economy", SeatStatus.AVAILABLE, new BigDecimal("1.000"), null, null, false);
 
         given(scheduleRepository.findById(1L)).willReturn(Optional.of(schedule));
         given(seatMapper.toEntity(request, schedule)).willReturn(mapped);
@@ -81,7 +81,7 @@ class SeatManagementServiceImplTest {
         SeatUpdateRequest request = new SeatUpdateRequest(SeatStatus.HELD, new BigDecimal("1.500"));
         given(seatRepository.findById(5L)).willReturn(Optional.of(seat));
         given(seatMapper.toResponse(seat)).willReturn(
-                new SeatResponse(5L, 1L, null, null, SeatStatus.HELD, new BigDecimal("1.500")));
+                new SeatResponse(5L, 1L, null, null, SeatStatus.HELD, new BigDecimal("1.500"), null, null, false));
 
         SeatResponse result = seatManagementService.updateSeat("operator1", 5L, request);
 

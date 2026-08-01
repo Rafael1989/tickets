@@ -101,17 +101,32 @@ class SeatHoldConcurrencyIT {
                 .build());
 
         int attempts = 8;
+        // Distinct customers, not the same user repeated: holdSeat treats a
+        // fresh hold by the seat's own current holder as an idempotent
+        // reaffirm (not a conflict), so racing with a single shared user
+        // would let every attempt "succeed" and defeat the point of this test.
+        List<User> customers = new ArrayList<>();
+        for (int i = 0; i < attempts; i++) {
+            customers.add(userRepository.save(User.builder()
+                    .username("customer-concurrency-" + i)
+                    .email("customer-concurrency-" + i + "@example.com")
+                    .passwordHash("hash")
+                    .role(UserRole.CUSTOMER)
+                    .build()));
+        }
+
         ExecutorService executor = Executors.newFixedThreadPool(attempts);
         CountDownLatch ready = new CountDownLatch(attempts);
         CountDownLatch start = new CountDownLatch(1);
 
         List<Future<Boolean>> futures = new ArrayList<>();
         for (int i = 0; i < attempts; i++) {
+            User customer = customers.get(i);
             futures.add(executor.submit(() -> {
                 ready.countDown();
                 start.await();
                 try {
-                    seatHoldService.holdSeat(seat.getId());
+                    seatHoldService.holdSeat(seat.getId(), customer);
                     return true;
                 } catch (SeatUnavailableException ex) {
                     return false;

@@ -104,7 +104,7 @@ public class BookingServiceImpl implements BookingService {
                     .filter(candidate -> candidate.getUser().getId().equals(user.getId()))
                     .orElseThrow(() -> new PassengerNotFoundException(selection.passengerId()));
 
-            Seat seat = seatHoldService.holdSeat(selection.seatId());
+            Seat seat = seatHoldService.holdSeat(selection.seatId(), user);
             BigDecimal fare = pricingService.calculateSeatFare(schedule, seat);
 
             items.add(bookingItemRepository.save(BookingItem.builder()
@@ -202,7 +202,7 @@ public class BookingServiceImpl implements BookingService {
                     .filter(candidate -> candidate.getUser().getId().equals(booking.getUser().getId()))
                     .orElseThrow(() -> new PassengerNotFoundException(selection.passengerId()));
 
-            Seat seat = seatHoldService.holdSeat(selection.seatId());
+            Seat seat = seatHoldService.holdSeat(selection.seatId(), booking.getUser());
             BigDecimal fare = pricingService.calculateSeatFare(newSchedule, seat);
 
             newItems.add(bookingItemRepository.save(BookingItem.builder()

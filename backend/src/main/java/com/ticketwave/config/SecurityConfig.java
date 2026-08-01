@@ -43,6 +43,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST, PublicEndpoints.AUTH).permitAll()
                         .requestMatchers(HttpMethod.GET, PublicEndpoints.CATALOG).permitAll()
+                        .requestMatchers(HttpMethod.POST, PublicEndpoints.PROMO).permitAll()
                         .requestMatchers(PUBLIC_DOC_ENDPOINTS).permitAll()
                         .anyRequest().authenticated()
                 )

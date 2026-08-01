@@ -4,6 +4,7 @@ import { ScheduleSearchResult, SeatResponse } from '../models/catalog.model';
 export interface BookingDraft {
   schedule: ScheduleSearchResult;
   seats: SeatResponse[];
+  promoCode: string | null;
 }
 
 /**

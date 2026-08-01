@@ -21,7 +21,17 @@ describe('BookingDraftService', () => {
   };
 
   const seats: SeatResponse[] = [
-    { id: 1, scheduleId: 1, seatNumber: '1A', seatClass: 'economy', status: 'AVAILABLE', priceModifier: 1 },
+    {
+      id: 1,
+      scheduleId: 1,
+      seatNumber: '1A',
+      seatClass: 'economy',
+      status: 'AVAILABLE',
+      priceModifier: 1,
+      estimatedFare: 20,
+      heldUntil: null,
+      heldByMe: false,
+    },
   ];
 
   beforeEach(() => {
@@ -34,13 +44,13 @@ describe('BookingDraftService', () => {
   });
 
   it('set stores the schedule and seats', () => {
-    service.set({ schedule, seats });
+    service.set({ schedule, seats, promoCode: null });
 
-    expect(service.draft()).toEqual({ schedule, seats });
+    expect(service.draft()).toEqual({ schedule, seats, promoCode: null });
   });
 
   it('clear resets the draft to null', () => {
-    service.set({ schedule, seats });
+    service.set({ schedule, seats, promoCode: null });
 
     service.clear();
 

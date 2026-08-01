@@ -134,7 +134,17 @@ describe('OperatorPortalComponent', () => {
 
   it('addSeat submits the seat details', () => {
     vi.spyOn(inventoryService, 'addSeat').mockReturnValue(
-      of({ id: 5, scheduleId: 1, seatNumber: '2B', seatClass: 'economy', status: 'AVAILABLE', priceModifier: 1 }),
+      of({
+        id: 5,
+        scheduleId: 1,
+        seatNumber: '2B',
+        seatClass: 'economy',
+        status: 'AVAILABLE',
+        priceModifier: 1,
+        estimatedFare: 20,
+        heldUntil: null,
+        heldByMe: false,
+      }),
     );
     component.seatForm.setValue({
       scheduleId: 1,
@@ -155,7 +165,17 @@ describe('OperatorPortalComponent', () => {
 
   it('viewSeats loads and stores the seats for a given schedule id', () => {
     const seats: SeatResponse[] = [
-      { id: 1, scheduleId: 1, seatNumber: '1A', seatClass: 'economy', status: 'AVAILABLE', priceModifier: 1 },
+      {
+        id: 1,
+        scheduleId: 1,
+        seatNumber: '1A',
+        seatClass: 'economy',
+        status: 'AVAILABLE',
+        priceModifier: 1,
+        estimatedFare: 20,
+        heldUntil: null,
+        heldByMe: false,
+      },
     ];
     vi.spyOn(scheduleService, 'getSeats').mockReturnValue(of(seats));
     component.viewSeatsForm.setValue({ scheduleId: 1 });

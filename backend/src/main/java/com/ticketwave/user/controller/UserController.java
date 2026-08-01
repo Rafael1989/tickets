@@ -1,6 +1,8 @@
 package com.ticketwave.user.controller;
 
+import com.ticketwave.user.dto.ChangePasswordRequest;
 import com.ticketwave.user.dto.RoleUpdateRequest;
+import com.ticketwave.user.dto.UpdateEmailRequest;
 import com.ticketwave.user.dto.UserRequest;
 import com.ticketwave.user.dto.UserResponse;
 import com.ticketwave.user.service.UserService;
@@ -24,13 +26,56 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/users")
-@Tag(name = "Users", description = "Requires a bearer JWT with the ADMIN role.")
+@Tag(name = "Users", description = "Requires a bearer JWT. GET /me works for any authenticated caller; every other endpoint requires the ADMIN role.")
 public class UserController {
 
     private final UserService userService;
 
     public UserController(UserService userService) {
         this.userService = userService;
+    }
+
+    @GetMapping("/me")
+    @Operation(summary = "Get the authenticated caller's own account")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "The caller's account"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid bearer token")
+    })
+    public ResponseEntity<UserResponse> getCurrentUser(Authentication authentication) {
+        return ResponseEntity.ok(userService.getCurrentUser(authentication.getName()));
+    }
+
+    @PutMapping("/me/email")
+    @Operation(summary = "Change the authenticated caller's own email")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Email updated"),
+            @ApiResponse(responseCode = "400", description = "Validation failed"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid bearer token"),
+            @ApiResponse(responseCode = "409", description = "Email already in use by another account")
+    })
+    public ResponseEntity<UserResponse> updateCurrentEmail(
+            Authentication authentication,
+            @Valid @RequestBody UpdateEmailRequest request
+    ) {
+        return ResponseEntity.ok(userService.updateCurrentEmail(authentication.getName(), request));
+    }
+
+    @PutMapping("/me/password")
+    @Operation(
+            summary = "Change the authenticated caller's own password",
+            description = "Requires the current password, even though the caller is already authenticated via JWT."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Password changed"),
+            @ApiResponse(responseCode = "400", description = "Validation failed"),
+            @ApiResponse(responseCode = "401", description = "Missing/invalid bearer token, or currentPassword is wrong")
+    })
+    public ResponseEntity<Void> changeCurrentPassword(
+            Authentication authentication,
+            @Valid @RequestBody ChangePasswordRequest request
+    ) {
+        userService.changeCurrentPassword(authentication.getName(), request);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping

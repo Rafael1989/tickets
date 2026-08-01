@@ -14,6 +14,10 @@ import com.ticketwave.catalog.mapper.SeatMapper;
 import com.ticketwave.catalog.repository.ScheduleRepository;
 import com.ticketwave.catalog.repository.ScheduleSeatCount;
 import com.ticketwave.catalog.repository.SeatRepository;
+import com.ticketwave.pricing.service.PricingService;
+import com.ticketwave.user.entity.User;
+import com.ticketwave.user.repository.UserRepository;
+import org.assertj.core.groups.Tuple;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -24,8 +28,10 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -45,7 +51,16 @@ class ScheduleSearchServiceImplTest {
     private SeatRepository seatRepository;
 
     @Mock
+    private UserRepository userRepository;
+
+    @Mock
     private SeatMapper seatMapper;
+
+    @Mock
+    private PricingService pricingService;
+
+    @Mock
+    private Clock clock;
 
     @InjectMocks
     private ScheduleSearchServiceImpl searchService;
@@ -91,6 +106,7 @@ class ScheduleSearchServiceImplTest {
         Schedule schedule1 = schedule(1L, route1, Instant.parse("2026-08-01T10:00:00Z"), new BigDecimal("25.00"));
         Schedule schedule2 = schedule(2L, route2, Instant.parse("2026-08-02T18:00:00Z"), new BigDecimal("50.00"));
 
+        given(clock.instant()).willReturn(Instant.parse("2026-01-01T00:00:00Z"));
         given(scheduleRepository.findAll(any(Specification.class), any(Sort.class)))
                 .willReturn(List.of(schedule1, schedule2));
         given(seatRepository.countAvailableGroupedByScheduleId(List.of(1L, 2L), SeatStatus.AVAILABLE))
@@ -116,6 +132,7 @@ class ScheduleSearchServiceImplTest {
 
     @Test
     void search_sortsByDepartureTimeAscending() {
+        given(clock.instant()).willReturn(Instant.parse("2026-01-01T00:00:00Z"));
         given(scheduleRepository.findAll(any(Specification.class), any(Sort.class))).willReturn(List.of());
 
         searchService.search(new ScheduleSearchCriteria(null, null, null, null, null));
@@ -152,7 +169,7 @@ class ScheduleSearchServiceImplTest {
     void getScheduleDetails_whenScheduleExists_returnsItsSearchResultShape() {
         Route route = route(10L, RouteType.BUS, "NYC", "Boston", null);
         Schedule schedule = schedule(1L, route, Instant.parse("2026-08-01T10:00:00Z"), new BigDecimal("25.00"));
-        given(scheduleRepository.findById(1L)).willReturn(java.util.Optional.of(schedule));
+        given(scheduleRepository.findById(1L)).willReturn(Optional.of(schedule));
         given(seatRepository.countByScheduleIdAndStatus(1L, SeatStatus.AVAILABLE)).willReturn(4L);
 
         ScheduleSearchResult result = searchService.getScheduleDetails(1L);
@@ -164,35 +181,87 @@ class ScheduleSearchServiceImplTest {
 
     @Test
     void getScheduleDetails_whenScheduleMissing_throwsScheduleNotFoundException() {
-        given(scheduleRepository.findById(99L)).willReturn(java.util.Optional.empty());
+        given(scheduleRepository.findById(99L)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> searchService.getScheduleDetails(99L))
                 .isInstanceOf(ScheduleNotFoundException.class);
     }
 
     @Test
-    void getSeatsForSchedule_whenScheduleExists_returnsAllSeatsRegardlessOfStatus() {
-        Seat available = Seat.builder().id(1L).status(SeatStatus.AVAILABLE).build();
-        Seat booked = Seat.builder().id(2L).status(SeatStatus.BOOKED).build();
-        given(scheduleRepository.existsById(1L)).willReturn(true);
+    void getSeatsForSchedule_whenScheduleExists_returnsAllSeatsRegardlessOfStatusWithEstimatedFare() {
+        Route route = route(10L, RouteType.BUS, "NYC", "Boston", null);
+        Schedule schedule = schedule(1L, route, Instant.parse("2026-08-01T10:00:00Z"), new BigDecimal("20.00"));
+        Seat available = Seat.builder().id(1L).schedule(schedule).status(SeatStatus.AVAILABLE).build();
+        Seat booked = Seat.builder().id(2L).schedule(schedule).status(SeatStatus.BOOKED).build();
+        given(scheduleRepository.findById(1L)).willReturn(Optional.of(schedule));
         given(seatRepository.findByScheduleId(1L)).willReturn(List.of(available, booked));
         given(seatMapper.toResponse(available)).willReturn(
-                new SeatResponse(1L, 1L, "1A", "economy", SeatStatus.AVAILABLE, BigDecimal.ONE));
+                new SeatResponse(1L, 1L, "1A", "economy", SeatStatus.AVAILABLE, BigDecimal.ONE, null, null, false));
         given(seatMapper.toResponse(booked)).willReturn(
-                new SeatResponse(2L, 1L, "1B", "economy", SeatStatus.BOOKED, BigDecimal.ONE));
+                new SeatResponse(2L, 1L, "1B", "economy", SeatStatus.BOOKED, BigDecimal.ONE, null, null, false));
+        given(pricingService.calculateSeatFare(schedule, available)).willReturn(new BigDecimal("20.00"));
+        given(pricingService.calculateSeatFare(schedule, booked)).willReturn(new BigDecimal("20.00"));
 
-        List<SeatResponse> seats = searchService.getSeatsForSchedule(1L);
+        List<SeatResponse> seats = searchService.getSeatsForSchedule(1L, null);
 
         assertThat(seats).hasSize(2);
         assertThat(seats).extracting(SeatResponse::status)
                 .containsExactly(SeatStatus.AVAILABLE, SeatStatus.BOOKED);
+        assertThat(seats).extracting(SeatResponse::estimatedFare)
+                .containsExactly(new BigDecimal("20.00"), new BigDecimal("20.00"));
+        assertThat(seats).extracting(SeatResponse::heldByMe).containsExactly(false, false);
     }
 
     @Test
     void getSeatsForSchedule_whenScheduleMissing_throwsScheduleNotFoundException() {
-        given(scheduleRepository.existsById(99L)).willReturn(false);
+        given(scheduleRepository.findById(99L)).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> searchService.getSeatsForSchedule(99L))
+        assertThatThrownBy(() -> searchService.getSeatsForSchedule(99L, null))
                 .isInstanceOf(ScheduleNotFoundException.class);
+    }
+
+    @Test
+    void getSeatsForSchedule_whenCallerHoldsASeat_marksOnlyThatSeatHeldByMe() {
+        Route route = route(10L, RouteType.BUS, "NYC", "Boston", null);
+        Schedule schedule = schedule(1L, route, Instant.parse("2026-08-01T10:00:00Z"), new BigDecimal("20.00"));
+        com.ticketwave.user.entity.User caller = User.builder().id(7L).username("alice").build();
+        com.ticketwave.user.entity.User someoneElse = User.builder().id(8L).username("bob").build();
+        Seat myHold = Seat.builder().id(1L).schedule(schedule).status(SeatStatus.HELD).heldBy(caller).build();
+        Seat othersHold = Seat.builder().id(2L).schedule(schedule).status(SeatStatus.HELD).heldBy(someoneElse).build();
+
+        given(scheduleRepository.findById(1L)).willReturn(Optional.of(schedule));
+        given(userRepository.findByUsername("alice")).willReturn(Optional.of(caller));
+        given(seatRepository.findByScheduleId(1L)).willReturn(List.of(myHold, othersHold));
+        given(seatMapper.toResponse(myHold)).willReturn(
+                new SeatResponse(1L, 1L, "1A", "economy", SeatStatus.HELD, BigDecimal.ONE, null, null, false));
+        given(seatMapper.toResponse(othersHold)).willReturn(
+                new SeatResponse(2L, 1L, "1B", "economy", SeatStatus.HELD, BigDecimal.ONE, null, null, false));
+        given(pricingService.calculateSeatFare(eq(schedule), any())).willReturn(new BigDecimal("20.00"));
+
+        List<SeatResponse> seats = searchService.getSeatsForSchedule(1L, "alice");
+
+        assertThat(seats).extracting(SeatResponse::id, SeatResponse::heldByMe)
+                .containsExactly(
+                        Tuple.tuple(1L, true),
+                        Tuple.tuple(2L, false));
+    }
+
+    @Test
+    void getSeatsForSchedule_whenUsernameIsNull_neverMarksAnySeatHeldByMeEvenIfHeld() {
+        Route route = route(10L, RouteType.BUS, "NYC", "Boston", null);
+        Schedule schedule = schedule(1L, route, Instant.parse("2026-08-01T10:00:00Z"), new BigDecimal("20.00"));
+        com.ticketwave.user.entity.User someone = User.builder().id(7L).username("alice").build();
+        Seat held = Seat.builder().id(1L).schedule(schedule).status(SeatStatus.HELD).heldBy(someone).build();
+
+        given(scheduleRepository.findById(1L)).willReturn(Optional.of(schedule));
+        given(seatRepository.findByScheduleId(1L)).willReturn(List.of(held));
+        given(seatMapper.toResponse(held)).willReturn(
+                new SeatResponse(1L, 1L, "1A", "economy", SeatStatus.HELD, BigDecimal.ONE, null, null, false));
+        given(pricingService.calculateSeatFare(schedule, held)).willReturn(new BigDecimal("20.00"));
+
+        List<SeatResponse> seats = searchService.getSeatsForSchedule(1L, null);
+
+        assertThat(seats).extracting(SeatResponse::heldByMe).containsExactly(false);
+        verify(userRepository, never()).findByUsername(any());
     }
 }

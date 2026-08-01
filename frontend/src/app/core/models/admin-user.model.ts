@@ -18,3 +18,12 @@ export interface UserRequest {
 export interface RoleUpdateRequest {
   role: UserRole;
 }
+
+export interface UpdateEmailRequest {
+  email: string;
+}
+
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}

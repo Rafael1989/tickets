@@ -15,14 +15,15 @@ public final class ScheduleSpecifications {
     private ScheduleSpecifications() {
     }
 
-    public static Specification<Schedule> matching(ScheduleSearchCriteria criteria) {
+    public static Specification<Schedule> matching(ScheduleSearchCriteria criteria, Instant now) {
         return Specification.allOf(
                 hasType(criteria.type()),
                 hasOrigin(criteria.origin()),
                 hasDestination(criteria.destination()),
                 hasVenue(criteria.venue()),
                 departsOn(criteria.departureDate()),
-                isNotCancelled()
+                isNotCancelled(),
+                departsInFuture(now)
         );
     }
 
@@ -35,19 +36,19 @@ public final class ScheduleSpecifications {
     public static Specification<Schedule> hasOrigin(String origin) {
         return (root, query, cb) -> isBlank(origin)
                 ? null
-                : cb.equal(cb.lower(root.get("route").get("origin")), origin.toLowerCase());
+                : cb.like(cb.lower(root.get("route").get("origin")), likePattern(origin), LIKE_ESCAPE);
     }
 
     public static Specification<Schedule> hasDestination(String destination) {
         return (root, query, cb) -> isBlank(destination)
                 ? null
-                : cb.equal(cb.lower(root.get("route").get("destination")), destination.toLowerCase());
+                : cb.like(cb.lower(root.get("route").get("destination")), likePattern(destination), LIKE_ESCAPE);
     }
 
     public static Specification<Schedule> hasVenue(String venue) {
         return (root, query, cb) -> isBlank(venue)
                 ? null
-                : cb.equal(cb.lower(root.get("route").get("venue")), venue.toLowerCase());
+                : cb.like(cb.lower(root.get("route").get("venue")), likePattern(venue), LIKE_ESCAPE);
     }
 
     /**
@@ -76,7 +77,26 @@ public final class ScheduleSpecifications {
         return (root, query, cb) -> cb.notEqual(root.get("status"), ScheduleStatus.CANCELLED);
     }
 
+    /**
+     * Always applied: nothing in the app ever transitions a schedule's
+     * status to COMPLETED, so departureTime is the only signal that a
+     * schedule has already happened and shouldn't be a valid search result.
+     */
+    public static Specification<Schedule> departsInFuture(Instant now) {
+        return (root, query, cb) -> cb.greaterThanOrEqualTo(root.get("departureTime"), now);
+    }
+
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private static final char LIKE_ESCAPE = '\\';
+
+    private static String likePattern(String value) {
+        String escaped = value.trim().toLowerCase()
+                .replace(String.valueOf(LIKE_ESCAPE), "" + LIKE_ESCAPE + LIKE_ESCAPE)
+                .replace("%", LIKE_ESCAPE + "%")
+                .replace("_", LIKE_ESCAPE + "_");
+        return "%" + escaped + "%";
     }
 }

@@ -124,8 +124,8 @@ class BookingServiceImplTest {
         // Out-of-order on purpose: seat 5 requested before seat 2.
         Seat seat5 = seat(5L, new BigDecimal("1.000"));
         Seat seat2 = seat(2L, new BigDecimal("1.500"));
-        given(seatHoldService.holdSeat(5L)).willReturn(seat5);
-        given(seatHoldService.holdSeat(2L)).willReturn(seat2);
+        given(seatHoldService.holdSeat(5L, user)).willReturn(seat5);
+        given(seatHoldService.holdSeat(2L, user)).willReturn(seat2);
         given(pricingService.calculateSeatFare(schedule, seat2)).willReturn(new BigDecimal("30.00"));
         given(pricingService.calculateSeatFare(schedule, seat5)).willReturn(new BigDecimal("20.00"));
 
@@ -146,8 +146,8 @@ class BookingServiceImplTest {
         BookingDetailResponse response = bookingService.createBooking("alice", request);
 
         InOrder holdOrder = inOrder(seatHoldService);
-        holdOrder.verify(seatHoldService).holdSeat(2L);
-        holdOrder.verify(seatHoldService).holdSeat(5L);
+        holdOrder.verify(seatHoldService).holdSeat(2L, user);
+        holdOrder.verify(seatHoldService).holdSeat(5L, user);
 
         assertThat(savedBooking.getTotalAmount()).isEqualByComparingTo("50.00");
         assertThat(response.items()).hasSize(2);
@@ -169,7 +169,7 @@ class BookingServiceImplTest {
 
         given(passengerRepository.findById(100L)).willReturn(Optional.of(passenger));
         Seat seat = seat(5L, BigDecimal.ONE);
-        given(seatHoldService.holdSeat(5L)).willReturn(seat);
+        given(seatHoldService.holdSeat(5L, user)).willReturn(seat);
         given(pricingService.calculateSeatFare(schedule, seat)).willReturn(new BigDecimal("20.00"));
 
         PromoCode promoCode = PromoCode.builder().id(1L).code("SAVE10").discountType(DiscountType.PERCENTAGE).build();
@@ -210,7 +210,7 @@ class BookingServiceImplTest {
 
         given(passengerRepository.findById(100L)).willReturn(Optional.of(passenger));
         Seat seat = seat(5L, BigDecimal.ONE);
-        given(seatHoldService.holdSeat(5L)).willReturn(seat);
+        given(seatHoldService.holdSeat(5L, user)).willReturn(seat);
         given(pricingService.calculateSeatFare(schedule, seat)).willReturn(new BigDecimal("20.00"));
 
         given(bookingItemRepository.save(any(BookingItem.class)))
@@ -241,7 +241,7 @@ class BookingServiceImplTest {
         assertThatThrownBy(() -> bookingService.createBooking("alice", request))
                 .isInstanceOf(UserNotFoundException.class);
 
-        verify(seatHoldService, never()).holdSeat(anyLong());
+        verify(seatHoldService, never()).holdSeat(anyLong(), any());
     }
 
     @Test
@@ -291,7 +291,7 @@ class BookingServiceImplTest {
         assertThatThrownBy(() -> bookingService.createBooking("alice", request))
                 .isInstanceOf(PassengerNotFoundException.class);
 
-        verify(seatHoldService, never()).holdSeat(anyLong());
+        verify(seatHoldService, never()).holdSeat(anyLong(), any());
     }
 
     @Test
@@ -305,7 +305,7 @@ class BookingServiceImplTest {
                 Booking.builder().id(500L).user(user).schedule(schedule).pnr("ABC234")
                         .status(BookingStatus.INITIATED).totalAmount(BigDecimal.ZERO).build());
         given(passengerRepository.findById(100L)).willReturn(Optional.of(passenger(100L, user)));
-        given(seatHoldService.holdSeat(5L)).willThrow(new SeatUnavailableException(5L));
+        given(seatHoldService.holdSeat(5L, user)).willThrow(new SeatUnavailableException(5L));
 
         CreateBookingRequest request = new CreateBookingRequest(10L, List.of(new SeatSelection(5L, 100L)), null);
 
@@ -473,7 +473,7 @@ class BookingServiceImplTest {
         given(bookingItemRepository.findByBookingId(500L)).willReturn(List.of(oldItem));
         given(scheduleRepository.findById(20L)).willReturn(Optional.of(newSchedule));
         given(passengerRepository.findById(100L)).willReturn(Optional.of(passenger));
-        given(seatHoldService.holdSeat(5L)).willReturn(newSeat);
+        given(seatHoldService.holdSeat(5L, user)).willReturn(newSeat);
         given(pricingService.calculateSeatFare(newSchedule, newSeat)).willReturn(new BigDecimal("45.00"));
         given(bookingItemRepository.save(any(BookingItem.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
@@ -553,7 +553,7 @@ class BookingServiceImplTest {
         given(bookingItemRepository.findByBookingId(500L)).willReturn(List.of());
         given(scheduleRepository.findById(20L)).willReturn(Optional.of(newSchedule));
         given(passengerRepository.findById(100L)).willReturn(Optional.of(passenger));
-        given(seatHoldService.holdSeat(5L)).willReturn(newSeat);
+        given(seatHoldService.holdSeat(5L, user)).willReturn(newSeat);
         given(pricingService.calculateSeatFare(newSchedule, newSeat)).willReturn(new BigDecimal("20.00"));
         given(pricingService.applyPromoCode("SAVE10", new BigDecimal("20.00")))
                 .willReturn(new PromoCodeApplication(promoCode, new BigDecimal("2.00")));

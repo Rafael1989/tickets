@@ -1,0 +1,113 @@
+<div class="panel-header">
+  <div>
+    <h2>Saved passengers</h2>
+    <p class="subtitle">Reuse these details next time you book, without retyping them.</p>
+  </div>
+  <button type="button" class="btn" (click)="openAddForm()">+ Add passenger</button>
+</div>
+
+@if (loading()) {
+  <div class="passenger-list">
+    @for (row of [0, 1]; track row) {
+      <div class="passenger-card">
+        <div class="skeleton avatar"></div>
+        <div class="skeleton-lines">
+          <div class="skeleton line wide"></div>
+          <div class="skeleton line short"></div>
+        </div>
+      </div>
+    }
+  </div>
+} @else if (passengers().length === 0) {
+  <div class="empty-state">
+    <div class="empty-icon" aria-hidden="true">🧳</div>
+    <h3>No saved passengers yet</h3>
+    <p>Add a passenger's details once and reuse them for every future booking.</p>
+    <button type="button" class="btn" (click)="openAddForm()">+ Add your first passenger</button>
+  </div>
+} @else {
+  <div class="passenger-list">
+    @for (passenger of passengers(); track passenger.id) {
+      <div class="passenger-card">
+        <div class="avatar" aria-hidden="true">{{ passenger.fullName.charAt(0).toUpperCase() }}</div>
+
+        <div class="passenger-body">
+          <h3>{{ passenger.fullName }}</h3>
+          <p class="meta">
+            {{ passenger.dob | date: 'mediumDate' }} &middot;
+            {{ passenger.idType === 'passport' ? 'Passport' : passenger.idType === 'national_id' ? 'National ID' : "Driver's license" }}
+            {{ passenger.idNumber }}
+          </p>
+        </div>
+
+        @if (confirmingDeleteId() === passenger.id) {
+          <div class="confirm-delete">
+            <span>Remove this passenger?</span>
+            <button type="button" class="btn danger" [disabled]="deletingId() === passenger.id" (click)="deletePassenger(passenger.id)">
+              {{ deletingId() === passenger.id ? 'Removing…' : 'Yes, remove' }}
+            </button>
+            <button type="button" class="btn secondary" (click)="cancelDelete()">Cancel</button>
+          </div>
+        } @else {
+          <div class="actions">
+            <button type="button" class="icon-btn" aria-label="Edit passenger" (click)="openEditForm(passenger)">✏️</button>
+            <button type="button" class="icon-btn" aria-label="Delete passenger" (click)="confirmDelete(passenger.id)">🗑️</button>
+          </div>
+        }
+      </div>
+    }
+  </div>
+}
+
+@if (formOpen()) {
+  <div class="drawer-backdrop" (click)="closeForm()">
+    <div class="drawer" (click)="$event.stopPropagation()">
+      <div class="drawer-header">
+        <h3>{{ editingId() ? 'Edit passenger' : 'Add passenger' }}</h3>
+        <button type="button" class="icon-btn" aria-label="Close" (click)="closeForm()">✕</button>
+      </div>
+
+      <form [formGroup]="form" (ngSubmit)="submit()">
+        <div class="floating-field">
+          <input id="fullName" type="text" formControlName="fullName" placeholder=" " autocomplete="off" />
+          <label for="fullName">Full name</label>
+          @if (form.controls.fullName.invalid && form.controls.fullName.touched) {
+            <p class="form-error">Full name is required.</p>
+          }
+        </div>
+
+        <div class="field">
+          <label for="dob">Date of birth</label>
+          <input id="dob" type="date" formControlName="dob" [max]="today" />
+          @if (form.controls.dob.invalid && form.controls.dob.touched) {
+            <p class="form-error">Date of birth is required.</p>
+          }
+        </div>
+
+        <div class="field">
+          <label for="idType">ID type</label>
+          <select id="idType" formControlName="idType">
+            @for (type of idTypes; track type.value) {
+              <option [value]="type.value">{{ type.label }}</option>
+            }
+          </select>
+        </div>
+
+        <div class="floating-field">
+          <input id="idNumber" type="text" formControlName="idNumber" placeholder=" " autocomplete="off" />
+          <label for="idNumber">ID number</label>
+          @if (form.controls.idNumber.invalid && form.controls.idNumber.touched) {
+            <p class="form-error">ID number is required.</p>
+          }
+        </div>
+
+        <div class="drawer-footer">
+          <button type="button" class="btn secondary" (click)="closeForm()">Cancel</button>
+          <button type="submit" class="btn" [disabled]="submitting()">
+            {{ submitting() ? 'Saving…' : editingId() ? 'Save changes' : 'Add passenger' }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+}

@@ -65,6 +65,17 @@ public class PricingServiceImpl implements PricingService {
         return new PromoCodeApplication(promoCode, discount);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public PromoCodeApplication previewPromoCode(String code, BigDecimal subtotal) {
+        PromoCode promoCode = promoCodeRepository.findByCode(code)
+                .orElseThrow(() -> new PromoCodeNotFoundException(code));
+
+        validateUsable(promoCode);
+
+        return new PromoCodeApplication(promoCode, calculateDiscount(promoCode, subtotal));
+    }
+
     private void validateUsable(PromoCode promoCode) {
         if (!Boolean.TRUE.equals(promoCode.getActive())) {
             throw new PromoCodeNotApplicableException(promoCode.getCode(), "inactive");

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="2026-08-01-03" author="ticketwave">
+        <comment>
+            Seats: held_by_user_id records who currently holds a HELD seat, so
+            a hold started on the seat-map screen (before a booking exists)
+            can be safely re-affirmed by its own owner (idempotent extend)
+            while still being rejected for anyone else, and so a customer can
+            release only their own hold.
+        </comment>
+        <addColumn tableName="seats">
+            <column name="held_by_user_id" type="BIGINT">
+                <constraints nullable="true"
+                             foreignKeyName="fk_seats_held_by_user"
+                             references="users(user_id)"/>
+            </column>
+        </addColumn>
+
+        <rollback>
+            <dropColumn tableName="seats" columnName="held_by_user_id"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

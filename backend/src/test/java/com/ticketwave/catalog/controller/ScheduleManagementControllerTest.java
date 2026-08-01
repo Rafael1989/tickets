@@ -99,7 +99,7 @@ class ScheduleManagementControllerTest {
     void addSeat_withValidToken_returns201() throws Exception {
         SeatRequest request = new SeatRequest(1L, "1A", "economy", null, new BigDecimal("1.000"));
         given(seatManagementService.addSeat(eq("operator1"), any())).willReturn(
-                new SeatResponse(5L, 1L, "1A", "economy", SeatStatus.AVAILABLE, new BigDecimal("1.000")));
+                new SeatResponse(5L, 1L, "1A", "economy", SeatStatus.AVAILABLE, new BigDecimal("1.000"), null, null, false));
 
         mockMvc.perform(post("/api/seats")
                         .header("Authorization", bearerToken)
@@ -113,7 +113,7 @@ class ScheduleManagementControllerTest {
     void updateSeat_withValidToken_returns200() throws Exception {
         SeatUpdateRequest request = new SeatUpdateRequest(SeatStatus.HELD, new BigDecimal("1.500"));
         given(seatManagementService.updateSeat(eq("operator1"), eq(5L), any())).willReturn(
-                new SeatResponse(5L, 1L, "1A", "economy", SeatStatus.HELD, new BigDecimal("1.500")));
+                new SeatResponse(5L, 1L, "1A", "economy", SeatStatus.HELD, new BigDecimal("1.500"), null, null, false));
 
         mockMvc.perform(put("/api/seats/5")
                         .header("Authorization", bearerToken)

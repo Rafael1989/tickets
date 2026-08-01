@@ -76,4 +76,27 @@ class PassengerMapperTest {
         assertThat(response.fullName()).isEqualTo("Jane Doe");
         assertThat(response.idNumber()).isEqualTo("X123456");
     }
+
+    @Test
+    void updateEntity_overwritesFieldsButLeavesIdAndUserUntouched() {
+        User user = User.builder().id(1L).build();
+        Passenger passenger = Passenger.builder()
+                .id(100L)
+                .user(user)
+                .fullName("Old Name")
+                .dob(LocalDate.of(1980, 1, 1))
+                .idType("passport")
+                .idNumber("OLD123")
+                .build();
+        PassengerRequest request = new PassengerRequest("New Name", LocalDate.of(1990, 1, 1), "national_id", "NEW456");
+
+        mapper.updateEntity(request, passenger);
+
+        assertThat(passenger.getId()).isEqualTo(100L);
+        assertThat(passenger.getUser()).isEqualTo(user);
+        assertThat(passenger.getFullName()).isEqualTo("New Name");
+        assertThat(passenger.getDob()).isEqualTo(LocalDate.of(1990, 1, 1));
+        assertThat(passenger.getIdType()).isEqualTo("national_id");
+        assertThat(passenger.getIdNumber()).isEqualTo("NEW456");
+    }
 }

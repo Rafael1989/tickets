@@ -4,6 +4,7 @@ import com.ticketwave.user.dto.PassengerRequest;
 import com.ticketwave.user.dto.PassengerResponse;
 import com.ticketwave.user.entity.Passenger;
 import com.ticketwave.user.entity.User;
+import com.ticketwave.user.exception.PassengerNotFoundException;
 import com.ticketwave.user.exception.UserNotFoundException;
 import com.ticketwave.user.mapper.PassengerMapper;
 import com.ticketwave.user.repository.PassengerRepository;
@@ -20,7 +21,10 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class PassengerServiceImplTest {
@@ -83,5 +87,74 @@ class PassengerServiceImplTest {
 
         assertThatThrownBy(() -> passengerService.listMyPassengers("ghost"))
                 .isInstanceOf(UserNotFoundException.class);
+    }
+
+    @Test
+    void updatePassenger_whenOwnedByCaller_updatesAndReturnsResponse() {
+        User user = User.builder().id(1L).username("alice").build();
+        Passenger passenger = Passenger.builder().id(100L).user(user).fullName("Old Name").build();
+        PassengerRequest request = new PassengerRequest("New Name", LocalDate.of(1990, 1, 1), "passport", "X999");
+        PassengerResponse response = new PassengerResponse(100L, 1L, "New Name", LocalDate.of(1990, 1, 1), "passport", "X999");
+
+        given(passengerRepository.findById(100L)).willReturn(Optional.of(passenger));
+        given(passengerMapper.toResponse(passenger)).willReturn(response);
+
+        PassengerResponse result = passengerService.updatePassenger("alice", 100L, request);
+
+        assertThat(result).isEqualTo(response);
+        verify(passengerMapper).updateEntity(request, passenger);
+    }
+
+    @Test
+    void updatePassenger_whenNotFound_throwsPassengerNotFoundException() {
+        given(passengerRepository.findById(999L)).willReturn(Optional.empty());
+        PassengerRequest request = new PassengerRequest("New Name", LocalDate.of(1990, 1, 1), "passport", "X999");
+
+        assertThatThrownBy(() -> passengerService.updatePassenger("alice", 999L, request))
+                .isInstanceOf(PassengerNotFoundException.class);
+    }
+
+    @Test
+    void updatePassenger_whenOwnedBySomeoneElse_throwsPassengerNotFoundExceptionAndDoesNotUpdate() {
+        User owner = User.builder().id(2L).username("bob").build();
+        Passenger passenger = Passenger.builder().id(100L).user(owner).fullName("Bob's Passenger").build();
+        given(passengerRepository.findById(100L)).willReturn(Optional.of(passenger));
+        PassengerRequest request = new PassengerRequest("New Name", LocalDate.of(1990, 1, 1), "passport", "X999");
+
+        assertThatThrownBy(() -> passengerService.updatePassenger("alice", 100L, request))
+                .isInstanceOf(PassengerNotFoundException.class);
+
+        verify(passengerMapper, never()).updateEntity(any(), any());
+    }
+
+    @Test
+    void deletePassenger_whenOwnedByCaller_deletesIt() {
+        User user = User.builder().id(1L).username("alice").build();
+        Passenger passenger = Passenger.builder().id(100L).user(user).build();
+        given(passengerRepository.findById(100L)).willReturn(Optional.of(passenger));
+
+        passengerService.deletePassenger("alice", 100L);
+
+        verify(passengerRepository).delete(passenger);
+    }
+
+    @Test
+    void deletePassenger_whenNotFound_throwsPassengerNotFoundException() {
+        given(passengerRepository.findById(999L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> passengerService.deletePassenger("alice", 999L))
+                .isInstanceOf(PassengerNotFoundException.class);
+    }
+
+    @Test
+    void deletePassenger_whenOwnedBySomeoneElse_throwsPassengerNotFoundExceptionAndDoesNotDelete() {
+        User owner = User.builder().id(2L).username("bob").build();
+        Passenger passenger = Passenger.builder().id(100L).user(owner).build();
+        given(passengerRepository.findById(100L)).willReturn(Optional.of(passenger));
+
+        assertThatThrownBy(() -> passengerService.deletePassenger("alice", 100L))
+                .isInstanceOf(PassengerNotFoundException.class);
+
+        verify(passengerRepository, never()).delete(any());
     }
 }

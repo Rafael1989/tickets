@@ -1,5 +1,6 @@
 package com.ticketwave.catalog.entity;
 
+import com.ticketwave.user.entity.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -57,4 +58,14 @@ public class Seat {
      */
     @Column(name = "held_until")
     private Instant heldUntil;
+
+    /**
+     * Who currently holds this seat, while status is HELD. Lets a fresh hold
+     * attempt by the same user re-affirm/extend their own still-active hold
+     * (idempotent) rather than being rejected as unavailable, while any
+     * other caller is still correctly blocked. Null once released or booked.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "held_by_user_id")
+    private User heldBy;
 }

@@ -70,6 +70,9 @@ export class CheckoutComponent implements OnInit {
       return;
     }
     this.draft.set(draft);
+    if (draft.promoCode) {
+      this.promoForm.setValue({ promoCode: draft.promoCode });
+    }
 
     this.passengerService
       .listMyPassengers()

@@ -5,7 +5,10 @@ import com.ticketwave.auth.JwtService;
 import com.ticketwave.auth.security.JwtAuthenticationFilter;
 import com.ticketwave.config.JwtProperties;
 import com.ticketwave.config.SecurityConfig;
+import com.ticketwave.auth.exception.IncorrectPasswordException;
+import com.ticketwave.user.dto.ChangePasswordRequest;
 import com.ticketwave.user.dto.RoleUpdateRequest;
+import com.ticketwave.user.dto.UpdateEmailRequest;
 import com.ticketwave.user.dto.UserRequest;
 import com.ticketwave.user.dto.UserResponse;
 import com.ticketwave.user.entity.UserRole;
@@ -28,6 +31,8 @@ import java.util.List;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -70,6 +75,85 @@ class UserControllerTest {
     @Test
     void listUsers_withoutAuthorizationHeader_isRejected() throws Exception {
         mockMvc.perform(get("/api/users"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void getCurrentUser_withoutAuthorizationHeader_isRejected() throws Exception {
+        mockMvc.perform(get("/api/users/me"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void getCurrentUser_withValidToken_usesAuthenticatedUsernameAndReturns200() throws Exception {
+        given(userService.getCurrentUser("admin1")).willReturn(
+                new UserResponse(1L, "admin1", "admin1@example.com", UserRole.ADMIN, Instant.now()));
+
+        mockMvc.perform(get("/api/users/me").header("Authorization", bearerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("admin1"));
+    }
+
+    @Test
+    void updateCurrentEmail_withoutAuthorizationHeader_isRejected() throws Exception {
+        mockMvc.perform(put("/api/users/me/email")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new UpdateEmailRequest("new@example.com"))))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void updateCurrentEmail_withValidToken_usesAuthenticatedUsernameAndReturns200() throws Exception {
+        given(userService.updateCurrentEmail(eq("admin1"), any())).willReturn(
+                new UserResponse(1L, "admin1", "new@example.com", UserRole.ADMIN, Instant.now()));
+
+        mockMvc.perform(put("/api/users/me/email")
+                        .header("Authorization", bearerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new UpdateEmailRequest("new@example.com"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value("new@example.com"));
+    }
+
+    @Test
+    void updateCurrentEmail_withInvalidEmail_returns400() throws Exception {
+        mockMvc.perform(put("/api/users/me/email")
+                        .header("Authorization", bearerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"not-an-email\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void changeCurrentPassword_withoutAuthorizationHeader_isRejected() throws Exception {
+        mockMvc.perform(put("/api/users/me/password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ChangePasswordRequest("old", "newpassword123"))))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void changeCurrentPassword_withValidToken_usesAuthenticatedUsernameAndReturns204() throws Exception {
+        ChangePasswordRequest request = new ChangePasswordRequest("oldpass", "newpassword123");
+
+        mockMvc.perform(put("/api/users/me/password")
+                        .header("Authorization", bearerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isNoContent());
+
+        verify(userService).changeCurrentPassword("admin1", request);
+    }
+
+    @Test
+    void changeCurrentPassword_whenCurrentPasswordWrong_returns401() throws Exception {
+        ChangePasswordRequest request = new ChangePasswordRequest("wrong", "newpassword123");
+        doThrow(new IncorrectPasswordException()).when(userService).changeCurrentPassword("admin1", request);
+
+        mockMvc.perform(put("/api/users/me/password")
+                        .header("Authorization", bearerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isUnauthorized());
     }
 

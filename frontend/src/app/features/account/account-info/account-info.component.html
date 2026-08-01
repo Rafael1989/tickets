@@ -1,0 +1,84 @@
+@if (loading()) {
+  <div class="info-card">
+    <div class="skeleton avatar"></div>
+    <div class="skeleton-lines">
+      <div class="skeleton line wide"></div>
+      <div class="skeleton line"></div>
+      <div class="skeleton line short"></div>
+    </div>
+  </div>
+} @else if (user(); as u) {
+  <div class="info-card">
+    <div class="avatar" aria-hidden="true">{{ initial(u.username) }}</div>
+
+    <div class="info-body">
+      <h2>{{ u.username }}</h2>
+      <span class="role-badge" [class]="u.role.toLowerCase()">{{ u.role }}</span>
+
+      <dl>
+        <dt>Email</dt>
+        <dd>
+          @if (editingEmail()) {
+            <form class="inline-form" [formGroup]="emailForm" (ngSubmit)="saveEmail()">
+              <input type="email" formControlName="email" autocomplete="off" />
+              <button type="submit" class="btn" [disabled]="savingEmail() || emailForm.invalid">
+                {{ savingEmail() ? 'Saving…' : 'Save' }}
+              </button>
+              <button type="button" class="btn secondary" (click)="cancelEditEmail()">Cancel</button>
+            </form>
+            @if (emailForm.controls.email.invalid && emailForm.controls.email.touched) {
+              <p class="form-error">Enter a valid email address.</p>
+            }
+          } @else {
+            <span>{{ u.email }}</span>
+            <button type="button" class="link-btn" (click)="startEditEmail()">Edit</button>
+          }
+        </dd>
+        <dt>Member since</dt>
+        <dd>{{ u.createdAt | date: 'longDate' }}</dd>
+        <dt>Password</dt>
+        <dd>
+          @if (!changingPassword()) {
+            <span>••••••••</span>
+            <button type="button" class="link-btn" (click)="startChangePassword()">Change</button>
+          }
+        </dd>
+      </dl>
+
+      @if (changingPassword()) {
+        <form class="password-form" [formGroup]="passwordForm" (ngSubmit)="savePassword()">
+          <div class="floating-field">
+            <input id="currentPassword" type="password" formControlName="currentPassword" placeholder=" " autocomplete="current-password" />
+            <label for="currentPassword">Current password</label>
+          </div>
+          <div class="floating-field">
+            <input id="newPassword" type="password" formControlName="newPassword" placeholder=" " autocomplete="new-password" />
+            <label for="newPassword">New password</label>
+          </div>
+          <div class="floating-field">
+            <input id="confirmPassword" type="password" formControlName="confirmPassword" placeholder=" " autocomplete="new-password" />
+            <label for="confirmPassword">Confirm new password</label>
+          </div>
+
+          @if (passwordForm.controls.newPassword.invalid && passwordForm.controls.newPassword.touched) {
+            <p class="form-error">New password must be at least 8 characters.</p>
+          }
+          @if (passwordForm.errors?.['passwordMismatch'] && passwordForm.controls.confirmPassword.touched) {
+            <p class="form-error">Passwords don't match.</p>
+          }
+
+          <div class="password-form-footer">
+            <button type="button" class="btn secondary" (click)="cancelChangePassword()">Cancel</button>
+            <button type="submit" class="btn" [disabled]="savingPassword() || passwordForm.invalid">
+              {{ savingPassword() ? 'Saving…' : 'Save password' }}
+            </button>
+          </div>
+        </form>
+      }
+    </div>
+  </div>
+} @else {
+  <div class="empty-state">
+    <p>We couldn't load your account details. Please try again shortly.</p>
+  </div>
+}

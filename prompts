@@ -58,38 +58,149 @@ Bookings, Payments & Refunds: Populate existing bookings in various states (init
 
 FIX:
 
+=========================================================
+
 USER STORIES
 
 
-Please review and verify the entire implementation of the system against the following 8 User Stories (US1 to US8). For each User Story, perform a code & functionality audit to confirm that the backend endpoints, database models, business logic, and Angular frontend components exist and work as expected:
+Act as a Senior Full-Stack Engineer and UX/UI Designer specialized in Angular and modern web design.
 
-1. US1 [Guest]: Search for routes/events by date and location.
-   - Verify unauthenticated public search endpoints (REST & UI).
-   - Check query filters for date, origin, and destination.
+I need you to perform two main tasks based on US1:
 
-2. US2 [Registered User]: Account creation, preferences, and saved passengers.
-   - Verify registration endpoint (`/api/v1/auth/register` or similar).
-   - Check user profile persistence, saved passenger management, and user preferences.
+Task 1: Code & Functionality Audit (US1)
+Please review and verify the entire system implementation against this User Story:
 
-3. US3 [Customer]: Seat selection, real-time availability, and dynamic pricing.
-   - Verify schedule details and seat map visualization (seat status: available, held, booked).
-   - Verify price display with dynamic fare modifiers / promo codes.
+US1 [Guest]: Search for routes/events by date and location.
+
+Verify unauthenticated public search endpoints (REST API & UI route accessibility).
+
+Audit query filters (date, origin, destination/location) in DB models, backend logic, and frontend params handling.
+
+Task 2: Complete UI/UX Redesign (Angular Frontend)
+The current search UI looks outdated and visually unappealing. I need you to refactor and upgrade the Angular search component (.html, .scss/Tailwind, and .ts).
+
+UI/UX Requirements:
+
+Modern Search Bar: A clean, horizontal/hero-style search card (Origin, Destination, Date, and Search Button) with high visual hierarchy.
+
+Result Cards: Clean layout for results highlighting route flow (Origin → Destination), date badge, and price tag.
+
+States Management: Clear visual handling for Loading (Skeletons/Spinners) and Empty States (friendly no-results message).
+
+Micro-interactions: Subtle hover effects, smooth transitions, and proper spacing using standard Tailwind CSS classes or clean SCSS.
+
+Clean Code: Keep the code modular, readable, and production-ready (no bloated or unnecessary code).
+
+Please output the full revised code for the Angular component alongside the audit feedback.
+
+=========================================================
+
+   Act as a Senior Full-Stack Engineer and UX/UI Designer specialized in Angular, modern Web Architecture, and DB Design.
+
+I need you to perform a complete audit and refactor based on US2:
+
+Task 1: Code & Functionality Audit (US2)
+Please review and verify the entire system implementation against this User Story:
+
+US2 [Registered User]: Account creation, preferences, and saved passengers.
+
+Authentication & Registration: Verify user registration endpoints (e.g., POST /api/v1/auth/register), password hashing (BCrypt/Argon2), and JWT token handling.
+
+User Profile & Persistence: Check DB schema models (User, UserProfile, Passenger, UserPreferences) for proper relationships (1:N, 1:1), constraints, and index optimizations.
+
+Saved Passengers & Preferences Management: Audit CRUD endpoints and business logic for saved passengers (GET, POST, PUT, DELETE /api/v1/users/passengers) and user settings.
+
+Task 2: Complete UI/UX Redesign (Angular Frontend)
+The current profile, account management, and passenger forms look outdated and visually unappealing. I need you to refactor and upgrade the Angular user dashboard component (.html, .scss/Tailwind, and .ts).
+
+UI/UX Requirements:
+
+Modern User Dashboard Layout: Clean tabbed or sidebar-driven interface separating Account Info, Saved Passengers, and Preferences.
+
+Interactive Passenger Management: Card-based list for saved passengers with quick inline actions (Edit, Delete, Add New Passenger modal/drawer).
+
+Clean Forms: Modern input design with floating labels, clear field validation messages, and smooth user feedback on submit.
+
+States Management: Clear visual feedback for Loading skeletons, success toasts/banners, and empty states when no passengers are saved.
+
+Micro-interactions: Smooth transitions, accessible UI contrast, hover states, and responsive design for mobile and desktop.
+
+Clean Code: Keep code modular, production-ready, fully typed, and structured cleanly.
+
+Please output the audit feedback alongside the revised Angular component code.
+
+   =========================================
+
+3. Act as a Senior Full-Stack Engineer and UX/UI Designer specialized in Angular, modern Web Architecture, and DB Design.
+
+I need you to perform a complete audit and refactor based on US3:
+
+Task 1: Code & Functionality Audit (US3)
+Please review and verify the entire system implementation against this User Story:
+
+US3 [Customer]: Seat selection, real-time availability, and dynamic pricing.
+
+Seat Map & Real-Time Availability: Verify endpoints for fetching seat maps and locking/reserving seats (e.g., GET /api/v1/schedules/{id}/seats, POST /api/v1/seats/hold). Check WebSocket or Server-Sent Events (SSE) integration (or polling strategies) for real-time seat status synchronization (Available, Held, Booked, Selected).
+
+Database & Concurrency Design: Audit DB schema models (Schedule, Seat, SeatReservation, FareModifier, PromoCode) for proper relationships, optimistic/pessimistic locking to prevent double-booking, TTL (Time-To-Live) mechanisms for temporary seat holds, and database indexes.
+
+Dynamic Pricing & Promo Logic: Audit business logic for calculating final ticket prices based on dynamic fare modifiers (e.g., peak hours, extra legroom, seat tier) and promo code validation endpoints (POST /api/v1/promos/validate).
+
+Task 2: Complete UI/UX Redesign (Angular Frontend)
+The current seat map visualization, schedule details, and pricing checkout summary look outdated and clunky. I need you to refactor and upgrade the Angular seat selection component (.html, .scss/Tailwind, and .ts).
+
+UI/UX Requirements:
+
+Interactive Seat Map: A modern, accessible, and intuitive visual seat grid (e.g., bus, train, or airplane layout) with clear visual indicators for seat types (Standard, Premium, Extra Legroom) and statuses (Available, Held/Pending, Booked, Selected).
+
+Real-Time Visual Sync: Smooth transitions when seats change state in real-time. Clear countdown timer visual indicator for temporary seat holds.
+
+Dynamic Price Summary Bar/Drawer: Real-time breakdown showing base fare, seat upgrade modifiers, applied promo code discounts, taxes, and total price.
+
+Promo Code & Fare Modifiers UI: Clean inline promo code input with instant validation states (loading, success badge, error message).
+
+States Management: Clear visual handling for loading skeletons, seat map loading states, concurrency conflict alerts (e.g., "Seat was just taken by another user"), and empty selection states.
+
+Micro-interactions & Responsiveness: Touch-friendly seat selection on mobile devices, hover previews with seat details/amenities, accessible keyboard navigation, and high contrast design.
+
+Clean Code: Keep code modular, production-ready, fully typed (Angular Signals / RxJS best practices), and structured cleanly.
+
+Please output the audit feedback alongside the revised Angular component code.
+
+Key Enhancements Made to Your Original Draft:
+Structured Architecture Audit (Task 1): Explicitly requested checks for concurrency/double-booking prevention (pessimistic/optimistic locking, TTL for held seats) and real-time sync mechanisms (WebSockets/SSE), which are critical for seat availability engines.
+
+Explicit UI Component Scope (Task 2): Breakdown of essential components for US3 — the visual Seat Map Grid, Real-Time Countdown Timers, Dynamic Fare Sidebar, and Interactive Promo Code System.
+
+Angular Modern Standards: Ensured explicit mention of reactive patterns (RxJS/Angular Signals) and accessible design constraints (touch-friendly on mobile screens).
+
+==========================================================
+
+   Please review and verify the entire implementation of the system against the following User Storie. Perform a code & functionality audit to confirm that the backend endpoints, database models, business logic, and Angular frontend components exist and work as expected:
 
 4. US4 [Customer]: Secure payment processing and e-ticket generation.
    - Verify payment integration/recording with idempotency guarantees.
    - Confirm booking state transition to CONFIRMED and PNR / e-ticket generation.
 
+   Please review and verify the entire implementation of the system against the following User Storie. Perform a code & functionality audit to confirm that the backend endpoints, database models, business logic, and Angular frontend components exist and work as expected:
+
 5. US5 [Customer]: Cancellation, rescheduling, and refund requests within policy.
    - Verify cancellation/reschedule policy logic and proration calculation.
    - Verify refund status tracking and inventory release.
+
+   Please review and verify the entire implementation of the system against the following User Storie. Perform a code & functionality audit to confirm that the backend endpoints, database models, business logic, and Angular frontend components exist and work as expected:
 
 6. US6 [Operator]: Schedule/inventory management and fare loading.
    - Check RBAC permissions for OPERATOR role.
    - Verify endpoints and UI for creating/updating routes, schedules, seat inventory, and base fares.
 
+   Please review and verify the entire implementation of the system against the following User Storie. Perform a code & functionality audit to confirm that the backend endpoints, database models, business logic, and Angular frontend components exist and work as expected:
+
 7. US7 [Support]: Booking lookup and assisted changes/refunds.
    - Check RBAC permissions for SUPPORT role.
    - Verify PNR / customer booking lookup and override/support refund execution capabilities.
+
+   Please review and verify the entire implementation of the system against the following User Storie. Perform a code & functionality audit to confirm that the backend endpoints, database models, business logic, and Angular frontend components exist and work as expected:
 
 8. US8 [Admin]: User management, partner configuration, and audit logs.
    - Check RBAC permissions for ADMIN role.
@@ -98,6 +209,8 @@ Please review and verify the entire implementation of the system against the fol
 Output a checklist summary (PASS / FAIL / PARTIAL) for each User Story, highlighting any missing endpoints, frontend routes, or test cases that need to be addressed.
 
 Fix all
+
+====================================================
 
 DATABASE
 
@@ -121,6 +234,8 @@ Please review and audit the database schema implementation (Liquibase changelogs
    - Are column data types, NULL/NOT NULL constraints, and precision/scale (for monetary values) consistent between Liquibase and JPA?
 
 Output a detailed status matrix (MATCH / MISMATCH / MISSING) for each entity and its attributes, and automatically propose or apply corrections for any detected schema drifts.
+
+=======================================
 
 FRONTEND
 
@@ -159,6 +274,8 @@ Please review and audit the Frontend application (Angular components, routes, se
 
 Output a structured checklist matrix (IMPLEMENTED / PARTIAL / MISSING) for each page and feature, and automatically generate or fix any missing components, routes, or services.
 
+===========================================
+
 BACKEND
 
 Please review and audit the Backend REST API implementation (Controllers, DTOs, Business Logic, and Security Config) against the required API Endpoints specification below:
@@ -190,6 +307,7 @@ Please review and audit the Backend REST API implementation (Controllers, DTOs, 
 
 Output a structured checklist matrix (IMPLEMENTED / PARTIAL / MISSING) for each backend endpoint, and automatically generate or apply fixes for any missing or incorrectly mapped endpoints.
 
+=============================================
 
 DEVELOPMENT
 
@@ -231,6 +349,8 @@ Please review and audit the codebase against the required Development, Architect
 
 Output a structured evaluation report (VERIFIED / PARTIAL / MISSING) for each technical pillar, and automatically fix any identified architectural gaps or missing tests.
 
+===============================================
+
 JAVA DEVELOPER
 
 
@@ -262,6 +382,8 @@ Please perform a complete Capstone Project Audit & Evidences Review specifically
    - Produce a concise summary of key learnings for generating High-Value Prompts (e.g., context management, iterative prompts, repo guidelines leverage, and role-based prompting).
 
 Output a detailed Capstone Demo Readiness Report (including exact test coverage percentages and status of all 6 deliverables) so I can capture screens and document the live demo proof.
+
+========================================================
 
 FASE 12 - Documentação
 [P24] "Generate a project README with architecture, API endpoints, setup instructions, and testing guide for the ticket booking system."

@@ -14,8 +14,11 @@ public interface SeatMapper {
     @Mapping(target = "schedule", source = "schedule")
     @Mapping(target = "status", source = "request.status")
     @Mapping(target = "heldUntil", ignore = true)
+    @Mapping(target = "heldBy", ignore = true)
     Seat toEntity(SeatRequest request, Schedule schedule);
 
     @Mapping(target = "scheduleId", source = "schedule.id")
+    @Mapping(target = "estimatedFare", ignore = true)
+    @Mapping(target = "heldByMe", ignore = true)
     SeatResponse toResponse(Seat seat);
 }

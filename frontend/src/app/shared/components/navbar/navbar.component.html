@@ -14,6 +14,7 @@
       @if (isAdmin()) {
         <a routerLink="/admin">Admin</a>
       }
+      <a routerLink="/account">My Account</a>
       <span class="username">{{ username() }}</span>
       <button type="button" (click)="logout()">Log out</button>
     } @else {

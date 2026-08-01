@@ -2,6 +2,9 @@ package com.ticketwave.user.service;
 
 import com.ticketwave.audit.service.AuditService;
 import com.ticketwave.auth.exception.DuplicateUserException;
+import com.ticketwave.auth.exception.IncorrectPasswordException;
+import com.ticketwave.user.dto.ChangePasswordRequest;
+import com.ticketwave.user.dto.UpdateEmailRequest;
 import com.ticketwave.user.dto.UserRequest;
 import com.ticketwave.user.dto.UserResponse;
 import com.ticketwave.user.entity.User;
@@ -86,5 +89,40 @@ public class UserServiceImpl implements UserService {
         auditService.record(actorUsername, "USER_ROLE_CHANGED", "USER", userId,
                 previousRole + " -> " + role);
         return userMapper.toResponse(user);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public UserResponse getCurrentUser(String username) {
+        return userRepository.findByUsername(username)
+                .map(userMapper::toResponse)
+                .orElseThrow(() -> new UserNotFoundException(username));
+    }
+
+    @Override
+    @Transactional
+    public UserResponse updateCurrentEmail(String username, UpdateEmailRequest request) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new UserNotFoundException(username));
+
+        if (!request.email().equals(user.getEmail()) && userRepository.existsByEmail(request.email())) {
+            throw new DuplicateUserException("Email '" + request.email() + "' is already registered");
+        }
+
+        user.setEmail(request.email());
+        return userMapper.toResponse(user);
+    }
+
+    @Override
+    @Transactional
+    public void changeCurrentPassword(String username, ChangePasswordRequest request) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new UserNotFoundException(username));
+
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+            throw new IncorrectPasswordException();
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
     }
 }

@@ -4,6 +4,7 @@ import com.ticketwave.user.dto.PassengerRequest;
 import com.ticketwave.user.dto.PassengerResponse;
 import com.ticketwave.user.entity.Passenger;
 import com.ticketwave.user.entity.User;
+import com.ticketwave.user.exception.PassengerNotFoundException;
 import com.ticketwave.user.exception.UserNotFoundException;
 import com.ticketwave.user.mapper.PassengerMapper;
 import com.ticketwave.user.repository.PassengerRepository;
@@ -49,5 +50,34 @@ public class PassengerServiceImpl implements PassengerService {
         return passengerRepository.findByUserId(user.getId()).stream()
                 .map(passengerMapper::toResponse)
                 .toList();
+    }
+
+    @Override
+    @Transactional
+    public PassengerResponse updatePassenger(String username, Long passengerId, PassengerRequest request) {
+        Passenger passenger = findOwnedPassenger(username, passengerId);
+        passengerMapper.updateEntity(request, passenger);
+        return passengerMapper.toResponse(passenger);
+    }
+
+    @Override
+    @Transactional
+    public void deletePassenger(String username, Long passengerId) {
+        Passenger passenger = findOwnedPassenger(username, passengerId);
+        passengerRepository.delete(passenger);
+    }
+
+    /**
+     * Returns 404 (not 403) when the passenger belongs to someone else, so a
+     * caller can't distinguish "doesn't exist" from "isn't yours" and probe
+     * for other users' passenger ids.
+     */
+    private Passenger findOwnedPassenger(String username, Long passengerId) {
+        Passenger passenger = passengerRepository.findById(passengerId)
+                .orElseThrow(() -> new PassengerNotFoundException(passengerId));
+        if (!passenger.getUser().getUsername().equals(username)) {
+            throw new PassengerNotFoundException(passengerId);
+        }
+        return passenger;
     }
 }

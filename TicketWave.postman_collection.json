@@ -1,0 +1,524 @@
+{
+  "info": {
+    "name": "TicketWave API",
+    "description": "Full backend API for TicketWave (local dev instance running on port 8081 — port 8080 is taken by another project on this machine). Swagger UI: http://localhost:8081/swagger-ui.html · OpenAPI JSON: http://localhost:8081/v3/api-docs.\n\nRun the four 'Login as ...' requests in the Auth folder first — each one saves its JWT into a collection variable (customerToken/operatorToken/supportToken/adminToken) that every other request's Authorization header references. All example bodies use every field defined on the request DTO.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8081" },
+    { "key": "customerToken", "value": "" },
+    { "key": "operatorToken", "value": "" },
+    { "key": "supportToken", "value": "" },
+    { "key": "adminToken", "value": "" },
+    { "key": "passengerId", "value": "4", "description": "Seeded passenger owned by customer1. Overwritten by 'Create passenger' response." },
+    { "key": "bookingId", "value": "6", "description": "Seeded INITIATED booking owned by customer1. Overwritten by 'Create booking' response." },
+    { "key": "paidBookingId", "value": "36", "description": "Seeded CONFIRMED+paid booking owned by customer1 — used for the refund example." },
+    { "key": "refundId", "value": "1", "description": "Seeded PENDING refund." },
+    { "key": "createdUserId", "value": "", "description": "Filled by 'Create user (admin)'. Update-role example targets this, never a real seeded account." },
+    { "key": "scheduleId", "value": "2" },
+    { "key": "seatId", "value": "6", "description": "Seeded AVAILABLE seat on schedule 2." }
+  ],
+  "item": [
+    {
+      "name": "0. Auth",
+      "item": [
+        {
+          "name": "Register (guest)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"postman_customer\",\n  \"password\": \"PostmanPass123!\",\n  \"email\": \"postman_customer@example.com\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/register", "host": ["{{baseUrl}}"], "path": ["api", "register"] },
+            "description": "Public. Always creates a CUSTOMER account — role can't be chosen here. Re-running with the same username/email returns 409."
+          }
+        },
+        {
+          "name": "Login as Customer",
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "if (pm.response.code === 200) { pm.collectionVariables.set('customerToken', pm.response.json().accessToken); }"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"username\": \"customer1\",\n  \"password\": \"SeedPass123!\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/login", "host": ["{{baseUrl}}"], "path": ["api", "login"] },
+            "description": "Saves the token into {{customerToken}}. Seeded customers: customer1..customer30, all with password SeedPass123!"
+          }
+        },
+        {
+          "name": "Login as Operator",
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "if (pm.response.code === 200) { pm.collectionVariables.set('operatorToken', pm.response.json().accessToken); }"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"username\": \"operator1\",\n  \"password\": \"SeedPass123!\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/login", "host": ["{{baseUrl}}"], "path": ["api", "login"] },
+            "description": "Saves the token into {{operatorToken}}. Seeded operators: operator1..operator6."
+          }
+        },
+        {
+          "name": "Login as Support",
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "if (pm.response.code === 200) { pm.collectionVariables.set('supportToken', pm.response.json().accessToken); }"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"username\": \"support1\",\n  \"password\": \"SeedPass123!\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/login", "host": ["{{baseUrl}}"], "path": ["api", "login"] },
+            "description": "Saves the token into {{supportToken}}. Seeded support agents: support1..support3."
+          }
+        },
+        {
+          "name": "Login as Admin",
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "if (pm.response.code === 200) { pm.collectionVariables.set('adminToken', pm.response.json().accessToken); }"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"username\": \"admin1\",\n  \"password\": \"SeedPass123!\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/login", "host": ["{{baseUrl}}"], "path": ["api", "login"] },
+            "description": "Saves the token into {{adminToken}}. Seeded admins: admin1, admin2."
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Search & Catalog (public, guest)",
+      "item": [
+        {
+          "name": "Search schedules",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/search?type=BUS&origin=New York&destination=Los Angeles&venue=&departureDate=2026-08-10",
+              "host": ["{{baseUrl}}"], "path": ["api", "search"],
+              "query": [
+                { "key": "type", "value": "BUS" },
+                { "key": "origin", "value": "New York" },
+                { "key": "destination", "value": "Los Angeles" },
+                { "key": "venue", "value": "", "description": "Events only — leave blank for travel routes" },
+                { "key": "departureDate", "value": "2026-08-10" }
+              ]
+            },
+            "description": "Every filter is optional and composable. No auth required."
+          }
+        },
+        {
+          "name": "Get schedule details",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/schedules/{{scheduleId}}", "host": ["{{baseUrl}}"], "path": ["api", "schedules", "{{scheduleId}}"] }
+          }
+        },
+        {
+          "name": "Get seat map",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}", "description": "Optional — include to see heldByMe correctly for your own holds. Omit entirely for pure guest browsing." }],
+            "url": { "raw": "{{baseUrl}}/api/schedules/{{scheduleId}}/seats", "host": ["{{baseUrl}}"], "path": ["api", "schedules", "{{scheduleId}}", "seats"] },
+            "description": "Returns every seat (AVAILABLE/HELD/BOOKED) with a real computed estimatedFare per seat."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Seat Holds (customer)",
+      "item": [
+        {
+          "name": "Hold a seat",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/schedules/{{scheduleId}}/seats/{{seatId}}/hold", "host": ["{{baseUrl}}"], "path": ["api", "schedules", "{{scheduleId}}", "seats", "{{seatId}}", "hold"] },
+            "description": "No body. Reserves the seat for the configured TTL (default 10 min). Re-calling refreshes/extends your own hold; 409 if someone else holds it or it's booked."
+          }
+        },
+        {
+          "name": "Release a seat hold",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/schedules/{{scheduleId}}/seats/{{seatId}}/hold", "host": ["{{baseUrl}}"], "path": ["api", "schedules", "{{scheduleId}}", "seats", "{{seatId}}", "hold"] },
+            "description": "Idempotent no-op if you don't currently hold this seat. Always 204."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Promotions (public)",
+      "item": [
+        {
+          "name": "Validate promo code",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"code\": \"SAVE10\",\n  \"subtotal\": 100.00\n}" },
+            "url": { "raw": "{{baseUrl}}/api/promos/validate", "host": ["{{baseUrl}}"], "path": ["api", "promos", "validate"] },
+            "description": "Read-only preview, doesn't consume a redemption. NOTE: no promo codes are seeded in this dev DB by default, so this returns 404 PROMO_CODE_NOT_FOUND unless you've inserted one — that's expected, not a bug."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Passengers (customer)",
+      "item": [
+        {
+          "name": "Create passenger",
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "if (pm.response.code === 201) { pm.collectionVariables.set('passengerId', pm.response.json().id); }"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"fullName\": \"Jane Doe\",\n  \"dob\": \"1990-05-15\",\n  \"idType\": \"passport\",\n  \"idNumber\": \"X1234567\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/passengers", "host": ["{{baseUrl}}"], "path": ["api", "passengers"] },
+            "description": "idType is free text in practice: passport | national_id | driver_license. Saves the new id into {{passengerId}} so Update/Delete below target it instead of a real seeded passenger."
+          }
+        },
+        {
+          "name": "List my passengers",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/passengers/me", "host": ["{{baseUrl}}"], "path": ["api", "passengers", "me"] }
+          }
+        },
+        {
+          "name": "Update passenger",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"fullName\": \"Jane A. Doe\",\n  \"dob\": \"1990-05-15\",\n  \"idType\": \"passport\",\n  \"idNumber\": \"X1234567-A\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/passengers/{{passengerId}}", "host": ["{{baseUrl}}"], "path": ["api", "passengers", "{{passengerId}}"] },
+            "description": "Run 'Create passenger' first so {{passengerId}} points at a passenger you actually own (404 otherwise, on someone else's id)."
+          }
+        },
+        {
+          "name": "Delete passenger",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/passengers/{{passengerId}}", "host": ["{{baseUrl}}"], "path": ["api", "passengers", "{{passengerId}}"] },
+            "description": "Deletes {{passengerId}} — run 'Create passenger' first if you don't want to delete a real seeded passenger."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Bookings & Payments (customer)",
+      "item": [
+        {
+          "name": "Create booking",
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "if (pm.response.code === 201) { pm.collectionVariables.set('bookingId', pm.response.json().booking.id); }"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"scheduleId\": {{scheduleId}},\n  \"seatSelections\": [\n    { \"seatId\": {{seatId}}, \"passengerId\": {{passengerId}} }\n  ],\n  \"promoCode\": null\n}" },
+            "url": { "raw": "{{baseUrl}}/api/bookings", "host": ["{{baseUrl}}"], "path": ["api", "bookings"] },
+            "description": "Holds every listed seat as part of creation. passengerId must belong to the authenticated caller. promoCode is optional (null or omit). Run 'Hold a seat' first, or just let this hold it fresh."
+          }
+        },
+        {
+          "name": "Get booking",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/bookings/{{bookingId}}", "host": ["{{baseUrl}}"], "path": ["api", "bookings", "{{bookingId}}"] }
+          }
+        },
+        {
+          "name": "Record payment (confirms booking)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"amount\": 14.96,\n  \"method\": \"card\",\n  \"reference\": \"postman-{{$randomUUID}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/payments", "host": ["{{baseUrl}}"], "path": ["api", "bookings", "{{bookingId}}", "payments"] },
+            "description": "amount must exactly match the booking's totalAmount (check via 'Get booking' first). reference is the idempotency key — {{$randomUUID}} auto-generates a fresh one each send so re-running doesn't collide with the unique constraint on payments.reference. method: card | paypal | wallet (free text)."
+          }
+        },
+        {
+          "name": "Reschedule booking (INITIATED only)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"scheduleId\": {{scheduleId}},\n  \"seatSelections\": [\n    { \"seatId\": {{seatId}}, \"passengerId\": {{passengerId}} }\n  ]\n}" },
+            "url": { "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/reschedule", "host": ["{{baseUrl}}"], "path": ["api", "bookings", "{{bookingId}}", "reschedule"] },
+            "description": "Only works while the booking is still INITIATED (unpaid). 409 if already CONFIRMED/CANCELLED."
+          }
+        },
+        {
+          "name": "Initiate refund (CONFIRMED + paid only)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/bookings/{{paidBookingId}}/refunds", "host": ["{{baseUrl}}"], "path": ["api", "bookings", "{{paidBookingId}}", "refunds"] },
+            "description": "No body. Targets {{paidBookingId}} (a seeded CONFIRMED+paid booking) rather than {{bookingId}}, since only a paid booking can be refunded. Applies the cancellation policy and cancels the booking."
+          }
+        },
+        {
+          "name": "Get booking by PNR (support/admin)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{supportToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/bookings/pnr/EN25TW", "host": ["{{baseUrl}}"], "path": ["api", "bookings", "pnr", "EN25TW"] },
+            "description": "EN25TW is customer1's seeded CONFIRMED booking's PNR. Support/admin only."
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Refunds (support/admin)",
+      "item": [
+        {
+          "name": "Process (settle) a refund",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{supportToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"decision\": \"APPROVE\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/refunds/{{refundId}}/process", "host": ["{{baseUrl}}"], "path": ["api", "refunds", "{{refundId}}", "process"] },
+            "description": "decision: APPROVE | REJECT. Only works on a PENDING refund — 409 otherwise. {{refundId}} defaults to a seeded pending refund; each one can only be settled once."
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. My Account (any authenticated role)",
+      "item": [
+        {
+          "name": "Get my account",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/users/me", "host": ["{{baseUrl}}"], "path": ["api", "users", "me"] }
+          }
+        },
+        {
+          "name": "Update my email",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"customer1-updated@example.com\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/users/me/email", "host": ["{{baseUrl}}"], "path": ["api", "users", "me", "email"] },
+            "description": "This really changes customer1's email in the dev DB. Harmless to re-run (409 only if the new address collides with someone else's)."
+          }
+        },
+        {
+          "name": "Change my password",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"currentPassword\": \"SeedPass123!\",\n  \"newPassword\": \"NewSeedPass123!\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/users/me/password", "host": ["{{baseUrl}}"], "path": ["api", "users", "me", "password"] },
+            "description": "WARNING: this really changes customer1's real login password to NewSeedPass123! — every other request in this collection that logs in as customer1 with SeedPass123! will start failing until you update the 'Login as Customer' body to match. Prefer running this against the 'postman_customer' account from Register instead."
+          }
+        },
+        {
+          "name": "Get my preferences",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/users/me/preferences", "host": ["{{baseUrl}}"], "path": ["api", "users", "me", "preferences"] },
+            "description": "Auto-creates a default row (USD, no seat preference, notifications on) on first call for any account seeded before this feature existed."
+          }
+        },
+        {
+          "name": "Update my preferences",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"preferredCurrency\": \"USD\",\n  \"seatPreference\": \"WINDOW\",\n  \"notificationsEnabled\": true\n}" },
+            "url": { "raw": "{{baseUrl}}/api/users/me/preferences", "host": ["{{baseUrl}}"], "path": ["api", "users", "me", "preferences"] },
+            "description": "seatPreference: WINDOW | AISLE | null (no preference). preferredCurrency must be a 3-letter ISO code."
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. User Management (admin)",
+      "item": [
+        {
+          "name": "List all users",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/users", "host": ["{{baseUrl}}"], "path": ["api", "users"] }
+          }
+        },
+        {
+          "name": "Get user by id",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/users/16", "host": ["{{baseUrl}}"], "path": ["api", "users", "16"] },
+            "description": "16 is customer1's seeded user id."
+          }
+        },
+        {
+          "name": "Create user (admin-provisioned)",
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "if (pm.response.code === 201) { pm.collectionVariables.set('createdUserId', pm.response.json().id); }"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"username\": \"postman_operator\",\n  \"password\": \"PostmanPass123!\",\n  \"email\": \"postman_operator@example.com\",\n  \"role\": \"OPERATOR\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/users", "host": ["{{baseUrl}}"], "path": ["api", "users"] },
+            "description": "The only way to provision OPERATOR/SUPPORT/ADMIN accounts — self-registration always creates CUSTOMER. role: CUSTOMER | OPERATOR | SUPPORT | ADMIN. Saves the new id into {{createdUserId}}."
+          }
+        },
+        {
+          "name": "Update a user's role",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"role\": \"SUPPORT\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/users/{{createdUserId}}/role", "host": ["{{baseUrl}}"], "path": ["api", "users", "{{createdUserId}}", "role"] },
+            "description": "Targets {{createdUserId}} (from 'Create user' above) rather than a real seeded account. Run 'Create user (admin-provisioned)' first."
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Inventory Management (operator)",
+      "item": [
+        {
+          "name": "Create route",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{operatorToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"type\": \"BUS\",\n  \"origin\": \"Chicago\",\n  \"destination\": \"Detroit\",\n  \"venue\": null,\n  \"durationMinutes\": 240\n}" },
+            "url": { "raw": "{{baseUrl}}/api/routes", "host": ["{{baseUrl}}"], "path": ["api", "routes"] },
+            "description": "type: FLIGHT | BUS | TRAIN | EVENT. For EVENT routes, set venue and leave origin/destination null; for travel routes, the reverse. Owned by the authenticated operator."
+          }
+        },
+        {
+          "name": "List my routes",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{operatorToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/routes/mine", "host": ["{{baseUrl}}"], "path": ["api", "routes", "mine"] }
+          }
+        },
+        {
+          "name": "Create schedule",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{operatorToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"routeId\": 1,\n  \"departureTime\": \"2026-09-01T10:00:00Z\",\n  \"arrivalTime\": \"2026-09-01T14:00:00Z\",\n  \"baseFare\": 45.00,\n  \"currency\": \"USD\",\n  \"status\": \"SCHEDULED\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/schedules", "host": ["{{baseUrl}}"], "path": ["api", "schedules"] },
+            "description": "routeId (1) must be owned by operator1 — it is, in the seed data. status is optional (defaults to SCHEDULED); shown here for completeness. status: SCHEDULED | DELAYED | CANCELLED | COMPLETED."
+          }
+        },
+        {
+          "name": "Add seat",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{operatorToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"scheduleId\": 1,\n  \"seatNumber\": \"5A\",\n  \"seatClass\": \"economy\",\n  \"status\": \"AVAILABLE\",\n  \"priceModifier\": 1.000\n}" },
+            "url": { "raw": "{{baseUrl}}/api/seats", "host": ["{{baseUrl}}"], "path": ["api", "seats"] },
+            "description": "status is optional (defaults to AVAILABLE). seatNumber must be unique within the schedule. status: AVAILABLE | HELD | BOOKED."
+          }
+        },
+        {
+          "name": "Update seat",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{operatorToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"AVAILABLE\",\n  \"priceModifier\": 1.100\n}" },
+            "url": { "raw": "{{baseUrl}}/api/seats/{{seatId}}", "host": ["{{baseUrl}}"], "path": ["api", "seats", "{{seatId}}"] },
+            "description": "Only status and priceModifier are mutable after creation — schedule/seatNumber/class are structural. {{seatId}} (6) must belong to a schedule owned by operator1."
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Audit (admin)",
+      "item": [
+        {
+          "name": "List audit log entries",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/audit", "host": ["{{baseUrl}}"], "path": ["api", "audit"] },
+            "description": "Most recent first: account creation, role changes, refund decisions, etc."
+          }
+        }
+      ]
+    }
+  ]
+}

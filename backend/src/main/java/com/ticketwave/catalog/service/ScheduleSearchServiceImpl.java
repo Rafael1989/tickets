@@ -5,6 +5,7 @@ import com.ticketwave.catalog.dto.ScheduleSearchResult;
 import com.ticketwave.catalog.dto.SeatResponse;
 import com.ticketwave.catalog.entity.Route;
 import com.ticketwave.catalog.entity.Schedule;
+import com.ticketwave.catalog.entity.Seat;
 import com.ticketwave.catalog.entity.SeatStatus;
 import com.ticketwave.catalog.exception.ScheduleNotFoundException;
 import com.ticketwave.catalog.mapper.SeatMapper;
@@ -12,10 +13,15 @@ import com.ticketwave.catalog.repository.ScheduleRepository;
 import com.ticketwave.catalog.repository.ScheduleSeatCount;
 import com.ticketwave.catalog.repository.SeatRepository;
 import com.ticketwave.catalog.specification.ScheduleSpecifications;
+import com.ticketwave.pricing.service.PricingService;
+import com.ticketwave.user.entity.User;
+import com.ticketwave.user.repository.UserRepository;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -25,23 +31,32 @@ public class ScheduleSearchServiceImpl implements ScheduleSearchService {
 
     private final ScheduleRepository scheduleRepository;
     private final SeatRepository seatRepository;
+    private final UserRepository userRepository;
     private final SeatMapper seatMapper;
+    private final PricingService pricingService;
+    private final Clock clock;
 
     public ScheduleSearchServiceImpl(
             ScheduleRepository scheduleRepository,
             SeatRepository seatRepository,
-            SeatMapper seatMapper
+            UserRepository userRepository,
+            SeatMapper seatMapper,
+            PricingService pricingService,
+            Clock clock
     ) {
         this.scheduleRepository = scheduleRepository;
         this.seatRepository = seatRepository;
+        this.userRepository = userRepository;
         this.seatMapper = seatMapper;
+        this.pricingService = pricingService;
+        this.clock = clock;
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<ScheduleSearchResult> search(ScheduleSearchCriteria criteria) {
         List<Schedule> schedules = scheduleRepository.findAll(
-                ScheduleSpecifications.matching(criteria),
+                ScheduleSpecifications.matching(criteria, clock.instant()),
                 Sort.by(Sort.Direction.ASC, "departureTime"));
 
         if (schedules.isEmpty()) {
@@ -78,13 +93,37 @@ public class ScheduleSearchServiceImpl implements ScheduleSearchService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<SeatResponse> getSeatsForSchedule(Long scheduleId) {
-        if (!scheduleRepository.existsById(scheduleId)) {
-            throw new ScheduleNotFoundException(scheduleId);
-        }
+    public List<SeatResponse> getSeatsForSchedule(Long scheduleId, String username) {
+        Schedule schedule = scheduleRepository.findById(scheduleId)
+                .orElseThrow(() -> new ScheduleNotFoundException(scheduleId));
+
+        Long callerId = username == null
+                ? null
+                : userRepository.findByUsername(username).map(User::getId).orElse(null);
+
         return seatRepository.findByScheduleId(scheduleId).stream()
-                .map(seatMapper::toResponse)
+                .map(seat -> toSeatResponse(schedule, seat, callerId))
                 .toList();
+    }
+
+    private SeatResponse toSeatResponse(Schedule schedule, Seat seat, Long callerId) {
+        SeatResponse base = seatMapper.toResponse(seat);
+        BigDecimal estimatedFare = pricingService.calculateSeatFare(schedule, seat);
+        boolean heldByMe = callerId != null
+                && seat.getHeldBy() != null
+                && seat.getHeldBy().getId().equals(callerId);
+
+        return new SeatResponse(
+                base.id(),
+                base.scheduleId(),
+                base.seatNumber(),
+                base.seatClass(),
+                base.status(),
+                base.priceModifier(),
+                estimatedFare,
+                base.heldUntil(),
+                heldByMe
+        );
     }
 
     private ScheduleSearchResult toSearchResult(Schedule schedule, long availableSeats) {

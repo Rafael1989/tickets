@@ -1,0 +1,30 @@
+<div class="account-shell">
+  <nav class="account-nav" role="tablist" aria-label="Account sections">
+    @for (tab of tabs; track tab.value) {
+      <button
+        type="button"
+        role="tab"
+        [attr.aria-selected]="activeTab() === tab.value"
+        [class.active]="activeTab() === tab.value"
+        (click)="selectTab(tab.value)"
+      >
+        <span class="icon" aria-hidden="true">{{ tab.icon }}</span>
+        {{ tab.label }}
+      </button>
+    }
+  </nav>
+
+  <div class="account-content">
+    @switch (activeTab()) {
+      @case ('info') {
+        <tw-account-info />
+      }
+      @case ('passengers') {
+        <tw-saved-passengers />
+      }
+      @case ('preferences') {
+        <tw-preferences />
+      }
+    }
+  </div>
+</div>

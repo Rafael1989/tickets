@@ -1,57 +1,116 @@
 @if (loading()) {
-  <p>Loading schedule…</p>
+  <div class="hero skeleton-hero">
+    <div class="skeleton line wide"></div>
+    <div class="skeleton line"></div>
+  </div>
+  <div class="seat-grid">
+    @for (row of [0, 1, 2, 3, 4, 5]; track row) {
+      <div class="skeleton seat-skel"></div>
+    }
+  </div>
 } @else if (schedule(); as sch) {
-  <div class="card">
+  <div class="hero">
     <h2>
       {{ sch.origin ?? sch.venue }}
       @if (sch.destination) {
-        &rarr; {{ sch.destination }}
+        <span class="arrow" aria-hidden="true">&rarr;</span> {{ sch.destination }}
       }
     </h2>
     <p class="meta">
-      {{ sch.type }} · departs {{ sch.departureTime | date: 'medium' }} · arrives
+      {{ sch.type }} &middot; departs {{ sch.departureTime | date: 'medium' }} &middot; arrives
       {{ sch.arrivalTime | date: 'medium' }}
     </p>
-    <p class="meta">Base fare: {{ sch.baseFare }} {{ sch.currency }}</p>
+    @if (!isAuthenticated()) {
+      <p class="guest-hint">
+        Browsing as a guest — your picks aren't reserved until you sign in at checkout.
+      </p>
+    }
   </div>
 
   <div class="card">
-    <h3>Select seats</h3>
-    <p class="hint">Fares shown are an estimate; the final price is calculated at booking time.</p>
+    <div class="panel-header">
+      <h3>Select your seats</h3>
+      <div class="tier-legend">
+        <span><i class="swatch standard" aria-hidden="true"></i> Standard</span>
+        <span><i class="swatch premium" aria-hidden="true"></i> Premium</span>
+      </div>
+    </div>
+
+    <div class="status-legend">
+      <span><i class="swatch available" aria-hidden="true"></i> Available</span>
+      <span><i class="swatch selected" aria-hidden="true"></i> Selected</span>
+      <span><i class="swatch held" aria-hidden="true"></i> Held</span>
+      <span><i class="swatch booked" aria-hidden="true"></i> Booked</span>
+    </div>
+
+    @if (isRescheduleMode()) {
+      <p class="hint reschedule-hint">Rescheduling an existing booking — select the same number of seats as before.</p>
+    }
 
     <div class="seat-grid">
       @for (seat of seats(); track seat.id) {
-        <button
-          type="button"
-          class="seat"
-          [class.selected]="selectedSeatIds().has(seat.id)"
-          [class.unavailable]="seat.status !== 'AVAILABLE'"
-          [disabled]="seat.status !== 'AVAILABLE'"
-          (click)="toggleSeat(seat)"
-        >
-          <span class="seat-number">{{ seat.seatNumber }}</span>
-          <span class="seat-class">{{ seat.seatClass }}</span>
-          <span class="seat-fare">{{ (sch.baseFare * seat.priceModifier).toFixed(2) }}</span>
-        </button>
+        <div class="seat-wrap">
+          <button
+            type="button"
+            class="seat"
+            [class]="seatTier(seat.seatClass)"
+            [class.selected]="seat.heldByMe || (!isAuthenticated() && guestSelectedSeatIds().has(seat.id))"
+            [class.unavailable]="seat.status !== 'AVAILABLE' && !seat.heldByMe"
+            [class.pending]="pendingSeatId() === seat.id"
+            [disabled]="(seat.status !== 'AVAILABLE' && !seat.heldByMe) || pendingSeatId() === seat.id"
+            [attr.aria-pressed]="seat.heldByMe || (!isAuthenticated() && guestSelectedSeatIds().has(seat.id))"
+            [attr.aria-label]="
+              seat.seatNumber + ', ' + seatTier(seat.seatClass) + ' class, ' +
+              (seat.estimatedFare ?? 0).toFixed(2) + ' ' + sch.currency + ', ' + seat.status
+            "
+            (click)="toggleSeat(seat)"
+          >
+            <span class="seat-number">{{ seat.seatNumber }}</span>
+            <span class="seat-fare">{{ (seat.estimatedFare ?? 0).toFixed(2) }}</span>
+            @if (seat.heldByMe && seat.heldUntil) {
+              <span class="seat-countdown">{{ formatCountdown(seat) }}</span>
+            }
+          </button>
+          <div class="seat-tooltip" role="tooltip">
+            <strong>{{ seat.seatNumber }}</strong> &middot; {{ seatTier(seat.seatClass) }}<br />
+            {{ (seat.estimatedFare ?? 0).toFixed(2) }} {{ sch.currency }} &middot; {{ seat.status }}
+          </div>
+        </div>
       }
-    </div>
-
-    <div class="legend">
-      <span><i class="swatch available"></i> Available</span>
-      <span><i class="swatch selected"></i> Selected</span>
-      <span><i class="swatch unavailable"></i> Held / booked</span>
     </div>
   </div>
 
-  @if (isRescheduleMode()) {
-    <div class="card summary">
-      <p class="hint">Rescheduling an existing booking — select the same number of seats as before.</p>
-    </div>
-  }
-
   @if (selectedSeats().length > 0) {
-    <div class="card summary">
-      <p>{{ selectedSeats().length }} seat(s) selected — estimated total {{ estimatedTotal().toFixed(2) }} {{ sch.currency }}</p>
+    <div class="price-drawer">
+      <div class="price-drawer-main">
+        <div class="line">
+          <span>{{ selectedSeats().length }} seat(s)</span>
+          <span>{{ subtotal().toFixed(2) }} {{ sch.currency }}</span>
+        </div>
+
+        @if (appliedPromo(); as promo) {
+          <div class="line discount">
+            <span>Promo {{ promo.code }} applied <button type="button" class="link-btn" (click)="clearPromo()">Remove</button></span>
+            <span>&minus;{{ promo.discountAmount.toFixed(2) }} {{ sch.currency }}</span>
+          </div>
+        } @else {
+          <form class="promo-inline" [formGroup]="promoForm" (ngSubmit)="validatePromo()">
+            <input type="text" formControlName="promoCode" placeholder="Promo code" autocomplete="off" />
+            <button type="submit" class="btn secondary" [disabled]="promoLoading()">
+              {{ promoLoading() ? 'Checking…' : 'Apply' }}
+            </button>
+          </form>
+          @if (promoError()) {
+            <p class="form-error">{{ promoError() }}</p>
+          }
+        }
+
+        <div class="line total">
+          <span>Total</span>
+          <span>{{ total().toFixed(2) }} {{ sch.currency }}</span>
+        </div>
+      </div>
+
       <button class="btn" type="button" [disabled]="rescheduling()" (click)="continueToCheckout()">
         {{ isRescheduleMode() ? (rescheduling() ? 'Rescheduling…' : 'Confirm reschedule') : 'Continue to checkout' }}
       </button>

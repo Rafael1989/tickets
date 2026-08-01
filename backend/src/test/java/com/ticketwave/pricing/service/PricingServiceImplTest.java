@@ -22,7 +22,10 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class PricingServiceImplTest {
@@ -282,6 +285,50 @@ class PricingServiceImplTest {
         given(promoCodeRepository.findByCodeForUpdate("MAXED")).willReturn(Optional.of(promo));
 
         assertThatThrownBy(() -> pricingService.applyPromoCode("MAXED", BigDecimal.TEN))
+                .isInstanceOf(PromoCodeNotApplicableException.class);
+    }
+
+    @Test
+    void previewPromoCode_validCode_computesDiscountWithoutIncrementingRedemption() {
+        pricingService = service(PROPERTIES);
+        PromoCode promo = PromoCode.builder()
+                .id(1L).code("SAVE20").discountType(DiscountType.PERCENTAGE)
+                .discountValue(new BigDecimal("20.00"))
+                .validFrom(Instant.now().minusSeconds(3600))
+                .validTo(Instant.now().plusSeconds(3600))
+                .maxRedemptions(null).redemptionCount(3).active(true)
+                .build();
+        given(promoCodeRepository.findByCode("SAVE20")).willReturn(Optional.of(promo));
+
+        PromoCodeApplication application = pricingService.previewPromoCode("SAVE20", new BigDecimal("100.00"));
+
+        assertThat(application.discountAmount()).isEqualByComparingTo("20.00");
+        assertThat(promo.getRedemptionCount()).isEqualTo(3);
+        verify(promoCodeRepository, never()).findByCodeForUpdate(any());
+    }
+
+    @Test
+    void previewPromoCode_whenCodeUnknown_throwsPromoCodeNotFoundException() {
+        pricingService = service(PROPERTIES);
+        given(promoCodeRepository.findByCode("NOPE")).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> pricingService.previewPromoCode("NOPE", BigDecimal.TEN))
+                .isInstanceOf(PromoCodeNotFoundException.class);
+    }
+
+    @Test
+    void previewPromoCode_whenFullyRedeemed_throwsPromoCodeNotApplicableException() {
+        pricingService = service(PROPERTIES);
+        PromoCode promo = PromoCode.builder()
+                .id(1L).code("MAXED").discountType(DiscountType.PERCENTAGE)
+                .discountValue(BigDecimal.TEN)
+                .validFrom(Instant.now().minusSeconds(3600))
+                .validTo(Instant.now().plusSeconds(3600))
+                .maxRedemptions(5).redemptionCount(5).active(true)
+                .build();
+        given(promoCodeRepository.findByCode("MAXED")).willReturn(Optional.of(promo));
+
+        assertThatThrownBy(() -> pricingService.previewPromoCode("MAXED", BigDecimal.TEN))
                 .isInstanceOf(PromoCodeNotApplicableException.class);
     }
 }

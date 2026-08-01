@@ -20,8 +20,12 @@ public interface ScheduleSearchService {
     /**
      * Every seat on the schedule (not just AVAILABLE ones), so a client can
      * render a full seat map with unavailable seats shown, not just omitted.
+     * Each seat's estimatedFare mirrors exactly what booking creation would
+     * charge (same PricingService calculation), and heldByMe is true only
+     * when the given username currently holds that seat — false for every
+     * other seat and for a null (guest) username.
      *
      * @throws com.ticketwave.catalog.exception.ScheduleNotFoundException if no such schedule exists
      */
-    List<SeatResponse> getSeatsForSchedule(Long scheduleId);
+    List<SeatResponse> getSeatsForSchedule(Long scheduleId, String username);
 }

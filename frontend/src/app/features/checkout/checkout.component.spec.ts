@@ -45,6 +45,9 @@ describe('CheckoutComponent', () => {
     seatClass: 'economy',
     status: 'AVAILABLE',
     priceModifier: 1,
+    estimatedFare: 20,
+    heldUntil: null,
+    heldByMe: false,
   };
 
   const passenger: PassengerResponse = {
@@ -88,7 +91,7 @@ describe('CheckoutComponent', () => {
 
     bookingDraftService = TestBed.inject(BookingDraftService);
     if (withDraft) {
-      bookingDraftService.set({ schedule, seats: [seat] });
+      bookingDraftService.set({ schedule, seats: [seat], promoCode: null });
     }
 
     passengerService = TestBed.inject(PassengerService);
@@ -122,9 +125,13 @@ describe('CheckoutComponent', () => {
     beforeEach(() => createComponent(true));
 
     it('loads the draft and the passenger list', () => {
-      expect(component.draft()).toEqual({ schedule, seats: [seat] });
+      expect(component.draft()).toEqual({ schedule, seats: [seat], promoCode: null });
       expect(component.passengers()).toEqual([passenger]);
       expect(router.navigate).not.toHaveBeenCalled();
+    });
+
+    it('leaves the promo field blank when the draft carries no promo code', () => {
+      expect(component.promoForm.value.promoCode).toBe('');
     });
 
     it('allSeatsAssigned is false until every seat has a passenger', () => {
@@ -357,6 +364,25 @@ describe('CheckoutComponent', () => {
     });
   });
 
+  it('pre-fills the promo field from a draft carrying a previewed promo code', async () => {
+    await TestBed.configureTestingModule({
+      imports: [CheckoutComponent],
+      providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting()],
+    }).compileComponents();
+
+    bookingDraftService = TestBed.inject(BookingDraftService);
+    bookingDraftService.set({ schedule, seats: [seat], promoCode: 'SAVE10' });
+
+    passengerService = TestBed.inject(PassengerService);
+    vi.spyOn(passengerService, 'listMyPassengers').mockReturnValue(of([]));
+
+    fixture = TestBed.createComponent(CheckoutComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+
+    expect(component.promoForm.value.promoCode).toBe('SAVE10');
+  });
+
   it('renders a schedule with a venue and no destination', async () => {
     await TestBed.configureTestingModule({
       imports: [CheckoutComponent],
@@ -365,7 +391,7 @@ describe('CheckoutComponent', () => {
 
     const venueSchedule: ScheduleSearchResult = { ...schedule, origin: null, destination: null, venue: 'Arena' };
     bookingDraftService = TestBed.inject(BookingDraftService);
-    bookingDraftService.set({ schedule: venueSchedule, seats: [seat] });
+    bookingDraftService.set({ schedule: venueSchedule, seats: [seat], promoCode: null });
 
     passengerService = TestBed.inject(PassengerService);
     vi.spyOn(passengerService, 'listMyPassengers').mockReturnValue(of([]));

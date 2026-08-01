@@ -2,6 +2,9 @@ package com.ticketwave.user.service;
 
 import com.ticketwave.audit.service.AuditService;
 import com.ticketwave.auth.exception.DuplicateUserException;
+import com.ticketwave.auth.exception.IncorrectPasswordException;
+import com.ticketwave.user.dto.ChangePasswordRequest;
+import com.ticketwave.user.dto.UpdateEmailRequest;
 import com.ticketwave.user.dto.UserRequest;
 import com.ticketwave.user.dto.UserResponse;
 import com.ticketwave.user.entity.User;
@@ -156,5 +159,87 @@ class UserServiceImplTest {
 
         assertThatThrownBy(() -> userService.updateRole("admin1", 99L, UserRole.SUPPORT))
                 .isInstanceOf(UserNotFoundException.class);
+    }
+
+    @Test
+    void getCurrentUser_whenFound_returnsMappedResponse() {
+        User alice = user(1L, "alice", UserRole.CUSTOMER);
+        given(userRepository.findByUsername("alice")).willReturn(Optional.of(alice));
+        UserResponse response = new UserResponse(1L, "alice", "alice@example.com", UserRole.CUSTOMER, alice.getCreatedAt());
+        given(userMapper.toResponse(alice)).willReturn(response);
+
+        assertThat(userService.getCurrentUser("alice")).isEqualTo(response);
+    }
+
+    @Test
+    void getCurrentUser_whenMissing_throwsUserNotFoundException() {
+        given(userRepository.findByUsername("ghost")).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.getCurrentUser("ghost"))
+                .isInstanceOf(UserNotFoundException.class);
+    }
+
+    @Test
+    void updateCurrentEmail_whenNewEmailIsAvailable_updatesAndReturnsResponse() {
+        User alice = user(1L, "alice", UserRole.CUSTOMER);
+        given(userRepository.findByUsername("alice")).willReturn(Optional.of(alice));
+        given(userRepository.existsByEmail("new@example.com")).willReturn(false);
+        given(userMapper.toResponse(alice)).willReturn(
+                new UserResponse(1L, "alice", "new@example.com", UserRole.CUSTOMER, alice.getCreatedAt()));
+
+        UserResponse result = userService.updateCurrentEmail("alice", new UpdateEmailRequest("new@example.com"));
+
+        assertThat(alice.getEmail()).isEqualTo("new@example.com");
+        assertThat(result.email()).isEqualTo("new@example.com");
+    }
+
+    @Test
+    void updateCurrentEmail_whenResubmittingOwnCurrentEmail_doesNotTreatItAsDuplicate() {
+        User alice = user(1L, "alice", UserRole.CUSTOMER);
+        given(userRepository.findByUsername("alice")).willReturn(Optional.of(alice));
+        given(userMapper.toResponse(alice)).willReturn(
+                new UserResponse(1L, "alice", "alice@example.com", UserRole.CUSTOMER, alice.getCreatedAt()));
+
+        userService.updateCurrentEmail("alice", new UpdateEmailRequest("alice@example.com"));
+
+        verify(userRepository, never()).existsByEmail(any());
+    }
+
+    @Test
+    void updateCurrentEmail_whenEmailTakenBySomeoneElse_throwsDuplicateUserException() {
+        User alice = user(1L, "alice", UserRole.CUSTOMER);
+        given(userRepository.findByUsername("alice")).willReturn(Optional.of(alice));
+        given(userRepository.existsByEmail("taken@example.com")).willReturn(true);
+
+        assertThatThrownBy(() -> userService.updateCurrentEmail("alice", new UpdateEmailRequest("taken@example.com")))
+                .isInstanceOf(DuplicateUserException.class);
+
+        assertThat(alice.getEmail()).isEqualTo("alice@example.com");
+    }
+
+    @Test
+    void changeCurrentPassword_whenCurrentPasswordMatches_updatesHash() {
+        User alice = user(1L, "alice", UserRole.CUSTOMER);
+        alice.setPasswordHash("old-hash");
+        given(userRepository.findByUsername("alice")).willReturn(Optional.of(alice));
+        given(passwordEncoder.matches("old-pass", "old-hash")).willReturn(true);
+        given(passwordEncoder.encode("new-password123")).willReturn("new-hash");
+
+        userService.changeCurrentPassword("alice", new ChangePasswordRequest("old-pass", "new-password123"));
+
+        assertThat(alice.getPasswordHash()).isEqualTo("new-hash");
+    }
+
+    @Test
+    void changeCurrentPassword_whenCurrentPasswordWrong_throwsIncorrectPasswordExceptionAndLeavesHashUnchanged() {
+        User alice = user(1L, "alice", UserRole.CUSTOMER);
+        alice.setPasswordHash("old-hash");
+        given(userRepository.findByUsername("alice")).willReturn(Optional.of(alice));
+        given(passwordEncoder.matches("wrong-pass", "old-hash")).willReturn(false);
+
+        assertThatThrownBy(() -> userService.changeCurrentPassword("alice", new ChangePasswordRequest("wrong-pass", "new-password123")))
+                .isInstanceOf(IncorrectPasswordException.class);
+
+        assertThat(alice.getPasswordHash()).isEqualTo("old-hash");
     }
 }

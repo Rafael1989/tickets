@@ -31,7 +31,7 @@ public class SearchController {
     @GetMapping("/api/search")
     @Operation(
             summary = "Search schedules by type/origin/destination/venue/date",
-            description = "Every filter is optional; an all-empty request matches every non-cancelled schedule. Each result includes a real-time available-seat count.",
+            description = "Every filter is optional; an all-empty request matches every non-cancelled, not-yet-departed schedule. origin/destination/venue match case-insensitively on any substring. Each result includes a real-time available-seat count.",
             security = {}
     )
     @ApiResponses({
@@ -40,9 +40,9 @@ public class SearchController {
     })
     public ResponseEntity<List<ScheduleSearchResult>> search(
             @Parameter(description = "flight, bus, train, or event") @RequestParam(required = false) RouteType type,
-            @Parameter(description = "Travel routes only, e.g. \"NYC\"") @RequestParam(required = false) String origin,
-            @Parameter(description = "Travel routes only") @RequestParam(required = false) String destination,
-            @Parameter(description = "Events only, e.g. \"Arena\"") @RequestParam(required = false) String venue,
+            @Parameter(description = "Travel routes only, substring match, e.g. \"NY\"") @RequestParam(required = false) String origin,
+            @Parameter(description = "Travel routes only, substring match") @RequestParam(required = false) String destination,
+            @Parameter(description = "Events only, substring match, e.g. \"Arena\"") @RequestParam(required = false) String venue,
             @Parameter(description = "UTC calendar day, e.g. 2026-08-01")
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate departureDate
     ) {

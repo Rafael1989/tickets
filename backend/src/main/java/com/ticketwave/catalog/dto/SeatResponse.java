@@ -3,6 +3,7 @@ package com.ticketwave.catalog.dto;
 import com.ticketwave.catalog.entity.SeatStatus;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 
 public record SeatResponse(
         Long id,
@@ -10,6 +11,9 @@ public record SeatResponse(
         String seatNumber,
         String seatClass,
         SeatStatus status,
-        BigDecimal priceModifier
+        BigDecimal priceModifier,
+        BigDecimal estimatedFare,
+        Instant heldUntil,
+        boolean heldByMe
 ) {
 }

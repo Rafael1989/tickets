@@ -1,0 +1,46 @@
+<div class="panel-header">
+  <div>
+    <h2>Preferences</h2>
+    <p class="subtitle">Defaults applied to your future searches and bookings.</p>
+  </div>
+</div>
+
+@if (loading()) {
+  <div class="prefs-card">
+    <div class="skeleton line wide"></div>
+    <div class="skeleton line wide"></div>
+    <div class="skeleton line short"></div>
+  </div>
+} @else {
+  <form class="prefs-card" [formGroup]="form" (ngSubmit)="save()">
+    <div class="field">
+      <label for="preferredCurrency">Preferred currency</label>
+      <select id="preferredCurrency" formControlName="preferredCurrency">
+        @for (currency of currencies; track currency) {
+          <option [value]="currency">{{ currency }}</option>
+        }
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="seatPreference">Seat preference</label>
+      <select id="seatPreference" formControlName="seatPreference">
+        @for (option of seatPreferences; track option.value) {
+          <option [value]="option.value">{{ option.label }}</option>
+        }
+      </select>
+    </div>
+
+    <label class="toggle-field">
+      <input type="checkbox" formControlName="notificationsEnabled" />
+      <span class="toggle-track" aria-hidden="true"></span>
+      <span class="toggle-label">Email me about booking updates and promotions</span>
+    </label>
+
+    <div class="prefs-footer">
+      <button type="submit" class="btn" [disabled]="saving() || form.invalid">
+        {{ saving() ? 'Saving…' : 'Save preferences' }}
+      </button>
+    </div>
+  </form>
+}

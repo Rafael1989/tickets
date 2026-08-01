@@ -22,4 +22,20 @@ public interface PassengerService {
      * @throws com.ticketwave.user.exception.UserNotFoundException if username doesn't resolve to a user
      */
     List<PassengerResponse> listMyPassengers(String username);
+
+    /**
+     * Updates a passenger profile, provided it's owned by the given
+     * (authenticated) username.
+     *
+     * @throws com.ticketwave.user.exception.PassengerNotFoundException if no such passenger exists, or it belongs to someone else
+     */
+    PassengerResponse updatePassenger(String username, Long passengerId, PassengerRequest request);
+
+    /**
+     * Deletes a passenger profile, provided it's owned by the given
+     * (authenticated) username.
+     *
+     * @throws com.ticketwave.user.exception.PassengerNotFoundException if no such passenger exists, or it belongs to someone else
+     */
+    void deletePassenger(String username, Long passengerId);
 }

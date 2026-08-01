@@ -34,6 +34,9 @@ export interface SeatResponse {
   seatClass: string;
   status: SeatStatus;
   priceModifier: number;
+  estimatedFare: number | null;
+  heldUntil: string | null;
+  heldByMe: boolean;
 }
 
 /** The plain CRUD shape returned by schedule creation — distinct from

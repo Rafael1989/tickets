@@ -8,6 +8,7 @@ import com.ticketwave.catalog.entity.SeatStatus;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -77,5 +78,20 @@ class SeatMapperTest {
         assertThat(response.scheduleId()).isEqualTo(1L);
         assertThat(response.status()).isEqualTo(SeatStatus.BOOKED);
         assertThat(response.priceModifier()).isEqualByComparingTo("1.500");
+    }
+
+    @Test
+    void toResponse_mapsHeldUntilButLeavesEstimatedFareAndHeldByMeForTheServiceLayerToFill() {
+        // estimatedFare needs the Schedule + PricingService, and heldByMe
+        // needs the caller's identity — neither is derivable from a Seat
+        // alone, so ScheduleSearchServiceImpl overlays them after this call.
+        Instant heldUntil = Instant.parse("2026-01-01T00:00:00Z");
+        Seat seat = Seat.builder().id(2L).status(SeatStatus.HELD).heldUntil(heldUntil).build();
+
+        SeatResponse response = mapper.toResponse(seat);
+
+        assertThat(response.heldUntil()).isEqualTo(heldUntil);
+        assertThat(response.estimatedFare()).isNull();
+        assertThat(response.heldByMe()).isFalse();
     }
 }

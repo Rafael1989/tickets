@@ -1,0 +1,184 @@
+.info-card {
+  display: flex;
+  gap: 1.25rem;
+  align-items: center;
+  background: #fff;
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.avatar {
+  flex: 0 0 auto;
+  width: 4rem;
+  height: 4rem;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #2471a3, #1a5276);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.skeleton-lines {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+
+  .line {
+    height: 0.9rem;
+
+    &.wide {
+      width: 40%;
+      height: 1.2rem;
+    }
+
+    &.short {
+      width: 30%;
+    }
+  }
+}
+
+.info-body {
+  flex: 1 1 auto;
+  min-width: 0;
+
+  h2 {
+    margin: 0 0 0.4rem;
+    font-size: 1.3rem;
+  }
+
+  dl {
+    margin: 1rem 0 0;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.35rem 1rem;
+    font-size: 0.9rem;
+  }
+
+  dt {
+    color: #888;
+  }
+
+  dd {
+    margin: 0;
+    color: #1a1a2e;
+  }
+}
+
+.role-badge {
+  display: inline-block;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  background: #eaf2f8;
+  color: #1a5276;
+
+  &.operator {
+    background: #fdebd0;
+    color: #9c640c;
+  }
+
+  &.support {
+    background: #eafaf1;
+    color: #1e8449;
+  }
+
+  &.admin {
+    background: #fdedec;
+    color: #943126;
+  }
+}
+
+.empty-state {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: #666;
+  background: #fff;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.link-btn {
+  border: none;
+  background: transparent;
+  color: #2471a3;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 0.6rem;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.inline-form {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+
+  input {
+    flex: 1 1 12rem;
+    min-width: 0;
+  }
+
+  .btn {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.82rem;
+  }
+}
+
+.password-form {
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid #eceef2;
+  max-width: 22rem;
+}
+
+.password-form-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+
+.floating-field {
+  position: relative;
+  margin-bottom: 1.1rem;
+
+  input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 1.1rem 0.75rem 0.4rem;
+  }
+
+  label {
+    position: absolute;
+    left: 0.75rem;
+    top: 0.7rem;
+    color: #888;
+    font-size: 0.95rem;
+    pointer-events: none;
+    transition:
+      top 0.15s ease,
+      font-size 0.15s ease,
+      color 0.15s ease;
+  }
+
+  input:focus + label,
+  input:not(:placeholder-shown) + label {
+    top: 0.3rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #2471a3;
+  }
+}

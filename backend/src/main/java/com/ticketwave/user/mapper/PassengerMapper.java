@@ -5,6 +5,7 @@ import com.ticketwave.user.dto.PassengerResponse;
 import com.ticketwave.user.entity.Passenger;
 import com.ticketwave.user.entity.User;
 import org.mapstruct.Mapper;
+import org.mapstruct.MappingTarget;
 import org.mapstruct.Mapping;
 
 /**
@@ -21,4 +22,8 @@ public interface PassengerMapper {
 
     @Mapping(target = "userId", source = "user.id")
     PassengerResponse toResponse(Passenger passenger);
+
+    @Mapping(target = "id", ignore = true)
+    @Mapping(target = "user", ignore = true)
+    void updateEntity(PassengerRequest request, @MappingTarget Passenger passenger);
 }

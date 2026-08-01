@@ -1,33 +1,248 @@
-.search-form {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-  gap: 1rem;
-  align-items: end;
+:host {
+  display: block;
+}
 
-  .btn {
-    height: fit-content;
+.hero {
+  background: linear-gradient(135deg, #2471a3 0%, #1a5276 100%);
+  border-radius: 1rem;
+  padding: 1.75rem;
+  margin-bottom: 1.5rem;
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(36, 113, 163, 0.25);
+}
+
+.hero-title {
+  margin: 0 0 0.25rem;
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.hero-subtitle {
+  margin: 0 0 1.5rem;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.95rem;
+}
+
+.type-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.9rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition:
+      background 0.15s ease,
+      transform 0.1s ease;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    &.active {
+      background: #fff;
+      color: #1a5276;
+      font-weight: 600;
+    }
+
+    &:active {
+      transform: scale(0.96);
+    }
   }
+}
+
+.search-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+  background: #fff;
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+
+  .field-group {
+    flex: 1 1 10rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    min-width: 9rem;
+
+    label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #5a6472;
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+
+    input {
+      border: 1px solid #dfe3ea;
+      border-radius: 0.5rem;
+      padding: 0.6rem 0.7rem;
+      font-size: 0.95rem;
+      color: #1a1a2e;
+      transition:
+        border-color 0.15s ease,
+        box-shadow 0.15s ease;
+
+      &:focus {
+        outline: none;
+        border-color: #2471a3;
+        box-shadow: 0 0 0 3px rgba(36, 113, 163, 0.15);
+      }
+    }
+  }
+}
+
+.search-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.7rem 1.4rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: #e67e22;
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    transform 0.1s ease;
+
+  &:hover:not(:disabled) {
+    background: #d35400;
+    transform: translateY(-1px);
+  }
+
+  &:disabled {
+    background: #cbb59a;
+    cursor: not-allowed;
+    transform: none;
+  }
+}
+
+.spinner {
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.results-count {
+  font-size: 0.85rem;
+  color: #666;
+  margin: 0 0 0.5rem;
 }
 
 .results {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.85rem;
 }
 
 .result-card {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 0;
+  gap: 1rem;
+  background: #fff;
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
 
-  .meta {
-    color: #666;
-    font-size: 0.85rem;
-    margin: 0.2rem 0;
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+  }
+
+  .type-badge {
+    flex: 0 0 auto;
+    width: 2.75rem;
+    height: 2.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.6rem;
+    background: #eaf2f8;
+    font-size: 1.3rem;
+  }
+
+  .route-flow {
+    flex: 1 1 auto;
+    min-width: 0;
+
+    h3 {
+      margin: 0;
+      font-size: 1.05rem;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+
+      .arrow {
+        color: #a0a0b0;
+      }
+    }
+
+    .meta {
+      margin: 0.3rem 0 0;
+      color: #666;
+      font-size: 0.82rem;
+      display: flex;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+    }
+  }
+
+  .date-badge {
+    flex: 0 0 auto;
+    text-align: center;
+    background: #f5f6fa;
+    border-radius: 0.5rem;
+    padding: 0.4rem 0.7rem;
+    min-width: 3.5rem;
+
+    .day {
+      display: block;
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #1a1a2e;
+    }
+
+    .weekday {
+      display: block;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      color: #888;
+    }
   }
 
   .result-price {
+    flex: 0 0 auto;
     text-align: right;
     display: flex;
     flex-direction: column;
@@ -36,8 +251,107 @@
 
     .price {
       font-weight: 700;
-      font-size: 1.1rem;
+      font-size: 1.15rem;
       margin: 0;
+      color: #1a1a2e;
+    }
+  }
+}
+
+.skeleton-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: #fff;
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+
+  .skeleton {
+    background: linear-gradient(90deg, #eceef2 25%, #f5f6fa 37%, #eceef2 63%);
+    background-size: 400% 100%;
+    animation: shimmer 1.4s ease infinite;
+    border-radius: 0.4rem;
+  }
+
+  .s-badge {
+    width: 2.75rem;
+    height: 2.75rem;
+    flex: 0 0 auto;
+  }
+
+  .s-lines {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+
+    .s-line {
+      height: 0.7rem;
+
+      &.short {
+        width: 40%;
+      }
+    }
+  }
+
+  .s-price {
+    width: 4rem;
+    height: 1.5rem;
+    flex: 0 0 auto;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+.empty-state {
+  text-align: center;
+  padding: 2.5rem 1rem;
+  color: #666;
+  background: #fff;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+
+  .empty-icon {
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  h3 {
+    margin: 0 0 0.35rem;
+    color: #333;
+  }
+
+  p {
+    margin: 0;
+    font-size: 0.9rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .search-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .result-card {
+    flex-wrap: wrap;
+
+    .result-price {
+      margin-left: auto;
     }
   }
 }
