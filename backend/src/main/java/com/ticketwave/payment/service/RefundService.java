@@ -36,13 +36,17 @@ public interface RefundService {
     RefundQuoteResponse previewRefund(Long bookingId);
 
     /**
-     * Applies the cancellation policy to a CONFIRMED booking's schedule,
-     * creates a PENDING refund for the prorated amount against its
-     * successful payment, and cancels the booking (releasing its seats).
-     * The refund itself is not settled here — see processRefund.
+     * Applies the cancellation policy to a CONFIRMED booking's schedule and
+     * creates a PENDING refund for the prorated amount against its successful
+     * payment. The booking stays CONFIRMED and keeps its seats until a
+     * support agent approves the refund — cancelling here would release the
+     * seats for resale while the request is still under review, so a later
+     * rejection could leave the customer with neither the trip nor the money.
+     * Both the cancellation and the settlement happen in processRefund.
      *
      * @throws com.ticketwave.booking.exception.BookingNotFoundException if no such booking exists
      * @throws com.ticketwave.booking.exception.InvalidBookingStateException if the booking isn't currently CONFIRMED
+     * @throws com.ticketwave.payment.exception.RefundAlreadyPendingException if a refund for this booking is already awaiting review
      * @throws com.ticketwave.payment.exception.PaymentNotFoundException if the booking has no successful payment on record
      * @throws com.ticketwave.payment.exception.CancellationNotAllowedException if departure is too imminent to cancel
      */
@@ -50,10 +54,15 @@ public interface RefundService {
 
     /**
      * Support/admin action settling a PENDING refund as PROCESSED or
-     * REJECTED. On approval, the underlying payment is marked REFUNDED.
-     * processedByUsername is the authenticated caller, resolved server-side
-     * — never a client-supplied id, the same ownership discipline as every
-     * other identity-bearing call in this app.
+     * REJECTED. This is the decision point for the booking itself, not just
+     * the money: approving a cancellation refund marks the payment REFUNDED
+     * and cancels the booking (releasing its seats), while rejecting leaves
+     * the booking CONFIRMED and travelling exactly as it was, with the
+     * customer's payment untouched. A RESCHEDULE_CREDIT refund never cancels
+     * anything — the booking it belongs to is still active at a reduced net
+     * amount. processedByUsername is the authenticated caller, resolved
+     * server-side — never a client-supplied id, the same ownership discipline
+     * as every other identity-bearing call in this app.
      * <p>
      * overrideAmount/overrideReason let the agent waive part or all of the
      * policy-computed cancellation fee on approval — both are ignored on a

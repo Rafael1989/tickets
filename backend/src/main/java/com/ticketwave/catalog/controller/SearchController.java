@@ -3,7 +3,7 @@ package com.ticketwave.catalog.controller;
 import com.ticketwave.catalog.dto.ScheduleSearchCriteria;
 import com.ticketwave.catalog.dto.ScheduleSearchResult;
 import com.ticketwave.catalog.dto.ScheduleSortBy;
-import com.ticketwave.catalog.entity.RouteType;
+import com.ticketwave.catalog.model.RouteType;
 import com.ticketwave.catalog.service.ScheduleSearchService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -21,7 +21,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 @RestController
-@Tag(name = "Search", description = "Public guest browsing — no account needed. Rate-limited.")
+@Tag(name = "Search", description = "Public guest browsing â€” no account needed. Rate-limited.")
 public class SearchController {
 
     private final ScheduleSearchService scheduleSearchService;

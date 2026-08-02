@@ -23,6 +23,7 @@
         <lombok-mapstruct-binding.version>0.2.0</lombok-mapstruct-binding.version>
         <jjwt.version>0.12.6</jjwt.version>
         <springdoc.version>3.0.3</springdoc.version>
+        <spring-cloud-contract.version>5.0.3</spring-cloud-contract.version>
     </properties>
 
     <dependencies>
@@ -87,6 +88,16 @@
             <version>${springdoc.version}</version>
         </dependency>
 
+        <!-- Caching: see CacheConfig / ScheduleCatalogCache -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-cache</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+
         <!-- Mapping -->
         <dependency>
             <groupId>org.mapstruct</groupId>
@@ -137,6 +148,14 @@
             <artifactId>postgresql</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- Contract testing: see AuthContractBase and src/test/resources/contracts -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-contract-verifier</artifactId>
+            <version>${spring-cloud-contract.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <dependencyManagement>
@@ -154,6 +173,29 @@
     <build>
         <plugins>
             <plugin>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-contract-maven-plugin</artifactId>
+                <version>${spring-cloud-contract.version}</version>
+                <extensions>true</extensions>
+                <configuration>
+                    <testFramework>JUNIT5</testFramework>
+                    <!--
+                    Without this, generated tests land under
+                    org.springframework.cloud.contract.verifier.tests, and
+                    Spring Boot's test context can't find
+                    TicketwaveApplication by searching upward from there
+                    ("Unable to find a @SpringBootConfiguration").
+                    -->
+                    <basePackageForTests>com.ticketwave.contract.generated</basePackageForTests>
+                    <baseClassMappings>
+                        <baseClassMapping>
+                            <contractPackageRegex>.*auth.*</contractPackageRegex>
+                            <baseClassFQN>com.ticketwave.contract.AuthContractBase</baseClassFQN>
+                        </baseClassMapping>
+                    </baseClassMappings>
+                </configuration>
+            </plugin>
+            <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
@@ -164,6 +206,24 @@
                         </exclude>
                     </excludes>
                 </configuration>
+            </plugin>
+            <!--
+            Previously missing entirely: the project's *IT classes (Testcontainers
+            integration tests) were never actually wired into the build — surefire's
+            default naming patterns don't match *IT, and with no failsafe execution
+            bound, `mvn verify` silently skipped them regardless of Docker availability.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>org.jacoco</groupId>
@@ -182,6 +242,55 @@
                         <goals>
                             <goal>report</goal>
                         </goals>
+                    </execution>
+                    <execution>
+                        <!--
+                        Enforces the coverage bar from CLAUDE.md: >=80% overall
+                        line coverage, and 100% line+branch coverage on the
+                        pricing, seat-hold, and refund-proration logic
+                        specifically, since a silent bug there has direct
+                        financial impact.
+                        -->
+                        <id>check</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <rule>
+                                    <element>BUNDLE</element>
+                                    <limits>
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.80</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                                <rule>
+                                    <element>CLASS</element>
+                                    <includes>
+                                        <include>com.ticketwave.pricing.service.PricingServiceImpl</include>
+                                        <include>com.ticketwave.catalog.service.SeatHoldServiceImpl</include>
+                                        <include>com.ticketwave.catalog.scheduling.SeatHoldExpirationScheduler</include>
+                                        <include>com.ticketwave.payment.service.RefundPolicyService</include>
+                                    </includes>
+                                    <limits>
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>1.00</minimum>
+                                        </limit>
+                                        <limit>
+                                            <counter>BRANCH</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>1.00</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>

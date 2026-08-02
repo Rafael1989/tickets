@@ -3,7 +3,7 @@ import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { provideRouter } from '@angular/router';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { BookingDetailResponse } from '../../core/models/booking.model';
 import { ScheduleSearchResult, SeatResponse } from '../../core/models/catalog.model';
 import { PassengerResponse } from '../../core/models/passenger.model';
@@ -436,6 +436,26 @@ describe('CheckoutComponent', () => {
           bookingDetail.booking.id,
           expect.objectContaining({ method: 'pix', cardNumber: null }),
         );
+        expect(component.paymentState()).toBe('succeeded');
+      });
+
+      it('reuses the same reference on retry after a client-side error, so a response that actually succeeded server-side is recovered instead of double-submitted', () => {
+        const recordSpy = vi
+          .spyOn(paymentService, 'recordPayment')
+          .mockReturnValueOnce(throwError(() => new Error('dropped connection')));
+
+        component.payWithPix();
+        vi.advanceTimersByTime(1200);
+
+        expect(component.paymentState()).toBe('idle');
+        const firstReference = recordSpy.mock.calls[0][1].reference;
+
+        recordSpy.mockReturnValueOnce(of(succeededPayment));
+        component.payWithPix();
+        vi.advanceTimersByTime(1200);
+
+        const secondReference = recordSpy.mock.calls[1][1].reference;
+        expect(secondReference).toBe(firstReference);
         expect(component.paymentState()).toBe('succeeded');
       });
     });

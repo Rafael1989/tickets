@@ -11,6 +11,7 @@ import com.ticketwave.catalog.security.TenantScope;
 import com.ticketwave.user.entity.User;
 import com.ticketwave.user.exception.UserNotFoundException;
 import com.ticketwave.user.repository.UserRepository;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,9 +54,18 @@ public class RouteServiceImpl implements RouteService {
         return routeMapper.toResponse(route);
     }
 
+    /**
+     * Evicts both caches wholesale rather than targeting just this route's
+     * schedules: a route's static fields (type/origin/destination/venue) are
+     * denormalized into every one of its schedules' cached
+     * ScheduleStaticInfo, and finding just those entries would need an extra
+     * query for no real benefit at this scale — route edits are an
+     * infrequent operator action, not a hot path.
+     */
     @Override
     @PreAuthorize("hasRole('OPERATOR')")
     @Transactional
+    @CacheEvict(cacheNames = {"scheduleSearchIds", "scheduleStaticInfo"}, allEntries = true)
     public RouteResponse updateRoute(String operatorUsername, Long routeId, RouteRequest request) {
         User caller = userRepository.findByUsername(operatorUsername)
                 .orElseThrow(() -> new UserNotFoundException(operatorUsername));

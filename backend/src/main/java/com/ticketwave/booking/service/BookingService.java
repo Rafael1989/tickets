@@ -64,6 +64,21 @@ public interface BookingService {
     BookingDetailResponse getBooking(Long bookingId);
 
     /**
+     * Compatibility shim for callers expecting an explicit "confirm" step.
+     * This API only ever confirms a booking as a result of a successful
+     * payment (see {@code markPaymentProcessing}/{@code confirmBooking}
+     * driven by the payment flow) — a booking can never be confirmed
+     * without having paid. This method does not drive that transition; it
+     * only succeeds as a no-op when the booking is already CONFIRMED, and
+     * rejects otherwise, so it can never be used to bypass payment.
+     * Restricted to the booking's own customer, or support/admin.
+     *
+     * @throws com.ticketwave.booking.exception.BookingNotFoundException if no such booking exists
+     * @throws com.ticketwave.booking.exception.InvalidBookingStateException if the booking isn't currently CONFIRMED
+     */
+    BookingDetailResponse requireConfirmed(Long bookingId);
+
+    /**
      * Support/admin only — the customer-facing lookup path is by booking id
      * (getBooking), reached via navigation within the app; PNR lookup is for
      * a support agent looking up a booking a customer has quoted to them.
@@ -71,6 +86,15 @@ public interface BookingService {
      * @throws com.ticketwave.booking.exception.BookingNotFoundException if no such PNR exists
      */
     BookingDetailResponse getBookingByPnr(String pnr);
+
+    /**
+     * The authenticated customer's own bookings, newest first — every status
+     * (INITIATED/CONFIRMED/CANCELLED/etc.), not filtered down to just the
+     * active ones, so a customer can find a past or cancelled trip too.
+     *
+     * @throws com.ticketwave.user.exception.UserNotFoundException if username doesn't resolve to a user
+     */
+    List<BookingSearchResult> listMyBookings(String username);
 
     /**
      * Support/admin omni-search: an exact PNR match, or a substring match

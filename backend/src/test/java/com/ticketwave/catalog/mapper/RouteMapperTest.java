@@ -3,7 +3,7 @@ package com.ticketwave.catalog.mapper;
 import com.ticketwave.catalog.dto.RouteRequest;
 import com.ticketwave.catalog.dto.RouteResponse;
 import com.ticketwave.catalog.entity.Route;
-import com.ticketwave.catalog.entity.RouteType;
+import com.ticketwave.catalog.model.RouteType;
 import com.ticketwave.user.entity.User;
 import org.junit.jupiter.api.Test;
 

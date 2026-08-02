@@ -1,7 +1,7 @@
 package com.ticketwave.catalog.repository;
 
 import com.ticketwave.catalog.entity.Route;
-import com.ticketwave.catalog.entity.RouteType;
+import com.ticketwave.catalog.model.RouteType;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;

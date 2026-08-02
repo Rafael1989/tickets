@@ -3,7 +3,7 @@ package com.ticketwave.reporting.service;
 import com.ticketwave.booking.repository.BookingRepository;
 import com.ticketwave.booking.repository.RouteBookingStats;
 import com.ticketwave.catalog.entity.Route;
-import com.ticketwave.catalog.entity.RouteType;
+import com.ticketwave.catalog.model.RouteType;
 import com.ticketwave.catalog.repository.RouteRepository;
 import com.ticketwave.catalog.repository.RouteSeatStats;
 import com.ticketwave.catalog.repository.SeatRepository;

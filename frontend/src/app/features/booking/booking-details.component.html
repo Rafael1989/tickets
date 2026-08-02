@@ -68,6 +68,10 @@
       }
       <button class="btn secondary" type="button" (click)="startReschedule()">Change schedule</button>
     </div>
+  } @else if (rescheduleTooCloseToDeparture()) {
+    <div class="card">
+      <p class="form-error">This booking is too close to departure to reschedule online. Contact support for help.</p>
+    </div>
   }
 
   @if (showCancellationWizard()) {

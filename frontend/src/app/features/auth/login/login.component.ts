@@ -18,6 +18,21 @@ export class LoginComponent {
 
   readonly submitting = signal(false);
 
+  /** Preserved onto the Register link too, so signing up mid-checkout still returns you to checkout. */
+  readonly redirectTo = this.route.snapshot.queryParamMap.get('redirectTo');
+
+  /**
+   * Explains why an unauthenticated visitor was bounced here, instead of dropping them on a bare
+   * form with no context. Checkout gets its own wording because a guest's seat picks live only in
+   * the browser (see SeatSelectionComponent's guestSelectedSeatIds) — nothing is actually reserved
+   * server-side until they sign in, so promising "your seats are held" here would be a lie.
+   */
+  readonly redirectMessage = this.redirectTo
+    ? this.redirectTo.startsWith('/checkout')
+      ? 'Sign in to finish your booking — we kept your seat selection, but the seats stay up for grabs until you check out.'
+      : 'Please sign in to continue.'
+    : null;
+
   readonly form = this.fb.nonNullable.group({
     username: ['', Validators.required],
     password: ['', Validators.required],
@@ -35,7 +50,9 @@ export class LoginComponent {
       .subscribe({
         next: () => {
           const redirectTo = this.route.snapshot.queryParamMap.get('redirectTo');
-          this.router.navigateByUrl(redirectTo ?? '/search');
+          // Falls back to the role's own landing screen, not a hardcoded '/search' — an operator,
+          // support agent or admin has no customer search page to land on.
+          this.router.navigateByUrl(redirectTo ?? this.auth.homePath());
         },
       });
   }

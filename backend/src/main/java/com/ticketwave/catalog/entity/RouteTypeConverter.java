@@ -1,5 +1,6 @@
 package com.ticketwave.catalog.entity;
 
+import com.ticketwave.catalog.model.RouteType;
 import com.ticketwave.common.persistence.CodedEnumConverter;
 import jakarta.persistence.Converter;
 

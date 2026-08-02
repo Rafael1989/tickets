@@ -2,8 +2,10 @@ package com.ticketwave.payment.service;
 
 import com.ticketwave.booking.entity.Booking;
 import com.ticketwave.booking.exception.BookingNotFoundException;
+import com.ticketwave.booking.exception.InvalidBookingStateException;
 import com.ticketwave.booking.repository.BookingRepository;
 import com.ticketwave.booking.service.BookingService;
+import com.ticketwave.ledger.service.LedgerService;
 import com.ticketwave.payment.dto.PaymentRequest;
 import com.ticketwave.payment.dto.PaymentResponse;
 import com.ticketwave.payment.entity.Payment;
@@ -13,7 +15,10 @@ import com.ticketwave.payment.exception.PaymentAmountMismatchException;
 import com.ticketwave.payment.exception.PaymentNotFoundException;
 import com.ticketwave.payment.mapper.PaymentMapper;
 import com.ticketwave.payment.repository.PaymentRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 
@@ -45,27 +50,44 @@ import java.util.Optional;
 @Service
 public class PaymentServiceImpl implements PaymentService {
 
+    private static final Logger log = LoggerFactory.getLogger(PaymentServiceImpl.class);
+
     /** The simulated 3DS challenge's one and only "correct" code — anything else fails it, same as a real OTP mismatch. */
     private static final String THREE_DS_VALID_CODE = "123456";
+
+    /**
+     * Two requests carrying the same reference both pass the pre-check
+     * (see recordPayment's own comment on that race) and both call
+     * markPaymentProcessing on the same booking row concurrently: one's
+     * commit wins, bumping the @Version column; the other's commit then
+     * fails with ObjectOptimisticLockingFailureException, since the row it
+     * read is now stale. 3 attempts, not 1 retry: under real concurrency a
+     * third overlapping writer is possible, if unlikely, and a fresh read
+     * each attempt makes a retry cheap and safe to repeat.
+     */
+    private static final int MAX_MARK_PROCESSING_ATTEMPTS = 3;
 
     private final PaymentRepository paymentRepository;
     private final BookingRepository bookingRepository;
     private final BookingService bookingService;
     private final CardDeclineSimulator cardDeclineSimulator;
     private final PaymentMapper paymentMapper;
+    private final LedgerService ledgerService;
 
     public PaymentServiceImpl(
             PaymentRepository paymentRepository,
             BookingRepository bookingRepository,
             BookingService bookingService,
             CardDeclineSimulator cardDeclineSimulator,
-            PaymentMapper paymentMapper
+            PaymentMapper paymentMapper,
+            LedgerService ledgerService
     ) {
         this.paymentRepository = paymentRepository;
         this.bookingRepository = bookingRepository;
         this.bookingService = bookingService;
         this.cardDeclineSimulator = cardDeclineSimulator;
         this.paymentMapper = paymentMapper;
+        this.ledgerService = ledgerService;
     }
 
     @Override
@@ -90,8 +112,21 @@ public class PaymentServiceImpl implements PaymentService {
         // that's already been settled: throws InvalidBookingStateException
         // if the booking is CONFIRMED or CANCELLED. A concurrent request
         // racing this same in-flight attempt (e.g. the same-reference retry
-        // below) re-affirms PAYMENT_PROCESSING rather than erroring.
-        bookingService.markPaymentProcessing(bookingId);
+        // below) re-affirms PAYMENT_PROCESSING rather than erroring - unless
+        // the racing request already ran the entire flow to completion
+        // (payment saved + booking CONFIRMED) between this method's
+        // findByReference check above and this call. That's not a real
+        // conflict, just this method losing the race entirely rather than
+        // partway through, so recover the winner's payment instead of
+        // surfacing InvalidBookingStateException to what is, from the
+        // caller's perspective, an idempotent retry.
+        try {
+            markPaymentProcessingWithRetry(bookingId);
+        } catch (InvalidBookingStateException ex) {
+            return paymentRepository.findByReference(request.reference())
+                    .map(paymentMapper::toResponse)
+                    .orElseThrow(() -> ex);
+        }
 
         boolean requiresThreeDs = cardDeclineSimulator.requiresThreeDs(request.cardNumber());
         Optional<String> declineReason = requiresThreeDs
@@ -123,6 +158,7 @@ public class PaymentServiceImpl implements PaymentService {
                 bookingService.failBooking(bookingId);
             } else {
                 bookingService.confirmBooking(bookingId);
+                recordLedgerPaymentSafely(payment);
             }
         }
 
@@ -140,17 +176,64 @@ public class PaymentServiceImpl implements PaymentService {
             throw new InvalidPaymentStateException(paymentId, payment.getStatus(), PaymentStatus.PENDING_3DS);
         }
 
+        // findById above already ran (and closed) its own transaction — with open-in-view
+        // disabled, `payment` is detached by this point, so the setters below are inert unless
+        // explicitly saved. Without this, confirmThreeDs would return a response that *looks*
+        // SUCCEEDED/FAILED while the persisted row stays PENDING_3DS forever (the exact bug this
+        // regression test set exists to catch).
         if (THREE_DS_VALID_CODE.equals(code)) {
             payment.setStatus(PaymentStatus.SUCCEEDED);
             payment.setPaidAt(Instant.now());
+            payment = paymentRepository.save(payment);
             bookingService.confirmBooking(bookingId);
+            recordLedgerPaymentSafely(payment);
         } else {
             payment.setStatus(PaymentStatus.FAILED);
             payment.setFailureReason("3D Secure authentication failed.");
+            payment = paymentRepository.save(payment);
             bookingService.failBooking(bookingId);
         }
 
         return paymentMapper.toResponse(payment);
+    }
+
+    /**
+     * The payment is already SUCCEEDED and the booking already CONFIRMED by the time this runs
+     * (see this class's own Javadoc on why there's no spanning transaction) — the ledger entry is
+     * an append-only audit/reconciliation record of that already-committed fact, not something the
+     * customer's payment success depends on. Letting a ledger failure (e.g. a DB permissions or
+     * connectivity blip) propagate would turn a successful charge into a raw 500 for the customer,
+     * hiding that their payment actually went through. Logged at ERROR rather than swallowed
+     * silently, since a missing ledger entry is a real reconciliation gap someone needs to backfill.
+     */
+    private void recordLedgerPaymentSafely(Payment payment) {
+        try {
+            ledgerService.recordPayment(payment);
+        } catch (RuntimeException ex) {
+            log.error("Failed to record ledger entry for payment {} (booking {}) — payment succeeded regardless",
+                    payment.getId(), payment.getBooking().getId(), ex);
+        }
+    }
+
+    /**
+     * Retries through bookingService (a different Spring bean, so each call
+     * genuinely goes through its transactional proxy and re-reads the
+     * booking fresh) rather than inside BookingServiceImpl itself — a
+     * @Transactional method can't usefully catch-and-retry its own failed
+     * commit from within, since the transaction is already gone by the time
+     * the exception reaches the caller.
+     */
+    private void markPaymentProcessingWithRetry(Long bookingId) {
+        for (int attempt = 1; attempt <= MAX_MARK_PROCESSING_ATTEMPTS; attempt++) {
+            try {
+                bookingService.markPaymentProcessing(bookingId);
+                return;
+            } catch (ObjectOptimisticLockingFailureException ex) {
+                if (attempt == MAX_MARK_PROCESSING_ATTEMPTS) {
+                    throw ex;
+                }
+            }
+        }
     }
 
     private static PaymentStatus statusFor(boolean requiresThreeDs, Optional<String> declineReason) {

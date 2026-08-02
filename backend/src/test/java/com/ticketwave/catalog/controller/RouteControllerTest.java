@@ -6,7 +6,7 @@ import com.ticketwave.auth.security.JwtAuthenticationFilter;
 import com.ticketwave.catalog.dto.RouteRequest;
 import com.ticketwave.catalog.dto.RouteResponse;
 import com.ticketwave.catalog.dto.ScheduleResponse;
-import com.ticketwave.catalog.entity.RouteType;
+import com.ticketwave.catalog.model.RouteType;
 import com.ticketwave.catalog.entity.ScheduleStatus;
 import com.ticketwave.catalog.service.RouteService;
 import com.ticketwave.catalog.service.ScheduleManagementService;

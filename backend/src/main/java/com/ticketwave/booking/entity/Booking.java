@@ -65,6 +65,16 @@ public class Booking {
     private PromoCode promoCode;
 
     /**
+     * Optional caller-supplied idempotency key: a retried POST /api/bookings
+     * carrying the same key is rejected as a duplicate (see
+     * BookingServiceImpl#createBooking) rather than creating a second
+     * booking and double-holding seats. Null for callers that don't send
+     * one, which the unique constraint allows any number of.
+     */
+    @Column(name = "idempotency_key", unique = true, length = 100)
+    private String idempotencyKey;
+
+    /**
      * Optimistic lock: two concurrent requests against the same booking (e.g.
      * two refund initiations racing each other) can otherwise both read
      * CONFIRMED before either commits its status change, producing duplicate

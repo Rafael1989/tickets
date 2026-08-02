@@ -21,6 +21,11 @@ export class BookingService {
     return this.http.get<BookingDetailResponse>(`/api/bookings/${bookingId}`);
   }
 
+  /** The authenticated customer's own bookings, newest first. */
+  listMyBookings(): Observable<BookingSearchResult[]> {
+    return this.http.get<BookingSearchResult[]>('/api/bookings/me');
+  }
+
   getBookingByPnr(pnr: string): Observable<BookingDetailResponse> {
     return this.http.get<BookingDetailResponse>(`/api/bookings/pnr/${encodeURIComponent(pnr)}`);
   }

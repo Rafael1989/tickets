@@ -5,7 +5,7 @@ import com.ticketwave.booking.dto.CreateBookingRequest;
 import com.ticketwave.booking.dto.SeatSelection;
 import com.ticketwave.booking.service.BookingService;
 import com.ticketwave.catalog.entity.Route;
-import com.ticketwave.catalog.entity.RouteType;
+import com.ticketwave.catalog.model.RouteType;
 import com.ticketwave.catalog.entity.Schedule;
 import com.ticketwave.catalog.entity.ScheduleStatus;
 import com.ticketwave.catalog.entity.Seat;
@@ -51,7 +51,7 @@ import java.util.Random;
  * Populates a fresh dev database with a realistic, heavily-populated dataset:
  * users for every role, a catalog of routes/schedules/seats across bus,
  * train, flight and event, and a spread of bookings in every lifecycle state
- * (initiated, confirmed, cancelled — with and without a refund attached).
+ * (initiated, confirmed, cancelled â€” with and without a refund attached).
  *
  * Only runs under the "seed" Spring profile (never in a normal boot), and
  * only against a database that doesn't already look seeded (checks for
@@ -59,14 +59,14 @@ import java.util.Random;
  *
  * Deliberately goes through the real BookingService/PaymentService/
  * RefundService/PassengerService rather than constructing Booking/Payment/
- * Refund rows directly — that's the only way the seeded data ends up
+ * Refund rows directly â€” that's the only way the seeded data ends up
  * internally consistent with this app's own business rules (PNR generation,
  * dynamic pricing, seat-hold lifecycle, refund proration). Those services
  * run outside any HTTP request here, so calls into the @PreAuthorize-guarded
  * ones go through SeedAuthContext to stand up a temporary Authentication.
  *
  * Run with: mvn spring-boot:run -Dspring-boot.run.profiles=seed
- * (plus JWT_SECRET, as always). Every seeded account shares one password —
+ * (plus JWT_SECRET, as always). Every seeded account shares one password â€”
  * see SEED_PASSWORD below, also logged at the end of the run.
  */
 @Component
@@ -140,7 +140,7 @@ public class DevDataSeeder implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) {
         if (userRepository.existsByUsername("admin1")) {
-            log.info("Dev seed data already present (found admin1) — skipping.");
+            log.info("Dev seed data already present (found admin1) â€” skipping.");
             return;
         }
 
@@ -382,7 +382,7 @@ public class DevDataSeeder implements ApplicationRunner {
     }
 
     /**
-     * Window/aisle isn't a separate column in the schema — like real
+     * Window/aisle isn't a separate column in the schema â€” like real
      * booking systems, it's implied by the seat letter's position in the
      * row (e.g. A/F on a 6-across economy row are window seats), which is
      * why priceModifier varies by column, not just by class.
@@ -516,7 +516,7 @@ public class DevDataSeeder implements ApplicationRunner {
                 Seat seat = availableSeats.poll();
                 PassengerResponse passenger = passengersByUsername.get(customer.getUsername()).get(0);
                 CreateBookingRequest request = new CreateBookingRequest(
-                        schedule.getId(), List.of(new SeatSelection(seat.getId(), passenger.id())), null);
+                        schedule.getId(), List.of(new SeatSelection(seat.getId(), passenger.id())), null, null);
                 return bookingService.createBooking(customer.getUsername(), request);
             }
         }

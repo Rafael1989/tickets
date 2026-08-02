@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { of, throwError } from 'rxjs';
+import { Subject, of, throwError } from 'rxjs';
 import { BookingDetailResponse, BookingSearchResult } from '../../core/models/booking.model';
 import { RefundResponse } from '../../core/models/payment.model';
 import { BookingService } from '../../core/services/booking.service';
@@ -15,6 +15,10 @@ describe('SupportPanelComponent', () => {
   let bookingService: BookingService;
   let refundService: RefundService;
   let notifications: NotificationService;
+
+  function queryText(selector: string): string | null {
+    return (fixture.nativeElement as HTMLElement).querySelector(selector)?.textContent?.trim() ?? null;
+  }
 
   const searchResult: BookingSearchResult = {
     bookingId: 500,
@@ -132,11 +136,157 @@ describe('SupportPanelComponent', () => {
     expect(component.refunds()).toEqual([]);
   });
 
+  it('renders a skeleton while a search is in flight', () => {
+    vi.spyOn(bookingService, 'searchBookings').mockReturnValue(new Subject());
+    component.searchForm.setValue({ query: 'alice' });
+
+    component.search();
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).querySelectorAll('.skeleton').length).toBeGreaterThan(0);
+  });
+
+  it('renders the search-error message when the search fails', () => {
+    vi.spyOn(bookingService, 'searchBookings').mockReturnValue(throwError(() => new Error('500')));
+    component.searchForm.setValue({ query: 'alice' });
+
+    component.search();
+    fixture.detectChanges();
+
+    expect(queryText('.form-error')).toContain('Something went wrong');
+  });
+
+  it('renders "no bookings matched" when the search comes back empty', () => {
+    vi.spyOn(bookingService, 'searchBookings').mockReturnValue(of([]));
+    component.searchForm.setValue({ query: 'nobody' });
+
+    component.search();
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('No bookings matched');
+  });
+
+  it('renders a results row per booking with a status badge, and the View button drives selectBooking', () => {
+    vi.spyOn(bookingService, 'searchBookings').mockReturnValue(of([searchResult]));
+    vi.spyOn(bookingService, 'getBooking').mockReturnValue(of(detail));
+    vi.spyOn(refundService, 'listRefundsForBooking').mockReturnValue(of([]));
+    component.searchForm.setValue({ query: 'alice' });
+
+    component.search();
+    fixture.detectChanges();
+
+    const row = (fixture.nativeElement as HTMLElement).querySelector('[aria-label="Search results"] tbody tr')!;
+    expect(row.textContent).toContain('ABC123');
+    expect(row.querySelector('.badge')!.textContent!.trim()).toBe('CONFIRMED');
+
+    (row.querySelector('button') as HTMLButtonElement).click();
+
+    expect(bookingService.getBooking).toHaveBeenCalledWith(500);
+  });
+
+  it('renders a skeleton while booking detail is loading', () => {
+    vi.spyOn(bookingService, 'getBooking').mockReturnValue(new Subject());
+    vi.spyOn(refundService, 'listRefundsForBooking').mockReturnValue(new Subject());
+
+    component.selectBooking(500);
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).querySelectorAll('.skeleton').length).toBeGreaterThan(0);
+  });
+
+  it('renders the detail-error message when loading a booking fails', () => {
+    vi.spyOn(bookingService, 'getBooking').mockReturnValue(throwError(() => new Error('404')));
+    vi.spyOn(refundService, 'listRefundsForBooking').mockReturnValue(of([]));
+
+    component.selectBooking(500);
+    fixture.detectChanges();
+
+    expect(queryText('.form-error')).toContain("couldn't be loaded");
+  });
+
   describe('with a pending refund loaded', () => {
     beforeEach(() => {
       vi.spyOn(bookingService, 'getBooking').mockReturnValue(of(detail));
       vi.spyOn(refundService, 'listRefundsForBooking').mockReturnValue(of([pendingRefund]));
       component.selectBooking(500);
+      fixture.detectChanges();
+    });
+
+    it('renders the booking header and passenger manifest, and the close button clears the detail', () => {
+      expect(queryText('.detail-header h3')).toContain('ABC123');
+      const passengerRows = (fixture.nativeElement as HTMLElement).querySelectorAll(
+        '[aria-label="Passenger manifest"] tbody tr',
+      );
+      expect(passengerRows.length).toBe(1);
+
+      ((fixture.nativeElement as HTMLElement).querySelector('.icon-btn') as HTMLButtonElement).click();
+      fixture.detectChanges();
+
+      expect(component.detail()).toBeNull();
+      expect((fixture.nativeElement as HTMLElement).querySelector('.detail-header')).toBeNull();
+    });
+
+    it('shows the promo code line only when the booking actually has one', () => {
+      expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('Promo code:');
+
+      component.detail.set({ ...detail, booking: { ...detail.booking, promoCode: 'SAVE20' } });
+      fixture.detectChanges();
+
+      expect((fixture.nativeElement as HTMLElement).textContent).toContain('Promo code: SAVE20');
+    });
+
+    it('renders the refund history row and the pending-refund fee-override panel', () => {
+      const refundRow = (fixture.nativeElement as HTMLElement).querySelector(
+        '[aria-label="Refund history"] tbody tr',
+      )!;
+      expect(refundRow.textContent).toContain('PARTIAL_REFUND');
+      expect(refundRow.querySelector('td:nth-child(5)')!.textContent!.trim()).toBe('—');
+
+      expect(queryText('.fee-override h4')).toContain('Settle refund #9');
+    });
+
+    it('shows the "waived" hint only for a refund with an overrideDelta', () => {
+      component.refunds.set([{ ...pendingRefund, overrideDelta: 25 }]);
+      fixture.detectChanges();
+
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector('[aria-label="Refund history"]')!.textContent,
+      ).toContain('waived');
+    });
+
+    it('renders "No refunds" instead of a table when the booking has none', () => {
+      component.refunds.set([]);
+      fixture.detectChanges();
+
+      expect((fixture.nativeElement as HTMLElement).textContent).toContain('No refunds have been raised');
+    });
+
+    it('reveals the approve-amount and reason fields only once waiveFee is checked', () => {
+      expect((fixture.nativeElement as HTMLElement).querySelector('#approveAmount')).toBeNull();
+
+      const checkbox = (fixture.nativeElement as HTMLElement).querySelector(
+        'input[type="checkbox"]',
+      ) as HTMLInputElement;
+      checkbox.checked = true;
+      checkbox.dispatchEvent(new Event('change'));
+      fixture.detectChanges();
+
+      expect((fixture.nativeElement as HTMLElement).querySelector('#approveAmount')).not.toBeNull();
+      expect((fixture.nativeElement as HTMLElement).querySelector('#reason')).not.toBeNull();
+      expect(component.overrideForm.controls.approveAmount.value).toBe(100); // toggleWaiveFee ran too
+    });
+
+    it('disables Approve and Reject while a decision is being submitted', () => {
+      vi.spyOn(refundService, 'processRefund').mockReturnValue(new Subject());
+
+      component.approveRefund();
+      fixture.detectChanges();
+
+      const buttons = (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+        '.dialog-actions button',
+      );
+      expect(buttons.length).toBe(2);
+      buttons.forEach((button) => expect(button.disabled).toBe(true));
     });
 
     it('toggleWaiveFee sets the approve amount to the full fare when enabled', () => {

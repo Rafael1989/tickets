@@ -1,12 +1,13 @@
 package com.ticketwave.payment.service;
 
+import com.ticketwave.AbstractIntegrationTest;
 import com.ticketwave.booking.dto.BookingDetailResponse;
 import com.ticketwave.booking.dto.CreateBookingRequest;
 import com.ticketwave.booking.dto.SeatSelection;
 import com.ticketwave.booking.entity.BookingStatus;
 import com.ticketwave.booking.service.BookingService;
 import com.ticketwave.catalog.entity.Route;
-import com.ticketwave.catalog.entity.RouteType;
+import com.ticketwave.catalog.model.RouteType;
 import com.ticketwave.catalog.entity.Schedule;
 import com.ticketwave.catalog.entity.ScheduleStatus;
 import com.ticketwave.catalog.entity.Seat;
@@ -20,6 +21,7 @@ import com.ticketwave.payment.dto.RefundResponse;
 import com.ticketwave.payment.entity.PaymentStatus;
 import com.ticketwave.payment.entity.RefundStatus;
 import com.ticketwave.payment.exception.CancellationNotAllowedException;
+import com.ticketwave.payment.exception.RefundAlreadyPendingException;
 import com.ticketwave.payment.repository.PaymentRepository;
 import com.ticketwave.user.entity.Passenger;
 import com.ticketwave.user.entity.User;
@@ -29,16 +31,10 @@ import com.ticketwave.user.repository.UserRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -54,22 +50,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * partial, blocked), the PENDING -> PROCESSED/REJECTED settlement step, and
  * that processRefund's @PreAuthorize is actually enforced by the real
  * Spring Security method-security proxy, not just present as an annotation.
- * Requires a Docker daemon reachable by Testcontainers.
+ * See AbstractIntegrationTest for connection/isolation details.
  */
-@SpringBootTest
-@Testcontainers
-class RefundFlowIT {
-
-    @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
-
-    @DynamicPropertySource
-    static void datasourceProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
-        registry.add("ticketwave.jwt.secret", () -> "test-only-secret-key-at-least-32-bytes-long");
-    }
+class RefundFlowIT extends AbstractIntegrationTest {
 
     @Autowired
     private RefundService refundService;
@@ -137,7 +120,7 @@ class RefundFlowIT {
 
         authenticateAs(customer.getUsername(), UserRole.CUSTOMER);
         BookingDetailResponse created = bookingService.createBooking(customer.getUsername(), new CreateBookingRequest(
-                schedule.getId(), List.of(new SeatSelection(seat.getId(), passenger.getId())), null));
+                schedule.getId(), List.of(new SeatSelection(seat.getId(), passenger.getId())), null, null));
 
         paymentService.recordPayment(created.booking().id(),
                 new PaymentRequest(created.booking().totalAmount(), "card", "PAY-REFUND-" + suffix, "4242424242424242"));
@@ -146,7 +129,7 @@ class RefundFlowIT {
     }
 
     @Test
-    void initiateRefund_farFromDeparture_fullyRefundsAndCancelsBooking() {
+    void initiateRefund_farFromDeparture_quotesAFullRefundButLeavesTheBookingConfirmed() {
         BookingDetailResponse booking = newConfirmedBooking("full", Duration.ofDays(10));
         Long seatId = booking.items().get(0).seatId();
 
@@ -155,7 +138,24 @@ class RefundFlowIT {
         assertThat(refund.status()).isEqualTo(RefundStatus.PENDING);
         assertThat(refund.policyCode()).isEqualTo("FULL_REFUND");
         assertThat(refund.amount()).isEqualByComparingTo(booking.booking().totalAmount());
-        assertThat(seatRepository.findById(seatId).orElseThrow().getStatus()).isEqualTo(SeatStatus.AVAILABLE);
+        // Nothing is given up until support decides: the trip and its seat are still the
+        // customer's while the request sits in review.
+        assertThat(bookingService.getBooking(booking.booking().id()).booking().status())
+                .isEqualTo(BookingStatus.CONFIRMED);
+        assertThat(seatRepository.findById(seatId).orElseThrow().getStatus()).isEqualTo(SeatStatus.BOOKED);
+    }
+
+    @Test
+    void initiateRefund_whenAlreadyAwaitingReview_isRejectedInsteadOfRaisingASecondRefund() {
+        BookingDetailResponse booking = newConfirmedBooking("dupe", Duration.ofDays(10));
+        refundService.initiateRefund(booking.booking().id());
+
+        // The booking stays CONFIRMED during review, so its status alone no longer blocks a repeat
+        // request — approving two PENDING refunds would pay the same fare back twice.
+        assertThatThrownBy(() -> refundService.initiateRefund(booking.booking().id()))
+                .isInstanceOf(RefundAlreadyPendingException.class);
+
+        assertThat(refundService.listRefundsForBooking(booking.booking().id())).hasSize(1);
     }
 
     @Test
@@ -181,8 +181,9 @@ class RefundFlowIT {
     }
 
     @Test
-    void processRefund_approvedBySupportRole_marksProcessedAndRefundsThePayment() {
+    void processRefund_approvedBySupportRole_refundsThePaymentAndCancelsTheBooking() {
         BookingDetailResponse booking = newConfirmedBooking("approve", Duration.ofDays(10));
+        Long seatId = booking.items().get(0).seatId();
         User support = newUser("support-processor", UserRole.SUPPORT);
         RefundResponse initiated = refundService.initiateRefund(booking.booking().id());
 
@@ -192,6 +193,30 @@ class RefundFlowIT {
         assertThat(processed.status()).isEqualTo(RefundStatus.PROCESSED);
         assertThat(paymentRepository.findById(initiated.paymentId()).orElseThrow().getStatus())
                 .isEqualTo(PaymentStatus.REFUNDED);
+        // Approval is the moment the trip actually ends and the seat returns to inventory.
+        assertThat(bookingService.getBooking(booking.booking().id()).booking().status())
+                .isEqualTo(BookingStatus.CANCELLED);
+        assertThat(seatRepository.findById(seatId).orElseThrow().getStatus()).isEqualTo(SeatStatus.AVAILABLE);
+    }
+
+    @Test
+    void processRefund_rejectedBySupportRole_leavesTheBookingConfirmedAndTravelling() {
+        BookingDetailResponse booking = newConfirmedBooking("reject", Duration.ofDays(10));
+        Long seatId = booking.items().get(0).seatId();
+        User support = newUser("support-rejecter", UserRole.SUPPORT);
+        RefundResponse initiated = refundService.initiateRefund(booking.booking().id());
+
+        authenticateAs(support.getUsername(), UserRole.SUPPORT);
+        RefundResponse processed = refundService.processRefund(initiated.id(), support.getUsername(), RefundDecision.REJECT, null, null);
+
+        assertThat(processed.status()).isEqualTo(RefundStatus.REJECTED);
+        // A refused request costs the customer nothing: they keep the trip, the seat, and the
+        // money they already paid stays a valid payment against a live booking.
+        assertThat(bookingService.getBooking(booking.booking().id()).booking().status())
+                .isEqualTo(BookingStatus.CONFIRMED);
+        assertThat(seatRepository.findById(seatId).orElseThrow().getStatus()).isEqualTo(SeatStatus.BOOKED);
+        assertThat(paymentRepository.findById(initiated.paymentId()).orElseThrow().getStatus())
+                .isEqualTo(PaymentStatus.SUCCEEDED);
     }
 
     @Test
@@ -219,7 +244,7 @@ class RefundFlowIT {
         RefundResponse initiated = refundService.initiateRefund(booking.booking().id());
 
         // Still authenticated as the booking's own customer from
-        // newConfirmedBooking/initiateRefund above — exactly the role that
+        // newConfirmedBooking/initiateRefund above â€” exactly the role that
         // must not be able to settle a refund.
         assertThatThrownBy(() -> refundService.processRefund(initiated.id(), support.getUsername(), RefundDecision.APPROVE, null, null))
                 .isInstanceOf(AccessDeniedException.class);

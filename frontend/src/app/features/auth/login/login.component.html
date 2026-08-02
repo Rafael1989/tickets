@@ -1,6 +1,10 @@
 <div class="card auth-card">
   <h2>Log in</h2>
 
+  @if (redirectMessage) {
+    <p class="redirect-notice" role="status">{{ redirectMessage }}</p>
+  }
+
   <form [formGroup]="form" (ngSubmit)="submit()">
     <div class="field">
       <label for="username">Username</label>
@@ -17,5 +21,8 @@
     </button>
   </form>
 
-  <p class="hint">No account yet? <a routerLink="/register">Register</a></p>
+  <p class="hint">
+    No account yet?
+    <a routerLink="/register" [queryParams]="redirectTo ? { redirectTo } : {}">Register</a>
+  </p>
 </div>

@@ -10,6 +10,7 @@ import com.ticketwave.booking.service.BookingService;
 import com.ticketwave.catalog.entity.Route;
 import com.ticketwave.catalog.entity.Schedule;
 import com.ticketwave.config.RefundProperties;
+import com.ticketwave.ledger.service.LedgerService;
 import com.ticketwave.payment.dto.RefundDecision;
 import com.ticketwave.payment.dto.RefundQuoteResponse;
 import com.ticketwave.payment.dto.RefundResponse;
@@ -20,6 +21,7 @@ import com.ticketwave.payment.entity.RefundStatus;
 import com.ticketwave.payment.exception.CancellationNotAllowedException;
 import com.ticketwave.payment.exception.InvalidRefundStateException;
 import com.ticketwave.payment.exception.PaymentNotFoundException;
+import com.ticketwave.payment.exception.RefundAlreadyPendingException;
 import com.ticketwave.payment.exception.RefundNotFoundException;
 import com.ticketwave.payment.exception.RefundOverrideAmountExceedsPaymentException;
 import com.ticketwave.payment.exception.RefundOverrideReasonRequiredException;
@@ -73,6 +75,8 @@ class RefundServiceImplTest {
     private AuditService auditService;
     @Mock
     private com.ticketwave.partner.service.PartnerWebhookDeliveryService webhookDeliveryService;
+    @Mock
+    private LedgerService ledgerService;
 
     private static final RefundProperties PROPERTIES = new RefundProperties(7, 24, new BigDecimal("0.50"));
 
@@ -89,7 +93,8 @@ class RefundServiceImplTest {
 
     private RefundServiceImpl newService(RefundProperties properties) {
         return new RefundServiceImpl(refundRepository, paymentRepository, bookingRepository, userRepository,
-                bookingService, new RefundPolicyService(properties), refundMapper, auditService, webhookDeliveryService);
+                bookingService, new RefundPolicyService(properties), refundMapper, auditService, webhookDeliveryService,
+                ledgerService);
     }
 
     private static Booking booking(long id, BookingStatus status, Schedule schedule) {
@@ -115,7 +120,7 @@ class RefundServiceImplTest {
     }
 
     @Test
-    void initiateRefund_whenFarFromDeparture_appliesFullRefundAndCancelsBooking() {
+    void initiateRefund_whenFarFromDeparture_appliesFullRefundAndLeavesTheBookingConfirmedForReview() {
         RefundServiceImpl service = newService(PROPERTIES);
         Schedule schedule = scheduleDepartingIn(Duration.ofDays(10));
         Booking booking = booking(500L, BookingStatus.CONFIRMED, schedule);
@@ -137,9 +142,26 @@ class RefundServiceImplTest {
         assertThat(response.amount()).isEqualByComparingTo("100.00");
         assertThat(response.policyCode()).isEqualTo("FULL_REFUND");
         assertThat(response.status()).isEqualTo(RefundStatus.PENDING);
-        verify(bookingService).cancelBooking(500L);
+        // The booking must survive the request untouched: cancelling here would free its seats for
+        // resale while support is still deciding, so rejecting could no longer give the trip back.
+        verify(bookingService, never()).cancelBooking(any());
         verify(auditService).record("alice", "REFUND_INITIATED", "REFUND", null,
                 "bookingId=500 policy=FULL_REFUND amount=100.00");
+    }
+
+    @Test
+    void initiateRefund_whenOneIsAlreadyAwaitingReview_throwsRefundAlreadyPendingException() {
+        RefundServiceImpl service = newService(PROPERTIES);
+        Schedule schedule = scheduleDepartingIn(Duration.ofDays(10));
+        Booking booking = booking(500L, BookingStatus.CONFIRMED, schedule);
+
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+        given(refundRepository.existsByPaymentBookingIdAndStatus(500L, RefundStatus.PENDING)).willReturn(true);
+
+        assertThatThrownBy(() -> service.initiateRefund(500L))
+                .isInstanceOf(RefundAlreadyPendingException.class);
+
+        verify(refundRepository, never()).save(any());
     }
 
     @Test
@@ -371,7 +393,10 @@ class RefundServiceImplTest {
         assertThat(refund.getProcessedBy()).isEqualTo(admin);
         assertThat(refund.getProcessedAt()).isNotNull();
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.REFUNDED);
+        // Approval is what actually ends the trip — the booking stayed CONFIRMED until now.
+        verify(bookingService).cancelBooking(500L);
         verify(auditService).record("support1", "REFUND_APPROVED", "REFUND", 1L, "status=PROCESSED");
+        verify(ledgerService).recordRefund(refund);
     }
 
     @Test
@@ -395,6 +420,10 @@ class RefundServiceImplTest {
 
         assertThat(refund.getStatus()).isEqualTo(RefundStatus.PROCESSED);
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED);
+        // A reschedule credit settles money on a still-active booking — approving it must never
+        // cancel the trip the customer just moved.
+        verify(bookingService, never()).cancelBooking(any());
+        verify(ledgerService).recordRefund(refund);
     }
 
     @Test
@@ -414,7 +443,11 @@ class RefundServiceImplTest {
 
         assertThat(refund.getStatus()).isEqualTo(RefundStatus.REJECTED);
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED); // unchanged
+        // The whole point of deferring the cancellation: a rejected request leaves the customer's
+        // trip intact rather than stranding them with neither the booking nor the money.
+        verify(bookingService, never()).cancelBooking(any());
         verify(auditService).record("support1", "REFUND_REJECTED", "REFUND", 1L, "status=REJECTED");
+        verify(ledgerService, never()).recordRefund(any());
     }
 
     @Test
@@ -439,6 +472,8 @@ class RefundServiceImplTest {
         verify(auditService).record("support1", "REFUND_FEE_OVERRIDDEN", "REFUND", 1L,
                 "delta=50.00 reason=Goodwill waiver - repeat customer");
         verify(auditService).record("support1", "REFUND_APPROVED", "REFUND", 1L, "status=PROCESSED");
+        verify(ledgerService).recordRefund(refund);
+        assertThat(refund.getAmount()).isEqualByComparingTo(new BigDecimal("100.00"));
     }
 
     @Test

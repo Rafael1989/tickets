@@ -408,32 +408,6 @@ Substituí o texto genérico por especificações detalhadas de engenharia (*Aud
 ================================================
 
 
-
-DATABASE
-
-Please review and audit the database schema implementation (Liquibase changelogs, JPA entities, and repositories) against the defined specification below:
-
-1. Validate Entities and Relationships:
-   - Users: `user_id` (PK), `username`, `password_hash`, `email`, `role` (customer, operator, support, admin), `created_at`.
-   - Passengers: `passenger_id` (PK), `user_id` (FK -> Users), `full_name`, `dob`, `id_type`, `id_number`.
-   - Venues/Routes: `route_id` (PK), `operator_id` (FK -> Users), `type` (flight, bus, train, event), `origin`, `destination`, `venue`, `duration`.
-   - Schedules: `schedule_id` (PK), `route_id` (FK -> Routes), `departure_time`, `arrival_time`, `base_fare`, `currency`, `status`.
-   - Seats: `seat_id` (PK), `schedule_id` (FK -> Schedules), `seat_number`, `class`, `status` (available, held, booked), `price_modifier`.
-   - Bookings: `booking_id` (PK), `user_id` (FK -> Users), `schedule_id` (FK -> Schedules), `pnr`, `booking_time`, `status` (initiated, confirmed, cancelled), `total_amount`.
-   - BookingItems: `item_id` (PK), `booking_id` (FK -> Bookings), `seat_id` (FK -> Seats), `passenger_id` (FK -> Passengers), `fare`.
-   - Payments: `payment_id` (PK), `booking_id` (FK -> Bookings), `amount`, `method`, `reference`, `status`, `paid_at`.
-   - Refunds: `refund_id` (PK), `payment_id` (FK -> Payments), `amount`, `policy_code`, `processed_by` (FK -> Users), `processed_at`.
-
-2. Check the following database integrity requirements:
-   - Are all Foreign Key constraints and cascades properly declared?
-   - Are indexes created for highly queried columns (e.g., `pnr`, `user_id`, `schedule_id`, `status`)?
-   - Are Enum types (`role`, `type`, seat `status`, booking `status`) correctly mapped in both Liquibase and JPA?
-   - Are column data types, NULL/NOT NULL constraints, and precision/scale (for monetary values) consistent between Liquibase and JPA?
-
-Output a detailed status matrix (MATCH / MISMATCH / MISSING) for each entity and its attributes, and automatically propose or apply corrections for any detected schema drifts.
-
-=======================================
-
 FRONTEND
 
 Please review and audit the Frontend application (Angular components, routes, services, and state management) against the required UI Pages and Features specification below:
@@ -478,23 +452,7 @@ BACKEND
 Please review and audit the Backend REST API implementation (Controllers, DTOs, Business Logic, and Security Config) against the required API Endpoints specification below:
 
 1. Validate Endpoints, HTTP Verbs, and Controller Mappings:
-   - Authentication & Users:
-     * POST /api/register – Register new user.
-     * POST /api/login – Authenticate user and return JWT token.
-     * GET /api/users/{id} – Retrieve user profile details (Admin restricted).
-     * GET /api/audit – Retrieve system audit logs (Admin restricted).
-   - Catalog & Inventory:
-     * GET /api/search – Query routes/events by date, origin, and destination.
-     * GET /api/schedules/{id} – Retrieve detailed schedule information.
-     * GET /api/schedules/{id}/seats – Retrieve real-time seat availability and status.
-     * POST /api/schedules – Create new schedule and seat layout (Operator restricted).
-     * PUT /api/seats/{id} – Update seat status/pricing (Operator/Admin restricted).
-   - Booking & Payment:
-     * POST /api/bookings – Create booking, generate PNR, and place temporary hold on seats.
-     * PUT /api/bookings/{id}/confirm – Confirm booking status upon successful payment.
-     * POST /api/bookings/{id}/payments – Record payment transaction with idempotency check.
-     * POST /api/bookings/{id}/refunds – Process/initiate refund according to cancellation policy.
-     * GET /api/bookings/{id} – Retrieve complete booking details and e-ticket info.
+  
 
 2. Check the following Backend Architecture & Security standards:
    - OpenAPI / Swagger alignment: Are all controller endpoints properly annotated and matching the URL structure above?
@@ -538,13 +496,49 @@ Please review and audit the codebase against the required Development, Architect
 
 4. Validate Testing Standards & Reliability:
    - Code Coverage:
-     * Run test suite and check line/branch coverage targeting >= 80% with zero failing tests.
+     * Run test suite and check line/branch coverage targeting >= 100% with zero failing tests.
    - Contract & Integration Testing:
      * Verify contract tests (e.g., Pact or Spring Cloud Contract) and Spring Boot Integration Tests (JUnit 5, Mockito, Testcontainers).
    - Performance & Load Testing:
      * Verify presence of load test scripts (e.g., Gatling, k6, or JMeter) simulating high concurrency on search and seat hold endpoints.
 
 Output a structured evaluation report (VERIFIED / PARTIAL / MISSING) for each technical pillar, and automatically fix any identified architectural gaps or missing tests.
+
+===============================================
+
+You are now acting as a Lead QA Automation Engineer and Senior Full-Stack Developer specialized in Java (Spring Boot) and TypeScript (Angular).
+
+Your mission is to guide me through writing a 100% Integration Test (IT) suite for my full-stack web application using my LOCAL PostgreSQL database for testing.
+
+### 🎯 IT TEST OBJECTIVES & ARCHITECTURE:
+1. **Spring Boot Backend (Integration Tests):**
+   * Use `@SpringBootTest` with `@AutoConfigureMockMvc` / `TestRestTemplate`.
+   * Configure tests to connect directly to my **Local PostgreSQL** instance (using a dedicated test database, e.g., `myapp_db_test`).
+   * Use `@Sql` annotations or `@Transactional` / Flyway / Liquibase to handle database migration, state isolation, and cleanup between test executions.
+   * Test complete API flows: Controllers, Repositories, Spring Security (JWT/Auth), and `@ControllerAdvice` Error Handling.
+
+2. **Angular Frontend (Integration & E2E Tests):**
+   * Component & Service integration tests using Angular Test Bed and `HttpTestingController` (testing HTTP Interceptors, Auth Tokens, and Error Handlers).
+   * End-to-End (E2E) UI integration using **Cypress** or **Playwright** that hits the real Spring Boot backend connected to the local PostgreSQL database.
+
+3. **Coverage & Quality:**
+   * Configure JaCoCo (Spring Boot) and Karma/Jest (Angular) to measure integration test coverage.
+
+---
+
+### 📋 OPERATING RULES & FORMAT:
+* **Phase-by-Phase Execution:** Break the roadmap into logical steps (Phase 1: Local Postgres Test Config & Backend IT -> Phase 2: Frontend IT -> Phase 3: E2E Tests).
+* **Production-Ready Code:** Provide complete, runnable code with all annotations (`@Test`, `@SpringBootTest`, `@Sql`), `application-test.properties` configurations, and imports.
+* **Database Safety:** Ensure instructions prevent accidental data loss in the production/development database schemas.
+
+---
+
+### 🔬 CURRENT TECH STACK:
+- **Backend:** Spring Boot (Java), Spring Data JPA, Spring Security.
+- **Frontend:** Angular, RxJS, HttpClient.
+- **Database:** Local PostgreSQL (e.g., `localhost:5432`).
+
+Please take command. Start by showing me how to set up `application-test.yml/properties` for the local PostgreSQL database and write the first integration test for **Phase 1**!
 
 ===============================================
 

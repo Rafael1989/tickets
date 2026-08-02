@@ -1,11 +1,12 @@
 package com.ticketwave.booking.service;
 
+import com.ticketwave.AbstractIntegrationTest;
 import com.ticketwave.booking.dto.BookingDetailResponse;
 import com.ticketwave.booking.dto.CreateBookingRequest;
 import com.ticketwave.booking.dto.SeatSelection;
 import com.ticketwave.booking.entity.BookingStatus;
 import com.ticketwave.catalog.entity.Route;
-import com.ticketwave.catalog.entity.RouteType;
+import com.ticketwave.catalog.model.RouteType;
 import com.ticketwave.catalog.entity.Schedule;
 import com.ticketwave.catalog.entity.ScheduleStatus;
 import com.ticketwave.catalog.entity.Seat;
@@ -22,15 +23,9 @@ import com.ticketwave.user.repository.UserRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -47,23 +42,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * End-to-end against real PostgreSQL: create -> confirm, create -> cancel,
  * and a genuine concurrency check that two bookings racing over the same
- * seats in opposite request order neither deadlock nor double-book. Requires
- * a Docker daemon reachable by Testcontainers.
+ * seats in opposite request order neither deadlock nor double-book. See
+ * AbstractIntegrationTest for connection/isolation details.
  */
-@SpringBootTest
-@Testcontainers
-class BookingFlowIT {
-
-    @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
-
-    @DynamicPropertySource
-    static void datasourceProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
-        registry.add("ticketwave.jwt.secret", () -> "test-only-secret-key-at-least-32-bytes-long");
-    }
+class BookingFlowIT extends AbstractIntegrationTest {
 
     @Autowired
     private BookingService bookingService;
@@ -105,7 +87,7 @@ class BookingFlowIT {
                 .build());
         // 10 days out: outside both the last-minute (24h) and early-bird
         // (30-day) thresholds, so the demand pricing engine applies neither
-        // adjustment here — fare assertions below assume a neutral multiplier.
+        // adjustment here â€” fare assertions below assume a neutral multiplier.
         return scheduleRepository.save(Schedule.builder()
                 .route(route)
                 .departureTime(Instant.now().plus(java.time.Duration.ofDays(10)))
@@ -157,7 +139,7 @@ class BookingFlowIT {
         Passenger passenger = newPassenger(customer);
 
         BookingDetailResponse created = bookingService.createBooking(customer.getUsername(), new CreateBookingRequest(
-                schedule.getId(), List.of(new SeatSelection(seat.getId(), passenger.getId())), null));
+                schedule.getId(), List.of(new SeatSelection(seat.getId(), passenger.getId())), null, null));
 
         assertThat(created.booking().status()).isEqualTo(BookingStatus.INITIATED);
         assertThat(created.booking().totalAmount()).isEqualByComparingTo("30.00");
@@ -180,7 +162,7 @@ class BookingFlowIT {
         Passenger passenger = newPassenger(customer);
 
         BookingDetailResponse created = bookingService.createBooking(customer.getUsername(), new CreateBookingRequest(
-                schedule.getId(), List.of(new SeatSelection(seat.getId(), passenger.getId())), null));
+                schedule.getId(), List.of(new SeatSelection(seat.getId(), passenger.getId())), null, null));
 
         bookingService.cancelBooking(created.booking().id());
 
@@ -200,10 +182,10 @@ class BookingFlowIT {
 
         CreateBookingRequest requestA = new CreateBookingRequest(schedule.getId(), List.of(
                 new SeatSelection(seatY.getId(), passengerA.getId()),
-                new SeatSelection(seatX.getId(), passengerA.getId())), null);
+                new SeatSelection(seatX.getId(), passengerA.getId())), null, null);
         CreateBookingRequest requestB = new CreateBookingRequest(schedule.getId(), List.of(
                 new SeatSelection(seatX.getId(), passengerB.getId()),
-                new SeatSelection(seatY.getId(), passengerB.getId())), null);
+                new SeatSelection(seatY.getId(), passengerB.getId())), null, null);
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
         CountDownLatch start = new CountDownLatch(1);
@@ -265,7 +247,7 @@ class BookingFlowIT {
         Passenger passenger = newPassenger(customer);
 
         BookingDetailResponse created = bookingService.createBooking(customer.getUsername(), new CreateBookingRequest(
-                schedule.getId(), List.of(new SeatSelection(seat.getId(), passenger.getId())), null));
+                schedule.getId(), List.of(new SeatSelection(seat.getId(), passenger.getId())), null, null));
 
         authenticateAs(support.getUsername(), UserRole.SUPPORT);
 

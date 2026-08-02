@@ -11,6 +11,7 @@ import com.ticketwave.booking.entity.Booking;
 import com.ticketwave.booking.entity.BookingItem;
 import com.ticketwave.booking.entity.BookingStatus;
 import com.ticketwave.booking.exception.BookingNotFoundException;
+import com.ticketwave.booking.exception.DuplicateBookingRequestException;
 import com.ticketwave.booking.exception.InvalidBookingStateException;
 import com.ticketwave.booking.mapper.BookingItemMapper;
 import com.ticketwave.booking.mapper.BookingMapper;
@@ -40,6 +41,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageImpl;
 
 import java.math.BigDecimal;
@@ -145,7 +147,7 @@ class BookingServiceImplTest {
 
         CreateBookingRequest request = new CreateBookingRequest(10L, List.of(
                 new SeatSelection(5L, 100L),
-                new SeatSelection(2L, 101L)), null);
+                new SeatSelection(2L, 101L)), null, null);
 
         BookingDetailResponse response = bookingService.createBooking("alice", request);
 
@@ -155,6 +157,49 @@ class BookingServiceImplTest {
 
         assertThat(savedBooking.getTotalAmount()).isEqualByComparingTo("50.00");
         assertThat(response.items()).hasSize(2);
+    }
+
+    @Test
+    void createBooking_withIdempotencyKeyOfExistingBooking_returnsExistingBookingWithoutCreatingSeatHolds() {
+        User user = user(1L);
+        Schedule schedule = schedule(10L, new BigDecimal("20.00"));
+        Booking existingBooking = Booking.builder().id(500L).user(user).schedule(schedule)
+                .pnr("ABC234").status(BookingStatus.CONFIRMED).totalAmount(new BigDecimal("20.00"))
+                .idempotencyKey("client-key-1").build();
+        BookingItem item = BookingItem.builder().id(1L).booking(existingBooking).seat(seat(5L, BigDecimal.ONE)).build();
+
+        given(bookingRepository.findByIdempotencyKey("client-key-1")).willReturn(Optional.of(existingBooking));
+        given(bookingItemRepository.findByBookingId(500L)).willReturn(List.of(item));
+        given(bookingMapper.toResponse(existingBooking)).willReturn(
+                new BookingResponse(500L, 1L, 10L, "ABC234", Instant.now(), BookingStatus.CONFIRMED, new BigDecimal("20.00"), null));
+        given(bookingItemMapper.toResponse(item)).willReturn(
+                new BookingItemResponse(1L, 500L, 5L, 100L, BigDecimal.ONE));
+
+        CreateBookingRequest request = new CreateBookingRequest(10L, List.of(new SeatSelection(5L, 100L)), null, "client-key-1");
+
+        BookingDetailResponse response = bookingService.createBooking("alice", request);
+
+        assertThat(response.booking().id()).isEqualTo(500L);
+        verify(userRepository, never()).findByUsername(anyString());
+        verify(seatHoldService, never()).holdSeat(anyLong(), any(User.class));
+    }
+
+    @Test
+    void createBooking_withIdempotencyKeyLosingRaceOnInsert_throwsDuplicateBookingRequestException() {
+        User user = user(1L);
+        Schedule schedule = schedule(10L, new BigDecimal("20.00"));
+
+        given(bookingRepository.findByIdempotencyKey("client-key-1")).willReturn(Optional.empty());
+        given(userRepository.findByUsername("alice")).willReturn(Optional.of(user));
+        given(scheduleRepository.findById(10L)).willReturn(Optional.of(schedule));
+        given(pnrGenerator.generate()).willReturn("ABC234");
+        given(bookingRepository.save(any(Booking.class)))
+                .willThrow(new DataIntegrityViolationException("duplicate key"));
+
+        CreateBookingRequest request = new CreateBookingRequest(10L, List.of(new SeatSelection(5L, 100L)), null, "client-key-1");
+
+        assertThatThrownBy(() -> bookingService.createBooking("alice", request))
+                .isInstanceOf(DuplicateBookingRequestException.class);
     }
 
     @Test
@@ -190,7 +235,7 @@ class BookingServiceImplTest {
             return new BookingItemResponse(null, 500L, item.getSeat().getId(), item.getPassenger().getId(), item.getFare());
         });
 
-        CreateBookingRequest request = new CreateBookingRequest(10L, List.of(new SeatSelection(5L, 100L)), "SAVE10");
+        CreateBookingRequest request = new CreateBookingRequest(10L, List.of(new SeatSelection(5L, 100L)), "SAVE10", null);
 
         bookingService.createBooking("alice", request);
 
@@ -227,7 +272,7 @@ class BookingServiceImplTest {
             return new BookingItemResponse(null, 500L, item.getSeat().getId(), item.getPassenger().getId(), item.getFare());
         });
 
-        CreateBookingRequest request = new CreateBookingRequest(10L, List.of(new SeatSelection(5L, 100L)), "   ");
+        CreateBookingRequest request = new CreateBookingRequest(10L, List.of(new SeatSelection(5L, 100L)), "   ", null);
 
         bookingService.createBooking("alice", request);
 
@@ -240,7 +285,7 @@ class BookingServiceImplTest {
     void createBooking_whenUserMissing_throwsUserNotFoundExceptionBeforeHoldingSeats() {
         given(userRepository.findByUsername("alice")).willReturn(Optional.empty());
 
-        CreateBookingRequest request = new CreateBookingRequest(10L, List.of(new SeatSelection(5L, 100L)), null);
+        CreateBookingRequest request = new CreateBookingRequest(10L, List.of(new SeatSelection(5L, 100L)), null, null);
 
         assertThatThrownBy(() -> bookingService.createBooking("alice", request))
                 .isInstanceOf(UserNotFoundException.class);
@@ -253,7 +298,7 @@ class BookingServiceImplTest {
         given(userRepository.findByUsername("alice")).willReturn(Optional.of(user(1L)));
         given(scheduleRepository.findById(10L)).willReturn(Optional.empty());
 
-        CreateBookingRequest request = new CreateBookingRequest(10L, List.of(new SeatSelection(5L, 100L)), null);
+        CreateBookingRequest request = new CreateBookingRequest(10L, List.of(new SeatSelection(5L, 100L)), null, null);
 
         assertThatThrownBy(() -> bookingService.createBooking("alice", request))
                 .isInstanceOf(ScheduleNotFoundException.class);
@@ -271,7 +316,7 @@ class BookingServiceImplTest {
                         .status(BookingStatus.INITIATED).totalAmount(BigDecimal.ZERO).build());
         given(passengerRepository.findById(100L)).willReturn(Optional.empty());
 
-        CreateBookingRequest request = new CreateBookingRequest(10L, List.of(new SeatSelection(5L, 100L)), null);
+        CreateBookingRequest request = new CreateBookingRequest(10L, List.of(new SeatSelection(5L, 100L)), null, null);
 
         assertThatThrownBy(() -> bookingService.createBooking("alice", request))
                 .isInstanceOf(PassengerNotFoundException.class);
@@ -290,7 +335,7 @@ class BookingServiceImplTest {
                         .status(BookingStatus.INITIATED).totalAmount(BigDecimal.ZERO).build());
         given(passengerRepository.findById(100L)).willReturn(Optional.of(passenger(100L, otherUser)));
 
-        CreateBookingRequest request = new CreateBookingRequest(10L, List.of(new SeatSelection(5L, 100L)), null);
+        CreateBookingRequest request = new CreateBookingRequest(10L, List.of(new SeatSelection(5L, 100L)), null, null);
 
         assertThatThrownBy(() -> bookingService.createBooking("alice", request))
                 .isInstanceOf(PassengerNotFoundException.class);
@@ -311,7 +356,7 @@ class BookingServiceImplTest {
         given(passengerRepository.findById(100L)).willReturn(Optional.of(passenger(100L, user)));
         given(seatHoldService.holdSeat(5L, user)).willThrow(new SeatUnavailableException(5L));
 
-        CreateBookingRequest request = new CreateBookingRequest(10L, List.of(new SeatSelection(5L, 100L)), null);
+        CreateBookingRequest request = new CreateBookingRequest(10L, List.of(new SeatSelection(5L, 100L)), null, null);
 
         assertThatThrownBy(() -> bookingService.createBooking("alice", request))
                 .isInstanceOf(SeatUnavailableException.class);
@@ -552,6 +597,43 @@ class BookingServiceImplTest {
     }
 
     @Test
+    void requireConfirmed_whenConfirmed_returnsBookingWithItems() {
+        Booking booking = Booking.builder().id(500L).status(BookingStatus.CONFIRMED)
+                .totalAmount(new BigDecimal("50.00")).build();
+        BookingItem item = BookingItem.builder().id(1L).booking(booking).seat(seat(2L, BigDecimal.ONE)).build();
+
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+        given(bookingItemRepository.findByBookingId(500L)).willReturn(List.of(item));
+        given(bookingMapper.toResponse(booking)).willReturn(
+                new BookingResponse(500L, 1L, 10L, "ABC234", Instant.now(), BookingStatus.CONFIRMED, booking.getTotalAmount(), null));
+        given(bookingItemMapper.toResponse(item)).willReturn(
+                new BookingItemResponse(1L, 500L, 2L, 100L, BigDecimal.ONE));
+
+        BookingDetailResponse response = bookingService.requireConfirmed(500L);
+
+        assertThat(response.booking().id()).isEqualTo(500L);
+        assertThat(response.items()).hasSize(1);
+    }
+
+    @Test
+    void requireConfirmed_whenNotYetConfirmed_throwsInvalidBookingStateException() {
+        Booking booking = Booking.builder().id(500L).status(BookingStatus.INITIATED)
+                .totalAmount(new BigDecimal("50.00")).build();
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+
+        assertThatThrownBy(() -> bookingService.requireConfirmed(500L))
+                .isInstanceOf(InvalidBookingStateException.class);
+    }
+
+    @Test
+    void requireConfirmed_whenMissing_throwsBookingNotFoundException() {
+        given(bookingRepository.findById(999L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> bookingService.requireConfirmed(999L))
+                .isInstanceOf(BookingNotFoundException.class);
+    }
+
+    @Test
     void getBookingByPnr_whenFound_returnsBookingWithItems() {
         Booking booking = Booking.builder().id(500L).status(BookingStatus.CONFIRMED)
                 .totalAmount(new BigDecimal("50.00")).build();
@@ -612,6 +694,33 @@ class BookingServiceImplTest {
 
         assertThatThrownBy(() -> bookingService.lookupByPnrAndEmail("GHOST1", "alice@example.com"))
                 .isInstanceOf(BookingNotFoundException.class);
+    }
+
+    @Test
+    void listMyBookings_returnsTheUsersOwnBookingsNewestFirst() {
+        User customer = user(1L);
+        given(userRepository.findByUsername("alice")).willReturn(Optional.of(customer));
+        Route route = Route.builder().id(20L).origin("NYC").destination("Boston").build();
+        Schedule schedule = Schedule.builder().id(10L).route(route).departureTime(Instant.parse("2026-09-01T00:00:00Z")).build();
+        Booking newer = Booking.builder().id(501L).user(customer).schedule(schedule).pnr("NEW001")
+                .status(BookingStatus.CONFIRMED).totalAmount(new BigDecimal("50.00"))
+                .bookingTime(Instant.parse("2026-08-02T00:00:00Z")).build();
+        Booking older = Booking.builder().id(500L).user(customer).schedule(schedule).pnr("OLD001")
+                .status(BookingStatus.CANCELLED).totalAmount(new BigDecimal("30.00"))
+                .bookingTime(Instant.parse("2026-08-01T00:00:00Z")).build();
+        given(bookingRepository.findByUserIdOrderByBookingTimeDesc(1L)).willReturn(List.of(newer, older));
+
+        List<BookingSearchResult> results = bookingService.listMyBookings("alice");
+
+        assertThat(results).extracting(BookingSearchResult::pnr).containsExactly("NEW001", "OLD001");
+    }
+
+    @Test
+    void listMyBookings_whenUserMissing_throwsUserNotFoundException() {
+        given(userRepository.findByUsername("ghost")).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> bookingService.listMyBookings("ghost"))
+                .isInstanceOf(UserNotFoundException.class);
     }
 
     @Test

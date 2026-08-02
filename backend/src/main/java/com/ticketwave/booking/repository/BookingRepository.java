@@ -17,7 +17,11 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
 
     boolean existsByPnr(String pnr);
 
+    Optional<Booking> findByIdempotencyKey(String idempotencyKey);
+
     List<Booking> findByUserId(Long userId);
+
+    List<Booking> findByUserIdOrderByBookingTimeDesc(Long userId);
 
     List<Booking> findByScheduleId(Long scheduleId);
 

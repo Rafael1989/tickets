@@ -1,5 +1,6 @@
 package com.ticketwave.catalog.entity;
 
+import com.ticketwave.catalog.model.RouteType;
 import com.ticketwave.user.entity.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

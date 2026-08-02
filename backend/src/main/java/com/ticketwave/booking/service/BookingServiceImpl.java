@@ -9,6 +9,7 @@ import com.ticketwave.booking.entity.Booking;
 import com.ticketwave.booking.entity.BookingItem;
 import com.ticketwave.booking.entity.BookingStatus;
 import com.ticketwave.booking.exception.BookingNotFoundException;
+import com.ticketwave.booking.exception.DuplicateBookingRequestException;
 import com.ticketwave.booking.exception.InvalidBookingStateException;
 import com.ticketwave.booking.mapper.BookingItemMapper;
 import com.ticketwave.booking.mapper.BookingMapper;
@@ -28,6 +29,7 @@ import com.ticketwave.user.exception.PassengerNotFoundException;
 import com.ticketwave.user.exception.UserNotFoundException;
 import com.ticketwave.user.repository.PassengerRepository;
 import com.ticketwave.user.repository.UserRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -39,6 +41,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 @Service
@@ -82,18 +85,46 @@ public class BookingServiceImpl implements BookingService {
     @Override
     @Transactional
     public BookingDetailResponse createBooking(String username, CreateBookingRequest request) {
+        if (request.idempotencyKey() != null) {
+            Optional<Booking> existing = bookingRepository.findByIdempotencyKey(request.idempotencyKey());
+            if (existing.isPresent()) {
+                Booking booking = existing.get();
+                List<BookingItem> items = bookingItemRepository.findByBookingId(booking.getId());
+                return toDetailResponse(booking, items);
+            }
+        }
+
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new UserNotFoundException(username));
         Schedule schedule = scheduleRepository.findById(request.scheduleId())
                 .orElseThrow(() -> new ScheduleNotFoundException(request.scheduleId()));
 
-        Booking booking = bookingRepository.save(Booking.builder()
-                .user(user)
-                .schedule(schedule)
-                .pnr(pnrGenerator.generate())
-                .status(BookingStatus.INITIATED)
-                .totalAmount(BigDecimal.ZERO)
-                .build());
+        Booking booking;
+        try {
+            booking = bookingRepository.save(Booking.builder()
+                    .user(user)
+                    .schedule(schedule)
+                    .pnr(pnrGenerator.generate())
+                    .status(BookingStatus.INITIATED)
+                    .totalAmount(BigDecimal.ZERO)
+                    .idempotencyKey(request.idempotencyKey())
+                    .build());
+        } catch (DataIntegrityViolationException ex) {
+            // Lost a race to a concurrent request carrying the same
+            // idempotency key. Unlike PaymentServiceImpl's equivalent catch,
+            // this doesn't try to read back and return the original booking
+            // in the same transaction — the whole booking-creation flow
+            // below is one @Transactional method, and PostgreSQL aborts the
+            // entire transaction (not just the failed statement) on a
+            // constraint violation, so a same-transaction read here would
+            // itself fail. Failing clean with 409 instead of a raw 500 is
+            // enough: the client's own retry already has the key and can
+            // just look the booking up.
+            if (request.idempotencyKey() == null) {
+                throw ex;
+            }
+            throw new DuplicateBookingRequestException(request.idempotencyKey());
+        }
 
         // Seats are locked in a fixed (ascending id) order so that two
         // bookings racing over overlapping seat sets can never deadlock on
@@ -283,6 +314,16 @@ public class BookingServiceImpl implements BookingService {
     }
 
     @Override
+    @PreAuthorize("hasAnyRole('SUPPORT', 'ADMIN') or @bookingOwnership.isOwnedBy(#bookingId, authentication.name)")
+    @Transactional(readOnly = true)
+    public BookingDetailResponse requireConfirmed(Long bookingId) {
+        Booking booking = getBookingOrThrow(bookingId);
+        requireStatus(booking, BookingStatus.CONFIRMED, BookingStatus.CONFIRMED);
+        List<BookingItem> items = bookingItemRepository.findByBookingId(bookingId);
+        return toDetailResponse(booking, items);
+    }
+
+    @Override
     @PreAuthorize("hasAnyRole('SUPPORT', 'ADMIN')")
     @Transactional(readOnly = true)
     public BookingDetailResponse getBookingByPnr(String pnr) {
@@ -294,6 +335,17 @@ public class BookingServiceImpl implements BookingService {
 
     private static final int SEARCH_RESULT_LIMIT = 25;
     private static final char LIKE_ESCAPE = '\\';
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<BookingSearchResult> listMyBookings(String username) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new UserNotFoundException(username));
+
+        return bookingRepository.findByUserIdOrderByBookingTimeDesc(user.getId()).stream()
+                .map(this::toSearchResult)
+                .toList();
+    }
 
     @Override
     @PreAuthorize("hasAnyRole('SUPPORT', 'ADMIN')")

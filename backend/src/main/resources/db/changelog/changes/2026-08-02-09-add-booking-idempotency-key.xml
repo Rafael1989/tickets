@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="2026-08-02-09" author="ticketwave">
+        <comment>
+            Bookings: an optional caller-supplied idempotency key, so a client
+            retrying POST /api/bookings after a timeout doesn't create a
+            duplicate booking (and double-hold seats). Nullable, since it's
+            opt-in per caller rather than required on every booking creation;
+            PostgreSQL's UNIQUE constraint allows any number of NULLs, so
+            callers that don't send one are unaffected.
+        </comment>
+        <addColumn tableName="bookings">
+            <column name="idempotency_key" type="VARCHAR(100)">
+                <constraints nullable="true" unique="true" uniqueConstraintName="uq_bookings_idempotency_key"/>
+            </column>
+        </addColumn>
+
+        <rollback>
+            <dropColumn tableName="bookings" columnName="idempotency_key"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

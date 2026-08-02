@@ -3,7 +3,7 @@ package com.ticketwave.catalog.service;
 import com.ticketwave.audit.service.AuditService;
 import com.ticketwave.catalog.dto.VehicleRequest;
 import com.ticketwave.catalog.dto.VehicleResponse;
-import com.ticketwave.catalog.entity.RouteType;
+import com.ticketwave.catalog.model.RouteType;
 import com.ticketwave.catalog.entity.Vehicle;
 import com.ticketwave.catalog.mapper.VehicleMapper;
 import com.ticketwave.catalog.repository.VehicleRepository;

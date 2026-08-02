@@ -2,9 +2,9 @@ package com.ticketwave.catalog.service;
 
 import com.ticketwave.catalog.dto.ScheduleSearchCriteria;
 import com.ticketwave.catalog.dto.ScheduleSearchResult;
-import com.ticketwave.catalog.dto.ScheduleSortBy;
+import com.ticketwave.catalog.dto.ScheduleStaticInfo;
 import com.ticketwave.catalog.entity.Route;
-import com.ticketwave.catalog.entity.RouteType;
+import com.ticketwave.catalog.model.RouteType;
 import com.ticketwave.catalog.entity.Schedule;
 import com.ticketwave.catalog.entity.ScheduleStatus;
 import com.ticketwave.catalog.entity.SeatStatus;
@@ -21,12 +21,9 @@ import com.ticketwave.user.repository.UserRepository;
 import org.assertj.core.groups.Tuple;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.jpa.domain.Specification;
 
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -61,6 +58,9 @@ class ScheduleSearchServiceImplTest {
     private PricingService pricingService;
 
     @Mock
+    private ScheduleCatalogCache scheduleCatalogCache;
+
+    @Mock
     private Clock clock;
 
     @InjectMocks
@@ -88,6 +88,12 @@ class ScheduleSearchServiceImplTest {
                 .build();
     }
 
+    private static ScheduleStaticInfo staticInfo(long scheduleId, Route route, Instant departure, BigDecimal fare) {
+        return new ScheduleStaticInfo(scheduleId, route.getId(), route.getType(), route.getOrigin(),
+                route.getDestination(), route.getVenue(), departure, departure.plusSeconds(3600), fare, "USD",
+                ScheduleStatus.SCHEDULED);
+    }
+
     private record TestSeatCount(Long scheduleId, long availableCount) implements ScheduleSeatCount {
         @Override
         public Long getScheduleId() {
@@ -104,12 +110,13 @@ class ScheduleSearchServiceImplTest {
     void search_mapsEachScheduleWithItsRealTimeAvailableSeatCount() {
         Route route1 = route(10L, RouteType.BUS, "NYC", "Boston", null);
         Route route2 = route(11L, RouteType.EVENT, null, null, "Arena");
-        Schedule schedule1 = schedule(1L, route1, Instant.parse("2026-08-01T10:00:00Z"), new BigDecimal("25.00"));
-        Schedule schedule2 = schedule(2L, route2, Instant.parse("2026-08-02T18:00:00Z"), new BigDecimal("50.00"));
+        ScheduleStaticInfo info1 = staticInfo(1L, route1, Instant.parse("2026-08-01T10:00:00Z"), new BigDecimal("25.00"));
+        ScheduleStaticInfo info2 = staticInfo(2L, route2, Instant.parse("2026-08-02T18:00:00Z"), new BigDecimal("50.00"));
 
         given(clock.instant()).willReturn(Instant.parse("2026-01-01T00:00:00Z"));
-        given(scheduleRepository.findAll(any(Specification.class), any(Sort.class)))
-                .willReturn(List.of(schedule1, schedule2));
+        given(scheduleCatalogCache.findMatchingIds(any(), any())).willReturn(List.of(1L, 2L));
+        given(scheduleCatalogCache.findStaticInfo(1L)).willReturn(Optional.of(info1));
+        given(scheduleCatalogCache.findStaticInfo(2L)).willReturn(Optional.of(info2));
         given(seatRepository.countAvailableGroupedByScheduleId(List.of(1L, 2L), SeatStatus.AVAILABLE))
                 .willReturn(List.of(new TestSeatCount(1L, 12L)));
 
@@ -132,48 +139,15 @@ class ScheduleSearchServiceImplTest {
     }
 
     @Test
-    void search_sortsByDepartureTimeAscending() {
+    void search_whenNoScheduleMatches_returnsEmptyListWithoutQueryingSeatCounts() {
         given(clock.instant()).willReturn(Instant.parse("2026-01-01T00:00:00Z"));
-        given(scheduleRepository.findAll(any(Specification.class), any(Sort.class))).willReturn(List.of());
+        given(scheduleCatalogCache.findMatchingIds(any(), any())).willReturn(List.of());
 
-        searchService.search(new ScheduleSearchCriteria(null, null, null, null, null, null, null, null, null));
+        List<ScheduleSearchResult> results = searchService.search(
+                new ScheduleSearchCriteria(null, null, null, null, null, null, null, null, null));
 
-        ArgumentCaptor<Sort> sortCaptor = ArgumentCaptor.forClass(Sort.class);
-        verify(scheduleRepository).findAll(any(Specification.class), sortCaptor.capture());
-
-        Sort.Order order = sortCaptor.getValue().getOrderFor("departureTime");
-        assertThat(order).isNotNull();
-        assertThat(order.getDirection()).isEqualTo(Sort.Direction.ASC);
-    }
-
-    @Test
-    void search_withSortByPriceAsc_sortsByBaseFareAscending() {
-        given(clock.instant()).willReturn(Instant.parse("2026-01-01T00:00:00Z"));
-        given(scheduleRepository.findAll(any(Specification.class), any(Sort.class))).willReturn(List.of());
-
-        searchService.search(new ScheduleSearchCriteria(null, null, null, null, null, null, null, null, ScheduleSortBy.PRICE_ASC));
-
-        ArgumentCaptor<Sort> sortCaptor = ArgumentCaptor.forClass(Sort.class);
-        verify(scheduleRepository).findAll(any(Specification.class), sortCaptor.capture());
-
-        Sort.Order order = sortCaptor.getValue().getOrderFor("baseFare");
-        assertThat(order).isNotNull();
-        assertThat(order.getDirection()).isEqualTo(Sort.Direction.ASC);
-    }
-
-    @Test
-    void search_withSortByPriceDesc_sortsByBaseFareDescending() {
-        given(clock.instant()).willReturn(Instant.parse("2026-01-01T00:00:00Z"));
-        given(scheduleRepository.findAll(any(Specification.class), any(Sort.class))).willReturn(List.of());
-
-        searchService.search(new ScheduleSearchCriteria(null, null, null, null, null, null, null, null, ScheduleSortBy.PRICE_DESC));
-
-        ArgumentCaptor<Sort> sortCaptor = ArgumentCaptor.forClass(Sort.class);
-        verify(scheduleRepository).findAll(any(Specification.class), sortCaptor.capture());
-
-        Sort.Order order = sortCaptor.getValue().getOrderFor("baseFare");
-        assertThat(order).isNotNull();
-        assertThat(order.getDirection()).isEqualTo(Sort.Direction.DESC);
+        assertThat(results).isEmpty();
+        verify(seatRepository, never()).countAvailableGroupedByScheduleId(any(), any());
     }
 
     @Test
@@ -199,8 +173,8 @@ class ScheduleSearchServiceImplTest {
     @Test
     void getScheduleDetails_whenScheduleExists_returnsItsSearchResultShape() {
         Route route = route(10L, RouteType.BUS, "NYC", "Boston", null);
-        Schedule schedule = schedule(1L, route, Instant.parse("2026-08-01T10:00:00Z"), new BigDecimal("25.00"));
-        given(scheduleRepository.findById(1L)).willReturn(Optional.of(schedule));
+        ScheduleStaticInfo info = staticInfo(1L, route, Instant.parse("2026-08-01T10:00:00Z"), new BigDecimal("25.00"));
+        given(scheduleCatalogCache.findStaticInfo(1L)).willReturn(Optional.of(info));
         given(seatRepository.countByScheduleIdAndStatus(1L, SeatStatus.AVAILABLE)).willReturn(4L);
 
         ScheduleSearchResult result = searchService.getScheduleDetails(1L);
@@ -212,7 +186,7 @@ class ScheduleSearchServiceImplTest {
 
     @Test
     void getScheduleDetails_whenScheduleMissing_throwsScheduleNotFoundException() {
-        given(scheduleRepository.findById(99L)).willReturn(Optional.empty());
+        given(scheduleCatalogCache.findStaticInfo(99L)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> searchService.getScheduleDetails(99L))
                 .isInstanceOf(ScheduleNotFoundException.class);

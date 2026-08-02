@@ -2,9 +2,8 @@ package com.ticketwave.catalog.service;
 
 import com.ticketwave.catalog.dto.ScheduleSearchCriteria;
 import com.ticketwave.catalog.dto.ScheduleSearchResult;
-import com.ticketwave.catalog.dto.ScheduleSortBy;
+import com.ticketwave.catalog.dto.ScheduleStaticInfo;
 import com.ticketwave.catalog.dto.SeatResponse;
-import com.ticketwave.catalog.entity.Route;
 import com.ticketwave.catalog.entity.Schedule;
 import com.ticketwave.catalog.entity.Seat;
 import com.ticketwave.catalog.entity.SeatStatus;
@@ -13,11 +12,9 @@ import com.ticketwave.catalog.mapper.SeatMapper;
 import com.ticketwave.catalog.repository.ScheduleRepository;
 import com.ticketwave.catalog.repository.ScheduleSeatCount;
 import com.ticketwave.catalog.repository.SeatRepository;
-import com.ticketwave.catalog.specification.ScheduleSpecifications;
 import com.ticketwave.pricing.service.PricingService;
 import com.ticketwave.user.entity.User;
 import com.ticketwave.user.repository.UserRepository;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,6 +22,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -35,6 +33,7 @@ public class ScheduleSearchServiceImpl implements ScheduleSearchService {
     private final UserRepository userRepository;
     private final SeatMapper seatMapper;
     private final PricingService pricingService;
+    private final ScheduleCatalogCache scheduleCatalogCache;
     private final Clock clock;
 
     public ScheduleSearchServiceImpl(
@@ -43,6 +42,7 @@ public class ScheduleSearchServiceImpl implements ScheduleSearchService {
             UserRepository userRepository,
             SeatMapper seatMapper,
             PricingService pricingService,
+            ScheduleCatalogCache scheduleCatalogCache,
             Clock clock
     ) {
         this.scheduleRepository = scheduleRepository;
@@ -50,27 +50,32 @@ public class ScheduleSearchServiceImpl implements ScheduleSearchService {
         this.userRepository = userRepository;
         this.seatMapper = seatMapper;
         this.pricingService = pricingService;
+        this.scheduleCatalogCache = scheduleCatalogCache;
         this.clock = clock;
     }
 
+    /**
+     * The matching-schedule-id list and each schedule's static fields come
+     * from ScheduleCatalogCache (short-TTL cached); availableSeats is always
+     * read fresh here and never cached, since it's genuinely real-time —
+     * changing on every seat hold/release/booking.
+     */
     @Override
     @Transactional(readOnly = true)
     public List<ScheduleSearchResult> search(ScheduleSearchCriteria criteria) {
-        List<Schedule> schedules = scheduleRepository.findAll(
-                ScheduleSpecifications.matching(criteria, clock.instant()),
-                sortFor(criteria.sortBy()));
-
-        if (schedules.isEmpty()) {
+        List<Long> scheduleIds = scheduleCatalogCache.findMatchingIds(criteria, clock.instant());
+        if (scheduleIds.isEmpty()) {
             return List.of();
         }
 
-        List<Long> scheduleIds = schedules.stream().map(Schedule::getId).toList();
         Map<Long, Long> availableSeatsByScheduleId = seatRepository
                 .countAvailableGroupedByScheduleId(scheduleIds, SeatStatus.AVAILABLE).stream()
                 .collect(Collectors.toMap(ScheduleSeatCount::getScheduleId, ScheduleSeatCount::getAvailableCount));
 
-        return schedules.stream()
-                .map(schedule -> toSearchResult(schedule, availableSeatsByScheduleId.getOrDefault(schedule.getId(), 0L)))
+        return scheduleIds.stream()
+                .map(scheduleCatalogCache::findStaticInfo)
+                .flatMap(Optional::stream)
+                .map(info -> toSearchResult(info, availableSeatsByScheduleId.getOrDefault(info.scheduleId(), 0L)))
                 .toList();
     }
 
@@ -86,10 +91,10 @@ public class ScheduleSearchServiceImpl implements ScheduleSearchService {
     @Override
     @Transactional(readOnly = true)
     public ScheduleSearchResult getScheduleDetails(Long scheduleId) {
-        Schedule schedule = scheduleRepository.findById(scheduleId)
+        ScheduleStaticInfo info = scheduleCatalogCache.findStaticInfo(scheduleId)
                 .orElseThrow(() -> new ScheduleNotFoundException(scheduleId));
         long availableSeats = seatRepository.countByScheduleIdAndStatus(scheduleId, SeatStatus.AVAILABLE);
-        return toSearchResult(schedule, availableSeats);
+        return toSearchResult(info, availableSeats);
     }
 
     @Override
@@ -127,33 +132,19 @@ public class ScheduleSearchServiceImpl implements ScheduleSearchService {
         );
     }
 
-    /** Defaults to soonest-departing-first when sortBy is omitted. */
-    private static Sort sortFor(ScheduleSortBy sortBy) {
-        if (sortBy == null) {
-            return Sort.by(Sort.Direction.ASC, "departureTime");
-        }
-        return switch (sortBy) {
-            case PRICE_ASC -> Sort.by(Sort.Direction.ASC, "baseFare");
-            case PRICE_DESC -> Sort.by(Sort.Direction.DESC, "baseFare");
-            case DEPARTURE_TIME -> Sort.by(Sort.Direction.ASC, "departureTime");
-        };
-    }
-
-    private ScheduleSearchResult toSearchResult(Schedule schedule, long availableSeats) {
-        Route route = schedule.getRoute();
-
+    private ScheduleSearchResult toSearchResult(ScheduleStaticInfo info, long availableSeats) {
         return new ScheduleSearchResult(
-                schedule.getId(),
-                route.getId(),
-                route.getType(),
-                route.getOrigin(),
-                route.getDestination(),
-                route.getVenue(),
-                schedule.getDepartureTime(),
-                schedule.getArrivalTime(),
-                schedule.getBaseFare(),
-                schedule.getCurrency(),
-                schedule.getStatus(),
+                info.scheduleId(),
+                info.routeId(),
+                info.type(),
+                info.origin(),
+                info.destination(),
+                info.venue(),
+                info.departureTime(),
+                info.arrivalTime(),
+                info.baseFare(),
+                info.currency(),
+                info.status(),
                 availableSeats
         );
     }

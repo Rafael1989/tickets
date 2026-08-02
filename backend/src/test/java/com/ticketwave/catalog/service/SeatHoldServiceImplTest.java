@@ -95,6 +95,18 @@ class SeatHoldServiceImplTest {
     }
 
     @Test
+    void holdSeat_whenHeldWithNullOwnerAndNotExpired_throwsSeatUnavailableException() {
+        // Defensive branch: a HELD seat should never actually have a null
+        // heldBy in practice (holdSeat always sets both together), but
+        // heldByCaller must short-circuit to false rather than NPE if it does.
+        Seat seat = seat(SeatStatus.HELD, Instant.now().plusSeconds(600), null);
+        given(seatRepository.findByIdForUpdate(1L)).willReturn(Optional.of(seat));
+
+        assertThatThrownBy(() -> seatHoldService.holdSeat(1L, ALICE))
+                .isInstanceOf(SeatUnavailableException.class);
+    }
+
+    @Test
     void holdSeat_whenBooked_throwsSeatUnavailableException() {
         Seat seat = seat(SeatStatus.BOOKED, null, null);
         given(seatRepository.findByIdForUpdate(1L)).willReturn(Optional.of(seat));
@@ -186,6 +198,18 @@ class SeatHoldServiceImplTest {
 
         assertThat(seat.getStatus()).isEqualTo(SeatStatus.HELD);
         assertThat(seat.getHeldBy()).isEqualTo(BOB);
+    }
+
+    @Test
+    void releaseOwnHold_whenHeldWithNullOwner_isSilentNoOp() {
+        // Defensive branch: same null-heldBy short-circuit as holdSeat, on
+        // the release path.
+        Seat seat = seat(SeatStatus.HELD, Instant.now().plusSeconds(300), null);
+        given(seatRepository.findByIdForUpdate(1L)).willReturn(Optional.of(seat));
+
+        seatHoldService.releaseOwnHold(1L, "alice");
+
+        assertThat(seat.getStatus()).isEqualTo(SeatStatus.HELD);
     }
 
     @Test

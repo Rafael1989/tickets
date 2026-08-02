@@ -6,7 +6,8 @@
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "e2e": "playwright test --config=e2e/playwright.config.ts"
   },
   "private": true,
   "packageManager": "npm@11.16.0",
@@ -27,9 +28,12 @@
     "@angular/build": "^22.0.8",
     "@angular/cli": "^22.0.8",
     "@angular/compiler-cli": "^22.0.0",
+    "@playwright/test": "^1.49.0",
+    "@types/pg": "^8.11.10",
     "@types/qrcode": "^1.5.6",
     "@vitest/coverage-v8": "^4.1.10",
     "jsdom": "^28.0.0",
+    "pg": "^8.13.1",
     "prettier": "^3.8.1",
     "typescript": "~6.0.2",
     "vitest": "^4.0.8"

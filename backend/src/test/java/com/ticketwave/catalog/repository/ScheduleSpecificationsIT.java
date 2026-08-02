@@ -2,7 +2,7 @@ package com.ticketwave.catalog.repository;
 
 import com.ticketwave.catalog.dto.ScheduleSearchCriteria;
 import com.ticketwave.catalog.entity.Route;
-import com.ticketwave.catalog.entity.RouteType;
+import com.ticketwave.catalog.model.RouteType;
 import com.ticketwave.catalog.entity.Schedule;
 import com.ticketwave.catalog.entity.ScheduleStatus;
 import com.ticketwave.catalog.specification.ScheduleSpecifications;
@@ -13,11 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
+import org.springframework.test.context.ActiveProfiles;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -30,23 +26,15 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Exercises ScheduleSpecifications against a real PostgreSQL instance, since
  * case-insensitive matching, UTC date-range filtering, and CANCELLED
  * exclusion are all DB-behavior-dependent (per project policy: integration
- * tests run against real Postgres, not H2). Requires a Docker daemon
- * reachable by Testcontainers.
+ * tests run against real Postgres, not H2). @DataJpaTest can't share
+ * AbstractIntegrationTest (mutually exclusive bootstrap strategy from
+ * @SpringBootTest), so it activates the "test" profile directly — same
+ * application-test.yml, same ticketwave_test database.
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Testcontainers
+@ActiveProfiles("test")
 class ScheduleSpecificationsIT {
-
-    @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
-
-    @DynamicPropertySource
-    static void datasourceProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
-    }
 
     @Autowired
     private UserRepository userRepository;
@@ -103,6 +91,14 @@ class ScheduleSpecificationsIT {
 
     @Test
     void matching_excludesSchedulesThatHaveAlreadyDeparted() {
+        // Deliberately scoped to "C"->"D" (an origin/destination pair no
+        // other test/fixture uses) and asserts contains/doesNotContain
+        // rather than containsExactly: an all-null criteria matches every
+        // non-cancelled, non-departed schedule in the table, and this test
+        // only owns two of them - it must not assert the table has nothing
+        // else, since it can run alongside other IT classes against a
+        // shared, non-Testcontainers-isolated database (see
+        // ScheduleSpecificationsIT's own class Javadoc).
         User operator = userRepository.save(operator("operator3"));
         Route route = routeRepository.save(route(operator, RouteType.BUS, "C", "D"));
 
@@ -115,7 +111,7 @@ class ScheduleSpecificationsIT {
 
         List<Schedule> results = scheduleRepository.findAll(ScheduleSpecifications.matching(criteria, NOW));
 
-        assertThat(results).extracting(Schedule::getId).containsExactly(upcoming.getId());
+        assertThat(results).extracting(Schedule::getId).contains(upcoming.getId());
         assertThat(results).extracting(Schedule::getId).doesNotContain(departed.getId());
     }
 

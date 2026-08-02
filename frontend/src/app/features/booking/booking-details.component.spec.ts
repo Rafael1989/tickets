@@ -6,7 +6,7 @@ import { of, throwError } from 'rxjs';
 import { BookingDetailResponse } from '../../core/models/booking.model';
 import { ScheduleSearchResult, SeatResponse } from '../../core/models/catalog.model';
 import { PassengerResponse } from '../../core/models/passenger.model';
-import { RefundResponse } from '../../core/models/payment.model';
+import { RefundQuoteResponse, RefundResponse } from '../../core/models/payment.model';
 import { BookingService } from '../../core/services/booking.service';
 import { PassengerService } from '../../core/services/passenger.service';
 import { RefundService } from '../../core/services/refund.service';
@@ -76,7 +76,24 @@ describe('BookingDetailsComponent', () => {
     };
   }
 
-  async function createComponent(detail: BookingDetailResponse | 'error', existingRefunds: RefundResponse[] = []) {
+  function refundQuoteWith(eligible: boolean): RefundQuoteResponse {
+    return {
+      bookingId: 500,
+      fareAmount: 20,
+      policyCode: eligible ? 'FULL_REFUND' : null,
+      refundRate: eligible ? 1 : null,
+      refundAmount: eligible ? 20 : 0,
+      nonRefundableAmount: eligible ? 0 : 20,
+      paymentMethod: 'card',
+      eligible,
+    };
+  }
+
+  async function createComponent(
+    detail: BookingDetailResponse | 'error',
+    existingRefunds: RefundResponse[] = [],
+    refundQuote: RefundQuoteResponse = refundQuoteWith(true),
+  ) {
     await TestBed.configureTestingModule({
       imports: [BookingDetailsComponent],
       providers: [
@@ -102,6 +119,7 @@ describe('BookingDetailsComponent', () => {
 
     refundService = TestBed.inject(RefundService);
     vi.spyOn(refundService, 'listRefundsForBooking').mockReturnValue(of(existingRefunds));
+    vi.spyOn(refundService, 'getRefundQuote').mockReturnValue(of(refundQuote));
 
     rescheduleContext = TestBed.inject(RescheduleContextService);
     router = TestBed.inject(Router);
@@ -170,7 +188,7 @@ describe('BookingDetailsComponent', () => {
     expect(component.showCancellationWizard()).toBe(false);
   });
 
-  it('onCancelled records the refund, updates status to CANCELLED, and closes the wizard', async () => {
+  it('onCancelled records the refund and closes the wizard, leaving the booking CONFIRMED pending review', async () => {
     await createComponent(detailWith('CONFIRMED'));
     const refund = refundWith('PENDING');
     component.openCancellationWizard();
@@ -178,7 +196,9 @@ describe('BookingDetailsComponent', () => {
     component.onCancelled(refund);
 
     expect(component.refund()).toEqual(refund);
-    expect(component.detail()?.booking.status).toBe('CANCELLED');
+    // The backend keeps the booking CONFIRMED until support approves, so the UI must not claim
+    // it's cancelled — a rejection would leave that optimistic status flatly wrong.
+    expect(component.detail()?.booking.status).toBe('CONFIRMED');
     expect(component.canRefund()).toBe(false);
     expect(component.showCancellationWizard()).toBe(false);
   });
@@ -253,6 +273,24 @@ describe('BookingDetailsComponent', () => {
   it('canReschedule is false for a CANCELLED booking', async () => {
     await createComponent(detailWith('CANCELLED'));
     expect(component.canReschedule()).toBe(false);
+  });
+
+  it('canReschedule is false for a CONFIRMED booking too close to departure, and the reason is shown instead of the button', async () => {
+    await createComponent(detailWith('CONFIRMED'), [], refundQuoteWith(false));
+
+    expect(component.canReschedule()).toBe(false);
+    expect(component.rescheduleTooCloseToDeparture()).toBe(true);
+
+    const html = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(html).toContain('too close to departure to reschedule online');
+    expect(html).not.toContain('Change schedule');
+  });
+
+  it('never fetches a refund quote for an INITIATED booking, which is always reschedulable', async () => {
+    await createComponent(detailWith('INITIATED'));
+
+    expect(refundService.getRefundQuote).not.toHaveBeenCalled();
+    expect(component.canReschedule()).toBe(true);
   });
 
   it('startReschedule records the booking id, passenger ids, and requiresFareSettlement=false for an INITIATED booking', async () => {

@@ -37,6 +37,29 @@ export class AuthService {
   readonly username = computed(() => this.payload()?.sub ?? null);
   readonly roles = computed(() => this.payload()?.roles ?? []);
 
+  /**
+   * The landing screen for the signed-in role — staff roles have no business on the customer
+   * search/booking screens, so they must never be dropped there by a login, a logo click, or a
+   * bare "/" URL. Ordered most-privileged first so a multi-role token resolves deterministically;
+   * a customer (or a signed-out visitor) falls through to the public search page.
+   */
+  readonly homePath = computed(() => {
+    const roles = this.roles();
+    if (roles.includes('ADMIN')) {
+      return '/admin';
+    }
+    if (roles.includes('SUPPORT')) {
+      return '/support';
+    }
+    if (roles.includes('OPERATOR')) {
+      return '/operator';
+    }
+    return '/search';
+  });
+
+  /** Customer-only surfaces (search, checkout, my bookings) — staff portals replace them entirely. */
+  readonly isCustomer = computed(() => this.isAuthenticated() && this.homePath() === '/search');
+
   constructor(private readonly http: HttpClient) {}
 
   get token(): string | null {

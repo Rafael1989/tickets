@@ -22,6 +22,8 @@ import com.ticketwave.catalog.security.TenantScope;
 import com.ticketwave.user.entity.User;
 import com.ticketwave.user.exception.UserNotFoundException;
 import com.ticketwave.user.repository.UserRepository;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -67,6 +69,7 @@ public class ScheduleManagementServiceImpl implements ScheduleManagementService 
     @Override
     @PreAuthorize("hasRole('OPERATOR')")
     @Transactional
+    @CacheEvict(cacheNames = "scheduleSearchIds", allEntries = true)
     public ScheduleResponse createSchedule(String operatorUsername, ScheduleRequest request) {
         User caller = userRepository.findByUsername(operatorUsername)
                 .orElseThrow(() -> new UserNotFoundException(operatorUsername));
@@ -101,6 +104,10 @@ public class ScheduleManagementServiceImpl implements ScheduleManagementService 
     @Override
     @PreAuthorize("hasRole('OPERATOR')")
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(cacheNames = "scheduleSearchIds", allEntries = true),
+            @CacheEvict(cacheNames = "scheduleStaticInfo", key = "#scheduleId")
+    })
     public ScheduleResponse updateSchedule(String operatorUsername, Long scheduleId, ScheduleRequest request) {
         User caller = userRepository.findByUsername(operatorUsername)
                 .orElseThrow(() -> new UserNotFoundException(operatorUsername));

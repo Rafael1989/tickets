@@ -6,6 +6,7 @@ import com.ticketwave.booking.exception.BookingNotFoundException;
 import com.ticketwave.booking.exception.InvalidBookingStateException;
 import com.ticketwave.booking.repository.BookingRepository;
 import com.ticketwave.booking.service.BookingService;
+import com.ticketwave.ledger.service.LedgerService;
 import com.ticketwave.payment.dto.PaymentRequest;
 import com.ticketwave.payment.dto.PaymentResponse;
 import com.ticketwave.payment.entity.Payment;
@@ -30,6 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -46,6 +48,8 @@ class PaymentServiceImplTest {
     private CardDeclineSimulator cardDeclineSimulator;
     @Mock
     private PaymentMapper paymentMapper;
+    @Mock
+    private LedgerService ledgerService;
 
     @InjectMocks
     private PaymentServiceImpl paymentService;
@@ -74,6 +78,7 @@ class PaymentServiceImplTest {
         verify(bookingRepository, never()).findById(any());
         verify(bookingService, never()).confirmBooking(any());
         verify(paymentRepository, never()).save(any());
+        verify(ledgerService, never()).recordPayment(any());
     }
 
     @Test
@@ -98,6 +103,74 @@ class PaymentServiceImplTest {
                 new PaymentRequest(new BigDecimal("50.00"), "card", "REF-1", null)))
                 .isInstanceOf(InvalidBookingStateException.class);
 
+        verify(paymentRepository, never()).save(any());
+    }
+
+    /**
+     * Regression test for a race caught by PaymentFlowIT running against real
+     * Postgres: two concurrent requests carrying the same reference both pass
+     * the initial findByReference pre-check (neither payment row exists yet),
+     * then one fully completes (payment saved, booking CONFIRMED) before the
+     * other calls markPaymentProcessing - which now sees a CONFIRMED booking
+     * and throws InvalidBookingStateException instead of the
+     * ObjectOptimisticLockingFailureException the retry loop expects. The
+     * loser must recover the winner's payment instead of surfacing that
+     * exception to what is, from the caller's perspective, an idempotent retry.
+     */
+    @Test
+    void recordPayment_whenConcurrentSameReferenceRequestAlreadyConfirmedTheBooking_recoversTheWinnersPayment() {
+        Booking booking = booking(500L, BookingStatus.CONFIRMED, new BigDecimal("50.00"));
+        Payment winningPayment = payment(1L, "REF-1");
+        given(paymentRepository.findByReference("REF-1"))
+                .willReturn(Optional.empty())
+                .willReturn(Optional.of(winningPayment));
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+        given(bookingService.markPaymentProcessing(500L))
+                .willThrow(new InvalidBookingStateException(500L, BookingStatus.CONFIRMED, BookingStatus.PAYMENT_PROCESSING));
+        PaymentResponse expectedResponse = new PaymentResponse(1L, 500L, new BigDecimal("50.00"), "card", "REF-1",
+                PaymentStatus.SUCCEEDED, Instant.now(), null);
+        given(paymentMapper.toResponse(winningPayment)).willReturn(expectedResponse);
+
+        PaymentResponse response = paymentService.recordPayment(500L,
+                new PaymentRequest(new BigDecimal("50.00"), "card", "REF-1", null));
+
+        assertThat(response).isEqualTo(expectedResponse);
+        verify(paymentRepository, never()).save(any());
+    }
+
+    @Test
+    void recordPayment_whenMarkPaymentProcessingLosesAnOptimisticLockRaceOnce_retriesAndSucceeds() {
+        Booking booking = booking(500L, BookingStatus.INITIATED, new BigDecimal("50.00"));
+        given(paymentRepository.findByReference("REF-1")).willReturn(Optional.empty());
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+        given(bookingService.markPaymentProcessing(500L))
+                .willThrow(new org.springframework.orm.ObjectOptimisticLockingFailureException(Booking.class, 500L))
+                .willReturn(null);
+        given(paymentRepository.save(any(Payment.class))).willAnswer(invocation -> invocation.getArgument(0));
+        PaymentResponse expectedResponse = new PaymentResponse(1L, 500L, new BigDecimal("50.00"), "card", "REF-1",
+                PaymentStatus.SUCCEEDED, Instant.now(), null);
+        given(paymentMapper.toResponse(any(Payment.class))).willReturn(expectedResponse);
+
+        PaymentResponse response = paymentService.recordPayment(500L,
+                new PaymentRequest(new BigDecimal("50.00"), "card", "REF-1", "4242424242424242"));
+
+        assertThat(response).isEqualTo(expectedResponse);
+        verify(bookingService, org.mockito.Mockito.times(2)).markPaymentProcessing(500L);
+    }
+
+    @Test
+    void recordPayment_whenMarkPaymentProcessingKeepsLosingTheOptimisticLockRace_rethrowsAfterMaxAttempts() {
+        Booking booking = booking(500L, BookingStatus.INITIATED, new BigDecimal("50.00"));
+        given(paymentRepository.findByReference("REF-1")).willReturn(Optional.empty());
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+        given(bookingService.markPaymentProcessing(500L))
+                .willThrow(new org.springframework.orm.ObjectOptimisticLockingFailureException(Booking.class, 500L));
+
+        assertThatThrownBy(() -> paymentService.recordPayment(500L,
+                new PaymentRequest(new BigDecimal("50.00"), "card", "REF-1", null)))
+                .isInstanceOf(org.springframework.orm.ObjectOptimisticLockingFailureException.class);
+
+        verify(bookingService, org.mockito.Mockito.times(3)).markPaymentProcessing(500L);
         verify(paymentRepository, never()).save(any());
     }
 
@@ -139,6 +212,54 @@ class PaymentServiceImplTest {
         assertThat(captor.getValue().getStatus()).isEqualTo(PaymentStatus.SUCCEEDED);
         assertThat(captor.getValue().getPaidAt()).isNotNull();
         assertThat(captor.getValue().getFailureReason()).isNull();
+        verify(ledgerService).recordPayment(captor.getValue());
+    }
+
+    @Test
+    void recordPayment_whenLedgerRecordingFails_stillReturnsTheSuccessfulPaymentInsteadOfPropagating() {
+        Booking booking = booking(500L, BookingStatus.INITIATED, new BigDecimal("50.00"));
+        given(paymentRepository.findByReference("REF-1")).willReturn(Optional.empty());
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+        given(paymentRepository.save(any(Payment.class))).willAnswer(invocation -> invocation.getArgument(0));
+        PaymentResponse expectedResponse = new PaymentResponse(1L, 500L, new BigDecimal("50.00"), "card", "REF-1",
+                PaymentStatus.SUCCEEDED, Instant.now(), null);
+        given(paymentMapper.toResponse(any(Payment.class))).willReturn(expectedResponse);
+        willThrow(new RuntimeException("permission denied for table ledger_entries"))
+                .given(ledgerService).recordPayment(any(Payment.class));
+
+        PaymentResponse response = paymentService.recordPayment(500L,
+                new PaymentRequest(new BigDecimal("50.00"), "card", "REF-1", "4242424242424242"));
+
+        assertThat(response).isEqualTo(expectedResponse);
+        verify(bookingService).confirmBooking(500L);
+    }
+
+    /**
+     * A booking fully discounted by a 100%-off promo code totals 0.00. It still has to go through
+     * the payment flow — this API never confirms a booking without a payment behind it — so a
+     * zero-amount payment must be accepted and confirm it like any other.
+     */
+    @Test
+    void recordPayment_forAFullyDiscountedZeroTotalBooking_succeedsAndConfirmsTheBooking() {
+        Booking booking = booking(500L, BookingStatus.INITIATED, BigDecimal.ZERO);
+        given(paymentRepository.findByReference("REF-FREE")).willReturn(Optional.empty());
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+        given(paymentRepository.save(any(Payment.class))).willAnswer(invocation -> invocation.getArgument(0));
+        PaymentResponse expectedResponse = new PaymentResponse(1L, 500L, BigDecimal.ZERO, "pix", "REF-FREE",
+                PaymentStatus.SUCCEEDED, Instant.now(), null);
+        given(paymentMapper.toResponse(any(Payment.class))).willReturn(expectedResponse);
+
+        PaymentResponse response = paymentService.recordPayment(500L,
+                new PaymentRequest(BigDecimal.ZERO, "pix", "REF-FREE", null));
+
+        assertThat(response.status()).isEqualTo(PaymentStatus.SUCCEEDED);
+        verify(bookingService).confirmBooking(500L);
+        verify(bookingService, never()).failBooking(any());
+
+        var captor = org.mockito.ArgumentCaptor.forClass(Payment.class);
+        verify(paymentRepository).save(captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo(PaymentStatus.SUCCEEDED);
+        assertThat(captor.getValue().getAmount()).isEqualByComparingTo("0.00");
     }
 
     @Test
@@ -166,6 +287,7 @@ class PaymentServiceImplTest {
         assertThat(captor.getValue().getStatus()).isEqualTo(PaymentStatus.FAILED);
         assertThat(captor.getValue().getFailureReason()).isEqualTo("Your card was declined.");
         assertThat(captor.getValue().getPaidAt()).isNull();
+        verify(ledgerService, never()).recordPayment(any());
     }
 
     @Test
@@ -185,6 +307,7 @@ class PaymentServiceImplTest {
 
         assertThat(response).isEqualTo(expectedResponse);
         verify(bookingService, never()).confirmBooking(any());
+        verify(ledgerService, never()).recordPayment(any());
     }
 
     @Test
@@ -225,6 +348,7 @@ class PaymentServiceImplTest {
         assertThat(captor.getValue().getStatus()).isEqualTo(PaymentStatus.PENDING_3DS);
         assertThat(captor.getValue().getPaidAt()).isNull();
         assertThat(captor.getValue().getFailureReason()).isNull();
+        verify(ledgerService, never()).recordPayment(any());
     }
 
     @Test
@@ -232,6 +356,7 @@ class PaymentServiceImplTest {
         Booking booking = Booking.builder().id(500L).build();
         Payment payment = Payment.builder().id(1L).booking(booking).status(PaymentStatus.PENDING_3DS).build();
         given(paymentRepository.findById(1L)).willReturn(Optional.of(payment));
+        given(paymentRepository.save(any(Payment.class))).willAnswer(invocation -> invocation.getArgument(0));
         given(paymentMapper.toResponse(payment)).willReturn(
                 new PaymentResponse(1L, 500L, new BigDecimal("50.00"), "card", "REF-1", PaymentStatus.SUCCEEDED, Instant.now(), null));
 
@@ -242,6 +367,52 @@ class PaymentServiceImplTest {
         assertThat(payment.getPaidAt()).isNotNull();
         verify(bookingService).confirmBooking(500L);
         verify(bookingService, never()).failBooking(any());
+        verify(ledgerService).recordPayment(payment);
+    }
+
+    /**
+     * Regression test for a bug where confirmThreeDs mutated a Payment fetched via
+     * paymentRepository.findById(...) without ever calling save(...) on it: findById runs its own
+     * short-lived transaction (open-in-view is disabled), so the entity is detached by the time
+     * its setters run, and the mutation silently never reaches the database — the response still
+     * looked SUCCEEDED while the real row stayed PENDING_3DS forever. Asserting only on `payment`'s
+     * in-memory field state (as the test above does) can't catch this, since it's the exact same
+     * Java reference either way; only an explicit verify(save(...)) proves persistence was
+     * attempted at all.
+     */
+    @Test
+    void confirmThreeDs_withValidCode_persistsTheUpdatedPayment() {
+        Booking booking = Booking.builder().id(500L).build();
+        Payment payment = Payment.builder().id(1L).booking(booking).status(PaymentStatus.PENDING_3DS).build();
+        given(paymentRepository.findById(1L)).willReturn(Optional.of(payment));
+        given(paymentRepository.save(any(Payment.class))).willAnswer(invocation -> invocation.getArgument(0));
+        given(paymentMapper.toResponse(any(Payment.class))).willReturn(
+                new PaymentResponse(1L, 500L, new BigDecimal("50.00"), "card", "REF-1", PaymentStatus.SUCCEEDED, Instant.now(), null));
+
+        paymentService.confirmThreeDs(500L, 1L, "123456");
+
+        var captor = org.mockito.ArgumentCaptor.forClass(Payment.class);
+        verify(paymentRepository).save(captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo(PaymentStatus.SUCCEEDED);
+        assertThat(captor.getValue().getPaidAt()).isNotNull();
+    }
+
+    @Test
+    void confirmThreeDs_whenLedgerRecordingFails_stillSucceedsThePaymentInsteadOfPropagating() {
+        Booking booking = Booking.builder().id(500L).build();
+        Payment payment = Payment.builder().id(1L).booking(booking).status(PaymentStatus.PENDING_3DS).build();
+        given(paymentRepository.findById(1L)).willReturn(Optional.of(payment));
+        given(paymentRepository.save(any(Payment.class))).willAnswer(invocation -> invocation.getArgument(0));
+        given(paymentMapper.toResponse(payment)).willReturn(
+                new PaymentResponse(1L, 500L, new BigDecimal("50.00"), "card", "REF-1", PaymentStatus.SUCCEEDED, Instant.now(), null));
+        willThrow(new RuntimeException("permission denied for table ledger_entries"))
+                .given(ledgerService).recordPayment(any(Payment.class));
+
+        PaymentResponse response = paymentService.confirmThreeDs(500L, 1L, "123456");
+
+        assertThat(response.status()).isEqualTo(PaymentStatus.SUCCEEDED);
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED);
+        verify(bookingService).confirmBooking(500L);
     }
 
     @Test
@@ -249,6 +420,7 @@ class PaymentServiceImplTest {
         Booking booking = Booking.builder().id(500L).build();
         Payment payment = Payment.builder().id(1L).booking(booking).status(PaymentStatus.PENDING_3DS).build();
         given(paymentRepository.findById(1L)).willReturn(Optional.of(payment));
+        given(paymentRepository.save(any(Payment.class))).willAnswer(invocation -> invocation.getArgument(0));
         given(paymentMapper.toResponse(payment)).willReturn(
                 new PaymentResponse(1L, 500L, new BigDecimal("50.00"), "card", "REF-1", PaymentStatus.FAILED, null, "3D Secure authentication failed."));
 
@@ -257,8 +429,10 @@ class PaymentServiceImplTest {
         assertThat(response.status()).isEqualTo(PaymentStatus.FAILED);
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.FAILED);
         assertThat(payment.getFailureReason()).isEqualTo("3D Secure authentication failed.");
+        verify(paymentRepository).save(payment);
         verify(bookingService).failBooking(500L);
         verify(bookingService, never()).confirmBooking(any());
+        verify(ledgerService, never()).recordPayment(any());
     }
 
     @Test

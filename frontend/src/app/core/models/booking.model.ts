@@ -60,7 +60,7 @@ export interface BookingDetailResponse {
   items: BookingItemResponse[];
 }
 
-/** A row in the support omni-search results list — GET /api/bookings/search. */
+/** A row in a booking list — GET /api/bookings/search (support) and GET /api/bookings/me (customer). */
 export interface BookingSearchResult {
   bookingId: number;
   pnr: string;

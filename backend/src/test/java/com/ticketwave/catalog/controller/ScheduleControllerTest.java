@@ -4,7 +4,7 @@ import com.ticketwave.auth.JwtService;
 import com.ticketwave.auth.security.JwtAuthenticationFilter;
 import com.ticketwave.catalog.dto.ScheduleSearchResult;
 import com.ticketwave.catalog.dto.SeatResponse;
-import com.ticketwave.catalog.entity.RouteType;
+import com.ticketwave.catalog.model.RouteType;
 import com.ticketwave.catalog.entity.ScheduleStatus;
 import com.ticketwave.catalog.entity.SeatStatus;
 import com.ticketwave.catalog.exception.ScheduleNotFoundException;

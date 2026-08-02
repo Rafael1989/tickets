@@ -41,6 +41,14 @@ describe('BookingService', () => {
     req.flush({ booking: {}, items: [] });
   });
 
+  it('listMyBookings requests /api/bookings/me', () => {
+    service.listMyBookings().subscribe();
+
+    const req = httpMock.expectOne('/api/bookings/me');
+    expect(req.request.method).toBe('GET');
+    req.flush([]);
+  });
+
   it('getBookingByPnr requests /api/bookings/pnr/{pnr}, url-encoded', () => {
     service.getBookingByPnr('ABC 123').subscribe();
 

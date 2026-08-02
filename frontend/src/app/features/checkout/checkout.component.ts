@@ -77,6 +77,17 @@ export class CheckoutComponent implements OnInit {
   /** Re-fetched after createBooking so the payment-step countdown reflects the fresh hold TTL createBooking's holdSeat() renews, not the stale one from seat-selection. */
   private readonly paymentStepSeats = signal<SeatResponse[] | null>(null);
 
+  /**
+   * Identifies the current payment *attempt*, reused across retries of that same attempt so the
+   * backend's reference-based idempotency actually applies (see PaymentServiceImpl.recordPayment).
+   * Without this, a submit that succeeded server-side but errored client-side (dropped response,
+   * network blip) would get a brand-new reference on retry, skip the idempotency check entirely,
+   * and hit the coarser "booking already confirmed" guard instead — a confusing 409 for what's
+   * actually a completed payment. Only regenerated when the user starts a genuinely new attempt
+   * (retryPayment, or a new booking).
+   */
+  private paymentReference = crypto.randomUUID();
+
   private readonly resultHeading = viewChild<ElementRef<HTMLElement>>('resultHeading');
 
   readonly allSeatsAssigned = computed(() => {
@@ -204,6 +215,7 @@ export class CheckoutComponent implements OnInit {
         next: (booking) => {
           this.booking.set(booking);
           this.step.set('payment');
+          this.paymentReference = crypto.randomUUID();
           this.refreshPaymentStepSeats(draft.schedule.scheduleId, booking);
         },
       });
@@ -269,7 +281,7 @@ export class CheckoutComponent implements OnInit {
       .recordPayment(booking.booking.id, {
         amount: booking.booking.totalAmount,
         method,
-        reference: crypto.randomUUID(),
+        reference: this.paymentReference,
         cardNumber,
       })
       .pipe(delay(MIN_PROCESSING_MS), takeUntilDestroyed(this.destroyRef))
@@ -318,6 +330,7 @@ export class CheckoutComponent implements OnInit {
   retryPayment(): void {
     this.payment.set(null);
     this.paymentState.set('idle');
+    this.paymentReference = crypto.randomUUID();
     this.threeDsForm.reset({ code: '' });
   }
 

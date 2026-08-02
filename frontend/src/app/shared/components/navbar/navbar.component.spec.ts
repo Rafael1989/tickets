@@ -56,7 +56,7 @@ describe('NavbarComponent', () => {
     expect(html).toContain('Log out');
   });
 
-  it('logout() logs out and navigates to /search', async () => {
+  it('logout() logs out and navigates to the public search page', async () => {
     localStorage.setItem('tw.accessToken', fakeJwt('alice'));
     await createComponent();
     const auth = TestBed.inject(AuthService);
@@ -68,39 +68,68 @@ describe('NavbarComponent', () => {
     expect(router.navigate).toHaveBeenCalledWith(['/search']);
   });
 
-  it('shows no role-based links for a plain customer', async () => {
+  it('sends a logged-out admin to the public search page, not back to /admin', async () => {
+    localStorage.setItem('tw.accessToken', fakeJwt('dave', ['ADMIN']));
+    await createComponent();
+
+    fixture.componentInstance.logout();
+
+    expect(router.navigate).toHaveBeenCalledWith(['/search']);
+  });
+
+  it('shows a customer Search, My Bookings and My Account — and no staff portal', async () => {
     localStorage.setItem('tw.accessToken', fakeJwt('alice', ['CUSTOMER']));
     await createComponent();
 
     const html = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(html).toContain('Search');
+    expect(html).toContain('My Bookings');
+    expect(html).toContain('My Account');
     expect(html).not.toContain('Operator');
     expect(html).not.toContain('Support');
     expect(html).not.toContain('Admin');
   });
 
-  it('shows the Operator link for an operator', async () => {
+  it('shows an operator only their portal and account — no customer screens', async () => {
     localStorage.setItem('tw.accessToken', fakeJwt('bob', ['OPERATOR']));
     await createComponent();
 
     const html = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(html).toContain('Operator');
+    expect(html).toContain('My Account');
+    expect(html).not.toContain('Search');
+    expect(html).not.toContain('My Bookings');
     expect(html).not.toContain('Support');
   });
 
-  it('shows the Support link for a support agent', async () => {
+  it('shows a support agent only their portal and account — no customer screens', async () => {
     localStorage.setItem('tw.accessToken', fakeJwt('carol', ['SUPPORT']));
     await createComponent();
 
     const html = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(html).toContain('Support');
+    expect(html).toContain('My Account');
+    expect(html).not.toContain('Search');
+    expect(html).not.toContain('My Bookings');
   });
 
-  it('shows the Admin link for an admin', async () => {
+  it('shows an admin only their portal and account — no customer screens', async () => {
     localStorage.setItem('tw.accessToken', fakeJwt('dave', ['ADMIN']));
     await createComponent();
 
     const html = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(html).toContain('Admin');
+    expect(html).toContain('My Account');
+    expect(html).not.toContain('Search');
+    expect(html).not.toContain('My Bookings');
+  });
+
+  it('points the brand logo at the signed-in role\'s own landing screen', async () => {
+    localStorage.setItem('tw.accessToken', fakeJwt('dave', ['ADMIN']));
+    await createComponent();
+
+    const brand = (fixture.nativeElement as HTMLElement).querySelector('a.brand');
+    expect(brand?.getAttribute('href')).toBe('/admin');
   });
 
   it('clicking log out triggers logout via the DOM', async () => {

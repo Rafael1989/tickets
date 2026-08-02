@@ -1,6 +1,6 @@
 package com.ticketwave.catalog.dto;
 
-import com.ticketwave.catalog.entity.RouteType;
+import com.ticketwave.catalog.model.RouteType;
 import com.ticketwave.catalog.entity.ScheduleStatus;
 
 import java.math.BigDecimal;

@@ -7,6 +7,15 @@ spring:
     username: ${DB_USERNAME:ticketwave}
     password: ${DB_PASSWORD:ticketwave}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: ticketwave-pool
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
+      minimum-idle: ${DB_POOL_MIN_IDLE:5}
+      # Fails a checkout fast rather than queuing requests indefinitely
+      # behind a saturated pool.
+      connection-timeout: ${DB_POOL_CONNECTION_TIMEOUT_MS:30000}
+      idle-timeout: ${DB_POOL_IDLE_TIMEOUT_MS:600000}
+      max-lifetime: ${DB_POOL_MAX_LIFETIME_MS:1800000}
 
   jpa:
     hibernate:
@@ -19,6 +28,14 @@ spring:
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.xml
     enabled: true
+    # Pinned to the same values as spring.datasource.* (via property
+    # placeholder, so this always tracks whatever spring.datasource.url
+    # actually resolves to, including test overrides) rather than relying on
+    # the routing DataSource bean in DataSourceRoutingConfig — migrations
+    # must always run against the primary, never a replica.
+    url: ${spring.datasource.url}
+    user: ${spring.datasource.username}
+    password: ${spring.datasource.password}
 
 springdoc:
   api-docs:
@@ -27,6 +44,15 @@ springdoc:
     path: /swagger-ui.html
 
 ticketwave:
+  datasource:
+    # Read-replica readiness (see DataSourceRoutingConfig): every read-only
+    # @Transactional method already routes here automatically. Blank by
+    # default, which falls back to the primary connection above — a genuine
+    # no-op until these are actually set to a replica's connection info.
+    replica:
+      url: ${DB_REPLICA_URL:}
+      username: ${DB_REPLICA_USERNAME:}
+      password: ${DB_REPLICA_PASSWORD:}
   jwt:
     # No fallback default on purpose: a shared, publicly-known secret baked
     # into source control would let anyone forge a valid JWT (including
@@ -57,7 +83,7 @@ ticketwave:
     window-seconds: ${RATE_LIMIT_WINDOW_SECONDS:60}
 
 server:
-  port: ${SERVER_PORT:8080}
+  port: ${SERVER_PORT:8081}
   # Lets embedded Tomcat's RemoteIpValve rewrite request.getRemoteAddr() from
   # X-Forwarded-For — but only when the immediate TCP peer matches Tomcat's
   # default internalProxies pattern (loopback/private ranges), so a direct

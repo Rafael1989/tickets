@@ -2,7 +2,7 @@ package com.ticketwave.partner.service;
 
 import com.ticketwave.catalog.dto.RouteResponse;
 import com.ticketwave.catalog.entity.Route;
-import com.ticketwave.catalog.entity.RouteType;
+import com.ticketwave.catalog.model.RouteType;
 import com.ticketwave.catalog.mapper.RouteMapper;
 import com.ticketwave.catalog.repository.RouteRepository;
 import com.ticketwave.partner.entity.Partner;

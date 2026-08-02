@@ -1,9 +1,10 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/guards/auth.guard';
+import { homeGuard } from './core/guards/home.guard';
 import { roleGuard } from './core/guards/role.guard';
 
 export const routes: Routes = [
-  { path: '', redirectTo: 'search', pathMatch: 'full' },
+  { path: '', pathMatch: 'full', canActivate: [homeGuard], children: [] },
   {
     path: 'login',
     loadComponent: () => import('./features/auth/login/login.component').then((m) => m.LoginComponent),
@@ -38,6 +39,12 @@ export const routes: Routes = [
     loadComponent: () => import('./features/account/account.component').then((m) => m.AccountComponent),
   },
   {
+    path: 'bookings',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/booking/my-bookings/my-bookings.component').then((m) => m.MyBookingsComponent),
+  },
+  {
     path: 'bookings/:id',
     canActivate: [authGuard],
     loadComponent: () =>
@@ -63,5 +70,5 @@ export const routes: Routes = [
     data: { role: 'ADMIN' },
     loadComponent: () => import('./features/admin/admin-panel.component').then((m) => m.AdminPanelComponent),
   },
-  { path: '**', redirectTo: 'search' },
+  { path: '**', canActivate: [homeGuard], children: [] },
 ];

@@ -37,5 +37,7 @@
     <include file="changes/2026-08-02-06-create-partner-webhooks-tables.xml" relativeToChangelogFile="true"/>
     <include file="changes/2026-08-02-07-add-bookings-status-index.xml" relativeToChangelogFile="true"/>
     <include file="changes/2026-08-02-08-add-payment-3ds-status.xml" relativeToChangelogFile="true"/>
+    <include file="changes/2026-08-02-09-add-booking-idempotency-key.xml" relativeToChangelogFile="true"/>
+    <include file="changes/2026-08-02-10-create-ledger-entries-table.xml" relativeToChangelogFile="true"/>
 
 </databaseChangeLog>

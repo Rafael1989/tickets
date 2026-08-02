@@ -1,12 +1,13 @@
 package com.ticketwave.payment.service;
 
+import com.ticketwave.AbstractIntegrationTest;
 import com.ticketwave.booking.dto.BookingDetailResponse;
 import com.ticketwave.booking.dto.CreateBookingRequest;
 import com.ticketwave.booking.dto.SeatSelection;
 import com.ticketwave.booking.exception.InvalidBookingStateException;
 import com.ticketwave.booking.service.BookingService;
 import com.ticketwave.catalog.entity.Route;
-import com.ticketwave.catalog.entity.RouteType;
+import com.ticketwave.catalog.model.RouteType;
 import com.ticketwave.catalog.entity.Schedule;
 import com.ticketwave.catalog.entity.ScheduleStatus;
 import com.ticketwave.catalog.entity.Seat;
@@ -25,15 +26,9 @@ import com.ticketwave.user.repository.UserRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -53,23 +48,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * End-to-end against real PostgreSQL: happy-path payment confirms the
  * booking, replaying the same reference is idempotent, and two concurrent
  * requests carrying the same reference never produce two payment rows or
- * confirm the booking twice. Requires a Docker daemon reachable by
- * Testcontainers.
+ * confirm the booking twice. See AbstractIntegrationTest for
+ * connection/isolation details.
  */
-@SpringBootTest
-@Testcontainers
-class PaymentFlowIT {
-
-    @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
-
-    @DynamicPropertySource
-    static void datasourceProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
-        registry.add("ticketwave.jwt.secret", () -> "test-only-secret-key-at-least-32-bytes-long");
-    }
+class PaymentFlowIT extends AbstractIntegrationTest {
 
     @Autowired
     private PaymentService paymentService;
@@ -138,7 +120,7 @@ class PaymentFlowIT {
         lastCustomerUsername = customer.getUsername();
         authenticateAs(lastCustomerUsername, UserRole.CUSTOMER);
         return bookingService.createBooking(lastCustomerUsername, new CreateBookingRequest(
-                schedule.getId(), List.of(new SeatSelection(seat.getId(), passenger.getId())), null));
+                schedule.getId(), List.of(new SeatSelection(seat.getId(), passenger.getId())), null, null));
     }
 
     @Test
@@ -228,5 +210,32 @@ class PaymentFlowIT {
         assertThat(retried.status().name()).isEqualTo("SUCCEEDED");
         assertThat(seatRepository.findById(seatId).orElseThrow().getStatus()).isEqualTo(SeatStatus.BOOKED);
         assertThat(paymentRepository.findByBookingId(bookingId)).hasSize(2);
+    }
+
+    /**
+     * Regression test for a bug where confirmThreeDs's Payment mutation never survived past the
+     * method call: paymentRepository.findById(...) closes its own transaction before returning
+     * (open-in-view is disabled), so setting fields on the entity afterward without an explicit
+     * save() left the real row at PENDING_3DS forever, even though the response looked SUCCEEDED
+     * and the booking really did get confirmed. Re-fetching from the repository in a fresh read
+     * (rather than asserting on the same in-memory object confirmThreeDs mutated) is what actually
+     * proves the persistence happened — a Mockito-mocked repository can't tell the difference.
+     */
+    @Test
+    void confirmThreeDs_withValidCode_persistsSucceededStatusAcrossAFreshRead() {
+        BookingDetailResponse created = newInitiatedBooking("3ds-persist");
+        Long bookingId = created.booking().id();
+        BigDecimal total = created.booking().totalAmount();
+
+        PaymentResponse pending = paymentService.recordPayment(bookingId,
+                new PaymentRequest(total, "card", "PAY-3DS-1", "4000002500003155"));
+        assertThat(pending.status().name()).isEqualTo("PENDING_3DS");
+
+        paymentService.confirmThreeDs(bookingId, pending.id(), "123456");
+
+        var persisted = paymentRepository.findById(pending.id()).orElseThrow();
+        assertThat(persisted.getStatus().name()).isEqualTo("SUCCEEDED");
+        assertThat(persisted.getPaidAt()).isNotNull();
+        assertThat(bookingService.getBooking(bookingId).booking().status().name()).isEqualTo("CONFIRMED");
     }
 }

@@ -1,0 +1,98 @@
+<div class="page-header">
+  <div>
+    <h1>My bookings</h1>
+    <p class="subtitle">Every trip you've booked, newest first.</p>
+  </div>
+  <a class="btn" routerLink="/search">+ Book a trip</a>
+</div>
+
+@if (loading()) {
+  <div class="booking-list">
+    @for (row of [0, 1, 2]; track row) {
+      <div class="booking-card">
+        <div class="skeleton-lines">
+          <div class="skeleton line wide"></div>
+          <div class="skeleton line short"></div>
+        </div>
+      </div>
+    }
+  </div>
+  <p class="sr-only">Loading your bookings…</p>
+} @else if (loadError()) {
+  <div class="card">
+    <p class="form-error" role="alert">We couldn't load your bookings.</p>
+    <button type="button" class="btn secondary" (click)="retryLoad()">Try again</button>
+  </div>
+} @else if (bookings().length === 0) {
+  <div class="empty-state">
+    <div class="empty-icon" aria-hidden="true">🎟️</div>
+    <h2>No bookings yet</h2>
+    <p>When you book a trip, it'll show up here with your ticket and PNR.</p>
+    <a class="btn" routerLink="/search">Find a trip</a>
+  </div>
+} @else {
+  <div class="filters" role="tablist" aria-label="Filter bookings">
+    <button
+      type="button"
+      role="tab"
+      class="filter-tab"
+      [class.active]="filter() === 'all'"
+      [attr.aria-selected]="filter() === 'all'"
+      (click)="setFilter('all')"
+    >
+      All ({{ bookings().length }})
+    </button>
+    <button
+      type="button"
+      role="tab"
+      class="filter-tab"
+      [class.active]="filter() === 'upcoming'"
+      [attr.aria-selected]="filter() === 'upcoming'"
+      (click)="setFilter('upcoming')"
+    >
+      Upcoming ({{ upcomingCount() }})
+    </button>
+    <button
+      type="button"
+      role="tab"
+      class="filter-tab"
+      [class.active]="filter() === 'past'"
+      [attr.aria-selected]="filter() === 'past'"
+      (click)="setFilter('past')"
+    >
+      Past ({{ bookings().length - upcomingCount() }})
+    </button>
+  </div>
+
+  @if (visibleBookings().length === 0) {
+    <div class="card no-matches">
+      <p>No {{ filter() }} bookings.</p>
+    </div>
+  } @else {
+    <div class="booking-list">
+      @for (booking of visibleBookings(); track booking.bookingId) {
+        <a class="booking-card" [routerLink]="['/bookings', booking.bookingId]">
+          <div class="booking-main">
+            <div class="route">
+              @if (booking.origin) {
+                <span class="city">{{ booking.origin }}</span>
+                <span class="arrow" aria-hidden="true">→</span>
+                <span class="city">{{ booking.destination }}</span>
+              } @else {
+                <span class="city">Event booking</span>
+              }
+            </div>
+            <p class="meta">
+              Departs {{ booking.departureTime | date: 'medium' }} &middot; PNR {{ booking.pnr }}
+            </p>
+          </div>
+
+          <div class="booking-side">
+            <span class="status-pill" [attr.data-status]="booking.status">{{ statusLabel(booking.status) }}</span>
+            <span class="amount">{{ booking.totalAmount }}</span>
+          </div>
+        </a>
+      }
+    </div>
+  }
+}

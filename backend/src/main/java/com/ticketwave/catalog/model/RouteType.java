@@ -1,4 +1,4 @@
-package com.ticketwave.catalog.entity;
+package com.ticketwave.catalog.model;
 
 import com.ticketwave.common.persistence.CodedEnum;
 

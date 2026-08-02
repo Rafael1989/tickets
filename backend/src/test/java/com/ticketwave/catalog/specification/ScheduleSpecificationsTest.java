@@ -1,7 +1,7 @@
 package com.ticketwave.catalog.specification;
 
 import com.ticketwave.catalog.dto.ScheduleSearchCriteria;
-import com.ticketwave.catalog.entity.RouteType;
+import com.ticketwave.catalog.model.RouteType;
 import com.ticketwave.catalog.entity.Schedule;
 import com.ticketwave.catalog.entity.ScheduleStatus;
 import jakarta.persistence.criteria.CriteriaBuilder;

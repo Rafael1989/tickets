@@ -14,12 +14,16 @@ export class NavbarComponent {
 
   readonly isAuthenticated = this.auth.isAuthenticated;
   readonly username = this.auth.username;
+  readonly homePath = this.auth.homePath;
+  readonly isCustomer = this.auth.isCustomer;
   readonly isOperator = computed(() => this.auth.hasRole('OPERATOR'));
   readonly isSupport = computed(() => this.auth.hasRole('SUPPORT'));
   readonly isAdmin = computed(() => this.auth.hasRole('ADMIN'));
 
   logout(): void {
     this.auth.logout();
-    this.router.navigate(['/search']);
+    // Reads homePath *after* logout, so it resolves to the public '/search' rather than the
+    // signed-out user's old portal.
+    this.router.navigate([this.auth.homePath()]);
   }
 }

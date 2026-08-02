@@ -39,11 +39,11 @@ export class RefundStatusTrackerComponent {
   readonly statusMessage = computed(() => {
     switch (this.refund().status) {
       case 'PENDING':
-        return 'Your request is waiting on support review. This usually takes 1-2 business days.';
+        return 'Your request is waiting on support review. Your booking stays active until then — this usually takes 1-2 business days.';
       case 'PROCESSED':
-        return 'Your refund was approved and issued to your original payment method.';
+        return 'Your refund was approved and issued to your original payment method. Your booking is now cancelled.';
       case 'REJECTED':
-        return 'Your refund request was reviewed and rejected. Contact support for details.';
+        return 'Your refund request was reviewed and rejected, so your booking is still active and your ticket remains valid. Contact support for details.';
     }
   });
 }

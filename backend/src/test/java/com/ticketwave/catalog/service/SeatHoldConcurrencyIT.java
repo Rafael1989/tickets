@@ -1,7 +1,8 @@
 package com.ticketwave.catalog.service;
 
+import com.ticketwave.AbstractIntegrationTest;
 import com.ticketwave.catalog.entity.Route;
-import com.ticketwave.catalog.entity.RouteType;
+import com.ticketwave.catalog.model.RouteType;
 import com.ticketwave.catalog.entity.Schedule;
 import com.ticketwave.catalog.entity.ScheduleStatus;
 import com.ticketwave.catalog.entity.Seat;
@@ -15,12 +16,6 @@ import com.ticketwave.user.entity.UserRole;
 import com.ticketwave.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -38,22 +33,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * actually serializes concurrent hold attempts on the same seat, rather than
  * trusting the annotation alone. Needs a real transactional service bean
  * (not a mock), so this is a full @SpringBootTest against real PostgreSQL —
- * requires a Docker daemon reachable by Testcontainers.
+ * see AbstractIntegrationTest for connection/isolation details.
  */
-@SpringBootTest
-@Testcontainers
-class SeatHoldConcurrencyIT {
-
-    @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
-
-    @DynamicPropertySource
-    static void datasourceProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
-        registry.add("ticketwave.jwt.secret", () -> "test-only-secret-key-at-least-32-bytes-long");
-    }
+class SeatHoldConcurrencyIT extends AbstractIntegrationTest {
 
     @Autowired
     private SeatHoldService seatHoldService;

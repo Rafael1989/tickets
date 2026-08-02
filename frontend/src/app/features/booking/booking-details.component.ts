@@ -49,11 +49,24 @@ export class BookingDetailsComponent {
   readonly refund = signal<RefundResponse | null>(null);
   readonly showCancellationWizard = signal(false);
 
+  /**
+   * Whether the cancellation-proximity window still allows a CONFIRMED booking to be rescheduled
+   * at all (RescheduleServiceImpl gates this on the *current* schedule's departure time, not the
+   * target). Defaults true so INITIATED bookings — which skip this check entirely — are never
+   * affected; set from the refund-quote's `eligible` flag once fetched for CONFIRMED bookings,
+   * since it's driven by the same RefundPolicyService window for the same reason.
+   */
+  readonly rescheduleQuoteEligible = signal(true);
+
   readonly canRefund = computed(() => this.detail()?.booking.status === 'CONFIRMED' && !this.refund());
   readonly canReschedule = computed(() => {
     const status = this.detail()?.booking.status;
-    return (status === 'INITIATED' || status === 'CONFIRMED') && !this.refund();
+    return (status === 'INITIATED' || status === 'CONFIRMED') && !this.refund() && this.rescheduleQuoteEligible();
   });
+  /** Shown in place of the reschedule card so the user learns this before picking a whole new schedule/seats, not after. */
+  readonly rescheduleTooCloseToDeparture = computed(
+    () => this.detail()?.booking.status === 'CONFIRMED' && !this.refund() && !this.rescheduleQuoteEligible(),
+  );
 
   constructor() {
     const bookingId = Number(this.route.snapshot.paramMap.get('id'));
@@ -64,6 +77,12 @@ export class BookingDetailsComponent {
       .subscribe({
         next: (detail) => {
           this.detail.set(detail);
+          if (detail.booking.status === 'CONFIRMED') {
+            this.refundService
+              .getRefundQuote(bookingId)
+              .pipe(takeUntilDestroyed(this.destroyRef))
+              .subscribe({ next: (quote) => this.rescheduleQuoteEligible.set(quote.eligible) });
+          }
           forkJoin({
             schedule: this.scheduleService.getSchedule(detail.booking.scheduleId),
             seats: this.scheduleService.getSeats(detail.booking.scheduleId),
@@ -109,12 +128,16 @@ export class BookingDetailsComponent {
     this.cancelTrigger()?.nativeElement.focus();
   }
 
+  /**
+   * Deliberately leaves the booking's status alone: the backend keeps it CONFIRMED until support
+   * approves the refund (see RefundServiceImpl.initiateRefund), so optimistically flipping it to
+   * CANCELLED here would show the customer a cancelled trip that a rejection would then contradict.
+   */
   onCancelled(refund: RefundResponse): void {
     this.applyRefund(refund, this.detail()?.booking.id);
-    this.detail.update((current) =>
-      current ? { ...current, booking: { ...current.booking, status: 'CANCELLED' } } : current,
+    this.notifications.success(
+      'Cancellation requested. Your booking stays active until support reviews it.',
     );
-    this.notifications.success('Cancellation submitted. Our support team will review your refund shortly.');
     this.closeCancellationWizard();
   }
 

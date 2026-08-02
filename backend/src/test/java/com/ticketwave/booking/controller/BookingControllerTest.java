@@ -11,6 +11,7 @@ import com.ticketwave.booking.dto.RescheduleQuoteResponse;
 import com.ticketwave.booking.dto.RescheduleRequest;
 import com.ticketwave.booking.dto.SeatSelection;
 import com.ticketwave.booking.entity.BookingStatus;
+import com.ticketwave.booking.exception.InvalidBookingStateException;
 import com.ticketwave.booking.service.BookingService;
 import com.ticketwave.config.JwtProperties;
 import com.ticketwave.config.SecurityConfig;
@@ -95,7 +96,7 @@ class BookingControllerTest {
 
     @Test
     void createBooking_withoutAuthorizationHeader_isRejected() throws Exception {
-        CreateBookingRequest request = new CreateBookingRequest(10L, List.of(new SeatSelection(5L, 100L)), null);
+        CreateBookingRequest request = new CreateBookingRequest(10L, List.of(new SeatSelection(5L, 100L)), null, null);
 
         mockMvc.perform(post("/api/bookings")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -105,7 +106,7 @@ class BookingControllerTest {
 
     @Test
     void createBooking_withValidTokenAndPayload_returns201() throws Exception {
-        CreateBookingRequest request = new CreateBookingRequest(10L, List.of(new SeatSelection(5L, 100L)), null);
+        CreateBookingRequest request = new CreateBookingRequest(10L, List.of(new SeatSelection(5L, 100L)), null, null);
         given(bookingService.createBooking(eq("alice"), any())).willReturn(detailResponse());
 
         mockMvc.perform(post("/api/bookings")
@@ -114,6 +115,29 @@ class BookingControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.booking.pnr").value("ABC234"));
+    }
+
+    @Test
+    void confirmBooking_whenAlreadyConfirmed_returns200() throws Exception {
+        BookingDetailResponse confirmed = new BookingDetailResponse(
+                new BookingResponse(500L, 1L, 10L, "ABC234", Instant.now(), BookingStatus.CONFIRMED,
+                        new BigDecimal("50.00"), null),
+                List.of());
+        given(bookingService.requireConfirmed(500L)).willReturn(confirmed);
+
+        mockMvc.perform(put("/api/bookings/500/confirm").header("Authorization", bearerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.booking.status").value("CONFIRMED"));
+    }
+
+    @Test
+    void confirmBooking_whenNotYetConfirmed_returns409() throws Exception {
+        given(bookingService.requireConfirmed(500L))
+                .willThrow(new InvalidBookingStateException(500L, BookingStatus.INITIATED, BookingStatus.CONFIRMED));
+
+        mockMvc.perform(put("/api/bookings/500/confirm").header("Authorization", bearerToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("INVALID_BOOKING_STATE"));
     }
 
     @Test
@@ -129,6 +153,37 @@ class BookingControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("SUCCEEDED"));
+    }
+
+    /**
+     * Regression test: a 100%-off promo code produces a booking whose total is 0.00, and the
+     * payment DTO's old @DecimalMin("0.01") rejected the only amount such a booking could ever be
+     * paid with — leaving it permanently stuck in INITIATED.
+     */
+    @Test
+    void recordPayment_withAZeroTotalFromAFullDiscount_isAcceptedRatherThanRejectedAsInvalid() throws Exception {
+        PaymentRequest request = new PaymentRequest(BigDecimal.ZERO, "pix", "REF-FREE", null);
+        PaymentResponse response = new PaymentResponse(1L, 500L, BigDecimal.ZERO, "pix", "REF-FREE",
+                PaymentStatus.SUCCEEDED, Instant.now(), null);
+        given(paymentService.recordPayment(eq(500L), any())).willReturn(response);
+
+        mockMvc.perform(post("/api/bookings/500/payments")
+                        .header("Authorization", bearerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("SUCCEEDED"));
+    }
+
+    @Test
+    void recordPayment_withANegativeAmount_isStillRejected() throws Exception {
+        PaymentRequest request = new PaymentRequest(new BigDecimal("-1.00"), "pix", "REF-NEG", null);
+
+        mockMvc.perform(post("/api/bookings/500/payments")
+                        .header("Authorization", bearerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -229,6 +284,23 @@ class BookingControllerTest {
         mockMvc.perform(get("/api/bookings/pnr/ABC234/lookup").param("email", "alice@example.com"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.booking.pnr").value("ABC234"));
+    }
+
+    @Test
+    void listMyBookings_withValidToken_returns200() throws Exception {
+        BookingSearchResult result = new BookingSearchResult(500L, "ABC234", BookingStatus.CONFIRMED,
+                new BigDecimal("50.00"), Instant.now(), "alice", "alice@example.com", "NYC", "LAX", Instant.now());
+        given(bookingService.listMyBookings("alice")).willReturn(List.of(result));
+
+        mockMvc.perform(get("/api/bookings/me").header("Authorization", bearerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].pnr").value("ABC234"));
+    }
+
+    @Test
+    void listMyBookings_withoutAuthorizationHeader_isRejected() throws Exception {
+        mockMvc.perform(get("/api/bookings/me"))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

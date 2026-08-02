@@ -8,6 +8,7 @@ import com.ticketwave.booking.exception.InvalidBookingStateException;
 import com.ticketwave.booking.repository.BookingRepository;
 import com.ticketwave.booking.service.BookingService;
 import com.ticketwave.catalog.entity.Schedule;
+import com.ticketwave.ledger.service.LedgerService;
 import com.ticketwave.partner.entity.Partner;
 import com.ticketwave.partner.service.PartnerWebhookDeliveryService;
 import com.ticketwave.payment.dto.BookingCancelledWebhookPayload;
@@ -21,6 +22,7 @@ import com.ticketwave.payment.entity.RefundStatus;
 import com.ticketwave.payment.exception.CancellationNotAllowedException;
 import com.ticketwave.payment.exception.InvalidRefundStateException;
 import com.ticketwave.payment.exception.PaymentNotFoundException;
+import com.ticketwave.payment.exception.RefundAlreadyPendingException;
 import com.ticketwave.payment.exception.RefundNotFoundException;
 import com.ticketwave.payment.exception.RefundOverrideAmountExceedsPaymentException;
 import com.ticketwave.payment.exception.RefundOverrideReasonRequiredException;
@@ -55,6 +57,7 @@ public class RefundServiceImpl implements RefundService {
     private final RefundMapper refundMapper;
     private final AuditService auditService;
     private final PartnerWebhookDeliveryService webhookDeliveryService;
+    private final LedgerService ledgerService;
 
     public RefundServiceImpl(
             RefundRepository refundRepository,
@@ -65,7 +68,8 @@ public class RefundServiceImpl implements RefundService {
             RefundPolicyService refundPolicyService,
             RefundMapper refundMapper,
             AuditService auditService,
-            PartnerWebhookDeliveryService webhookDeliveryService
+            PartnerWebhookDeliveryService webhookDeliveryService,
+            LedgerService ledgerService
     ) {
         this.refundRepository = refundRepository;
         this.paymentRepository = paymentRepository;
@@ -76,6 +80,7 @@ public class RefundServiceImpl implements RefundService {
         this.refundMapper = refundMapper;
         this.webhookDeliveryService = webhookDeliveryService;
         this.auditService = auditService;
+        this.ledgerService = ledgerService;
     }
 
     @Override
@@ -132,6 +137,10 @@ public class RefundServiceImpl implements RefundService {
             throw new InvalidBookingStateException(bookingId, booking.getStatus(), BookingStatus.CANCELLED);
         }
 
+        if (refundRepository.existsByPaymentBookingIdAndStatus(bookingId, RefundStatus.PENDING)) {
+            throw new RefundAlreadyPendingException(bookingId);
+        }
+
         Payment payment = paymentRepository.findByBookingId(bookingId).stream()
                 .filter(p -> p.getStatus() == PaymentStatus.SUCCEEDED)
                 .findFirst()
@@ -149,9 +158,11 @@ public class RefundServiceImpl implements RefundService {
                 .status(RefundStatus.PENDING)
                 .build());
 
-        // Cancelling here (not before) means a policy rejection above never
-        // touches the booking/seats at all.
-        bookingService.cancelBooking(bookingId);
+        // The booking deliberately stays CONFIRMED (and keeps its seats) while
+        // this sits in review: cancelling up front would free the seats for
+        // resale, so a later rejection could leave the customer with neither
+        // the trip nor the money. processRefund cancels it on approval instead,
+        // which also makes a rejection a genuine no-op on the booking.
 
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
         auditService.record(actor, "REFUND_INITIATED", "REFUND", refund.getId(),
@@ -197,7 +208,18 @@ public class RefundServiceImpl implements RefundService {
                 || RefundPolicyService.PARTIAL_REFUND_POLICY.equals(refund.getPolicyCode());
         if (decision == RefundDecision.APPROVE && isCancellationRefund) {
             refund.getPayment().setStatus(PaymentStatus.REFUNDED);
+            // The booking was left CONFIRMED at request time (see initiateRefund) precisely so
+            // this approval is what cancels it and frees the seats — and so a REJECT below needs
+            // to do nothing at all to the booking, which simply stays CONFIRMED and travelling.
+            bookingService.cancelBooking(refund.getPayment().getBooking().getId());
             notifyBookingCancelledWebhook(refund);
+        }
+
+        // Recorded for both a cancellation refund and a reschedule credit —
+        // both are real money leaving, at refund.getAmount()'s final value
+        // (already reflecting any override applied above).
+        if (decision == RefundDecision.APPROVE) {
+            ledgerService.recordRefund(refund);
         }
 
         String action = decision == RefundDecision.APPROVE ? "REFUND_APPROVED" : "REFUND_REJECTED";

@@ -3,7 +3,7 @@ package com.ticketwave.partner.controller;
 import com.ticketwave.auth.JwtService;
 import com.ticketwave.auth.security.JwtAuthenticationFilter;
 import com.ticketwave.catalog.dto.RouteResponse;
-import com.ticketwave.catalog.entity.RouteType;
+import com.ticketwave.catalog.model.RouteType;
 import com.ticketwave.config.JwtProperties;
 import com.ticketwave.config.SecurityConfig;
 import com.ticketwave.partner.service.PartnerResourceService;

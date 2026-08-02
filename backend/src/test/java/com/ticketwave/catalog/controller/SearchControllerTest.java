@@ -4,7 +4,7 @@ import com.ticketwave.auth.JwtService;
 import com.ticketwave.auth.security.JwtAuthenticationFilter;
 import com.ticketwave.catalog.dto.ScheduleSearchCriteria;
 import com.ticketwave.catalog.dto.ScheduleSearchResult;
-import com.ticketwave.catalog.entity.RouteType;
+import com.ticketwave.catalog.model.RouteType;
 import com.ticketwave.catalog.entity.ScheduleStatus;
 import com.ticketwave.catalog.service.ScheduleSearchService;
 import com.ticketwave.config.JwtProperties;
@@ -30,7 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Confirms GET /api/search is genuinely public per SecurityConfig (no
- * Authorization header needed) — guests must be able to search per US1.
+ * Authorization header needed) â€” guests must be able to search per US1.
  */
 @WebMvcTest(SearchController.class)
 @Import({SecurityConfig.class, JwtAuthenticationFilter.class, JwtService.class})

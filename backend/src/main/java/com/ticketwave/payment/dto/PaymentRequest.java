@@ -23,7 +23,13 @@ import java.math.BigDecimal;
  * without an actual gateway behind it.
  */
 public record PaymentRequest(
-        @NotNull @DecimalMin("0.01") @Digits(integer = 10, fraction = 2) BigDecimal amount,
+        // 0.00 is allowed, not 0.01: a promo code can legitimately discount a booking to nothing
+        // (a 100%-off comp), and such a booking still has to travel the normal
+        // INITIATED -> PAYMENT_PROCESSING -> CONFIRMED path — this API never confirms a booking
+        // without a payment behind it. Rejecting zero here left those bookings stuck in INITIATED
+        // with no way to complete them. recordPayment still requires the amount to equal the
+        // booking's own total, so this can't be used to underpay a non-zero booking.
+        @NotNull @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal amount,
         @NotBlank @Size(max = 30) String method,
         @NotBlank @Size(max = 100) String reference,
         @Pattern(regexp = "[0-9 ]{12,24}") String cardNumber

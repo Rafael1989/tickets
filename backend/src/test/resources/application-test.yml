@@ -1,0 +1,33 @@
+# Activated via @ActiveProfiles("test") (see AbstractIntegrationTest). Only
+# overrides what needs to differ from application.yml for local-Postgres IT
+# runs — everything else (Hikari tuning, pricing/refund config, etc.)
+# inherits from the base file.
+#
+# DATABASE SAFETY: the default DB_NAME here is "ticketwave_test", which is
+# DIFFERENT from application.yml's own default ("ticketwave"). Even if an
+# env var is forgotten, the test profile can never silently fall through to
+# the dev database name — the two defaults are deliberately distinct.
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ticketwave_test}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:root}
+
+ticketwave:
+  jwt:
+    # Fixed, well-known, non-secret test key — the opposite policy from
+    # application.yml's JWT_SECRET (which has no default on purpose). A test
+    # environment gains nothing from an unguessable secret and a missing
+    # env var here should never block a local test run.
+    secret: ${JWT_SECRET:test-only-secret-key-at-least-32-bytes-long}
+  rate-limit:
+    # Generous on purpose: IT tests exercising public endpoints (register,
+    # login, search) repeatedly in one run should never trip the same
+    # limiter tuned for real traffic.
+    requests-per-window: ${RATE_LIMIT_REQUESTS_PER_WINDOW:1000}
+    window-seconds: ${RATE_LIMIT_WINDOW_SECONDS:60}
+
+logging:
+  level:
+    com.ticketwave: INFO
+    org.hibernate.SQL: WARN

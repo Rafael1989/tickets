@@ -5,7 +5,7 @@ import com.ticketwave.auth.JwtService;
 import com.ticketwave.auth.security.JwtAuthenticationFilter;
 import com.ticketwave.catalog.dto.VehicleRequest;
 import com.ticketwave.catalog.dto.VehicleResponse;
-import com.ticketwave.catalog.entity.RouteType;
+import com.ticketwave.catalog.model.RouteType;
 import com.ticketwave.catalog.service.VehicleService;
 import com.ticketwave.config.JwtProperties;
 import com.ticketwave.config.SecurityConfig;

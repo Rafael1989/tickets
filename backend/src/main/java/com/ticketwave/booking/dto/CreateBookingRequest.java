@@ -17,10 +17,17 @@ import java.util.List;
  * the authenticated caller, resolved server-side from the JWT principal, so
  * there's no way for a request body to create a booking under someone else's
  * identity.
+ *
+ * idempotencyKey is optional: a caller that supplies one and retries the
+ * same request after a timeout gets a clean 409 (see
+ * BookingServiceImpl#createBooking) instead of a duplicate booking with the
+ * same seats held twice. A caller that omits it gets today's behavior
+ * unchanged.
  */
 public record CreateBookingRequest(
         @NotNull Long scheduleId,
         @NotEmpty List<@Valid SeatSelection> seatSelections,
-        @Size(max = 30) String promoCode
+        @Size(max = 30) String promoCode,
+        @Size(max = 100) String idempotencyKey
 ) {
 }

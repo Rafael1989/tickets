@@ -72,10 +72,26 @@ public class BookingController {
                 .body(bookingService.createBooking(authentication.getName(), request));
     }
 
+    @PutMapping("/{id}/confirm")
+    @Operation(
+            summary = "Confirm a booking (compatibility no-op)",
+            description = "This API only ever confirms a booking as a result of a successful payment — see POST .../payments and POST .../payments/{paymentId}/confirm-3ds; a booking can never be confirmed without having paid. This endpoint exists only for callers expecting an explicit confirm step: it succeeds as a no-op if the booking is already CONFIRMED, and fails with 409 otherwise. It never changes booking state."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Booking is CONFIRMED"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid bearer token"),
+            @ApiResponse(responseCode = "403", description = "Booking belongs to a different customer"),
+            @ApiResponse(responseCode = "404", description = "No such booking"),
+            @ApiResponse(responseCode = "409", description = "Booking isn't CONFIRMED yet — confirm it via POST .../payments instead")
+    })
+    public ResponseEntity<BookingDetailResponse> confirmBooking(@PathVariable("id") Long bookingId) {
+        return ResponseEntity.ok(bookingService.requireConfirmed(bookingId));
+    }
+
     /**
      * Records the payment and, on success, confirms the booking as a
-     * result — there is no separate manual "confirm" step in this API,
-     * since a booking should never be confirmable without having paid.
+     * result — there is no separate state-changing "confirm" step in this
+     * API, since a booking should never be confirmable without having paid.
      */
     @PostMapping("/{id}/payments")
     @Operation(
@@ -116,6 +132,19 @@ public class BookingController {
             @Valid @RequestBody ThreeDsConfirmationRequest request
     ) {
         return ResponseEntity.ok(paymentService.confirmThreeDs(bookingId, paymentId, request.code()));
+    }
+
+    @GetMapping("/me")
+    @Operation(
+            summary = "List the authenticated customer's own bookings",
+            description = "Every booking regardless of status (INITIATED/CONFIRMED/CANCELLED/etc.), newest first."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Zero or more bookings"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid bearer token")
+    })
+    public ResponseEntity<List<BookingSearchResult>> listMyBookings(Authentication authentication) {
+        return ResponseEntity.ok(bookingService.listMyBookings(authentication.getName()));
     }
 
     @GetMapping("/{id}")
