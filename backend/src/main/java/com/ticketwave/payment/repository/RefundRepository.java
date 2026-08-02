@@ -8,4 +8,6 @@ import java.util.List;
 public interface RefundRepository extends JpaRepository<Refund, Long> {
 
     List<Refund> findByPaymentId(Long paymentId);
+
+    List<Refund> findByPaymentBookingIdOrderByIdDesc(Long bookingId);
 }

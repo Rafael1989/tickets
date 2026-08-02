@@ -18,6 +18,7 @@
       <span class="username">{{ username() }}</span>
       <button type="button" (click)="logout()">Log out</button>
     } @else {
+      <a routerLink="/find-booking">Find my booking</a>
       <a routerLink="/login">Log in</a>
       <a routerLink="/register">Register</a>
     }

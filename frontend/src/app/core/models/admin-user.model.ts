@@ -5,6 +5,7 @@ export interface UserResponse {
   username: string;
   email: string;
   role: UserRole;
+  partnerId: number | null;
   createdAt: string;
 }
 
@@ -13,6 +14,8 @@ export interface UserRequest {
   password: string;
   email: string;
   role: UserRole;
+  /** Only meaningful (and accepted by the backend) when role is OPERATOR. */
+  partnerId?: number | null;
 }
 
 export interface RoleUpdateRequest {

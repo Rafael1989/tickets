@@ -89,6 +89,8 @@ describe('CancellationWizardComponent', () => {
       status: 'PENDING',
       processedByUserId: null,
       processedAt: null,
+      overrideDelta: null,
+      overrideReason: null,
     };
     vi.spyOn(refundService, 'initiateRefund').mockReturnValue(of(refund));
     const emitted = vi.fn();

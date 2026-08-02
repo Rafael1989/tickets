@@ -59,3 +59,17 @@ export interface BookingDetailResponse {
   booking: BookingResponse;
   items: BookingItemResponse[];
 }
+
+/** A row in the support omni-search results list — GET /api/bookings/search. */
+export interface BookingSearchResult {
+  bookingId: number;
+  pnr: string;
+  status: BookingStatus;
+  totalAmount: number;
+  bookingTime: string;
+  customerUsername: string;
+  customerEmail: string;
+  origin: string | null;
+  destination: string | null;
+  departureTime: string;
+}

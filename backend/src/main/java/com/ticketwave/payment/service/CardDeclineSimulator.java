@@ -23,16 +23,25 @@ public class CardDeclineSimulator {
             "4000000000000069", "Your card has expired."
     );
 
+    /** The same PAN Stripe's own test mode uses for "requires 3D Secure authentication". */
+    private static final String THREE_DS_REQUIRED_CARD = "4000002500003155";
+
     /**
      * @return the decline reason, if this card number (or absence of one,
      * e.g. for non-card methods) should be declined; empty if it should be
      * approved.
      */
     public Optional<String> declineReasonFor(String cardNumber) {
-        if (cardNumber == null) {
-            return Optional.empty();
-        }
-        String normalized = cardNumber.replace(" ", "");
-        return Optional.ofNullable(DECLINE_REASONS.get(normalized));
+        String normalized = normalize(cardNumber);
+        return normalized == null ? Optional.empty() : Optional.ofNullable(DECLINE_REASONS.get(normalized));
+    }
+
+    /** @return true if this card number should be routed through a 3D Secure challenge before it can be decided. */
+    public boolean requiresThreeDs(String cardNumber) {
+        return THREE_DS_REQUIRED_CARD.equals(normalize(cardNumber));
+    }
+
+    private static String normalize(String cardNumber) {
+        return cardNumber == null ? null : cardNumber.replace(" ", "");
     }
 }

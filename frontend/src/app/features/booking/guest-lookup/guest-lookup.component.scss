@@ -1,0 +1,60 @@
+.lookup-card {
+  max-width: 24rem;
+  margin: 0 auto 1rem;
+
+  input {
+    width: 100%;
+  }
+}
+
+.meta {
+  color: #666;
+  font-size: 0.9rem;
+  margin: 0.2rem 0;
+}
+
+.status {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 1rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+
+  &.initiated {
+    background: #fdebd0;
+    color: #9c640c;
+  }
+
+  &.confirmed {
+    background: #d5f5e3;
+    color: #1e8449;
+  }
+
+  &.cancelled {
+    background: #f2d7d5;
+    color: #922b21;
+  }
+}
+
+.total {
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.hint {
+  color: #888;
+  font-size: 0.85rem;
+}
+
+.item-table {
+  width: 100%;
+  border-collapse: collapse;
+
+  th,
+  td {
+    text-align: left;
+    padding: 0.5rem 0.4rem;
+    border-bottom: 1px solid #eee;
+  }
+}

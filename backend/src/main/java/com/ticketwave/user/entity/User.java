@@ -1,10 +1,14 @@
 package com.ticketwave.user.entity;
 
+import com.ticketwave.partner.entity.Partner;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
@@ -43,6 +47,16 @@ public class User {
 
     @Column(name = "role", nullable = false, length = 20)
     private UserRole role;
+
+    /**
+     * Meaningful only for an OPERATOR account — the partner company it
+     * works for. Null means a standalone operator scoped to only its own
+     * resources, matching pre-multi-tenant behavior. See
+     * catalog.security.TenantScope for how this is used.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "partner_id")
+    private Partner partner;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

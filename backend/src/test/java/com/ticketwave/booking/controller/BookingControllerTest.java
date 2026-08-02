@@ -5,6 +5,7 @@ import com.ticketwave.auth.JwtService;
 import com.ticketwave.auth.security.JwtAuthenticationFilter;
 import com.ticketwave.booking.dto.BookingDetailResponse;
 import com.ticketwave.booking.dto.BookingResponse;
+import com.ticketwave.booking.dto.BookingSearchResult;
 import com.ticketwave.booking.dto.CreateBookingRequest;
 import com.ticketwave.booking.dto.RescheduleQuoteResponse;
 import com.ticketwave.booking.dto.RescheduleRequest;
@@ -131,6 +132,20 @@ class BookingControllerTest {
     }
 
     @Test
+    void confirmThreeDs_withValidToken_returns200() throws Exception {
+        PaymentResponse response = new PaymentResponse(1L, 500L, new BigDecimal("50.00"), "card", "REF-1",
+                PaymentStatus.SUCCEEDED, Instant.now(), null);
+        given(paymentService.confirmThreeDs(500L, 1L, "123456")).willReturn(response);
+
+        mockMvc.perform(post("/api/bookings/500/payments/1/confirm-3ds")
+                        .header("Authorization", bearerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"code\":\"123456\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SUCCEEDED"));
+    }
+
+    @Test
     void previewRefund_withValidToken_returns200() throws Exception {
         RefundQuoteResponse response = new RefundQuoteResponse(500L, new BigDecimal("50.00"), "FULL_REFUND",
                 BigDecimal.ONE, new BigDecimal("50.00"), BigDecimal.ZERO, "card", true);
@@ -145,12 +160,23 @@ class BookingControllerTest {
     @Test
     void initiateRefund_withValidToken_returns201() throws Exception {
         RefundResponse response = new RefundResponse(1L, 1L, new BigDecimal("50.00"), "FULL_REFUND",
-                RefundStatus.PENDING, null, null);
+                RefundStatus.PENDING, null, null, null, null);
         given(refundService.initiateRefund(500L)).willReturn(response);
 
         mockMvc.perform(post("/api/bookings/500/refunds").header("Authorization", bearerToken))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("PENDING"));
+    }
+
+    @Test
+    void listRefunds_withValidToken_returns200() throws Exception {
+        RefundResponse refund = new RefundResponse(1L, 1L, new BigDecimal("50.00"), "FULL_REFUND",
+                RefundStatus.PENDING, null, null, null, null);
+        given(refundService.listRefundsForBooking(500L)).willReturn(List.of(refund));
+
+        mockMvc.perform(get("/api/bookings/500/refunds").header("Authorization", bearerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(1));
     }
 
     @Test
@@ -180,6 +206,27 @@ class BookingControllerTest {
                         .header("Authorization", bearerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.booking.pnr").value("ABC234"));
+    }
+
+    @Test
+    void searchBookings_withValidToken_returns200() throws Exception {
+        BookingSearchResult result = new BookingSearchResult(500L, "ABC234", BookingStatus.CONFIRMED,
+                new BigDecimal("50.00"), Instant.now(), "alice", "alice@example.com", "NYC", "LAX", Instant.now());
+        given(bookingService.searchBookings("alice")).willReturn(List.of(result));
+
+        mockMvc.perform(get("/api/bookings/search").header("Authorization", bearerToken).param("query", "alice"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].pnr").value("ABC234"))
+                .andExpect(jsonPath("$[0].customerEmail").value("alice@example.com"));
+    }
+
+    @Test
+    void lookupByPnrAndEmail_withoutAnyAuthorizationHeader_returns200() throws Exception {
+        given(bookingService.lookupByPnrAndEmail("ABC234", "alice@example.com")).willReturn(detailResponse());
+
+        mockMvc.perform(get("/api/bookings/pnr/ABC234/lookup").param("email", "alice@example.com"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.booking.pnr").value("ABC234"));
     }

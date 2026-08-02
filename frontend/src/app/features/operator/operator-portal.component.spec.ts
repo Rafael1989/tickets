@@ -5,6 +5,7 @@ import { of } from 'rxjs';
 import { RouteResponse } from '../../core/models/route.model';
 import { DriverService } from '../../core/services/driver.service';
 import { NotificationService } from '../../core/services/notification.service';
+import { OperatorReportService } from '../../core/services/operator-report.service';
 import { RouteService } from '../../core/services/route.service';
 import { VehicleService } from '../../core/services/vehicle.service';
 import { OperatorPortalComponent } from './operator-portal.component';
@@ -35,6 +36,9 @@ describe('OperatorPortalComponent', () => {
     vi.spyOn(routeService, 'listMyRoutes').mockReturnValue(of([existingRoute]));
     vi.spyOn(TestBed.inject(VehicleService), 'listMyVehicles').mockReturnValue(of([]));
     vi.spyOn(TestBed.inject(DriverService), 'listMyDrivers').mockReturnValue(of([]));
+    vi.spyOn(TestBed.inject(OperatorReportService), 'getReport').mockReturnValue(
+      of({ routes: [], totalConfirmedBookings: 0, totalRevenue: 0 }),
+    );
 
     notifications = TestBed.inject(NotificationService);
 

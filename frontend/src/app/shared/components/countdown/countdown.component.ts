@@ -19,6 +19,8 @@ export class CountdownComponent {
   private readonly destroyRef = inject(DestroyRef);
 
   readonly expiresAt = input<string | null>(null);
+  /** Drops the pill background/padding for tight spaces (e.g. inside a seat-map button) — the urgent/expired color cues still apply. */
+  readonly bare = input(false);
   readonly expired = output<void>();
 
   private readonly now = signal(Date.now());

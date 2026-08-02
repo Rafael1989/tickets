@@ -42,4 +42,20 @@ describe('RefundService', () => {
     expect(req.request.body).toEqual({ decision: 'APPROVE' });
     req.flush({});
   });
+
+  it('processRefund includes overrideAmount and reason when waiving a fee', () => {
+    service.processRefund(9, 'APPROVE', 100, 'Goodwill').subscribe();
+
+    const req = httpMock.expectOne('/api/refunds/9/process');
+    expect(req.request.body).toEqual({ decision: 'APPROVE', overrideAmount: 100, reason: 'Goodwill' });
+    req.flush({});
+  });
+
+  it('listRefundsForBooking gets /api/bookings/{id}/refunds', () => {
+    service.listRefundsForBooking(500).subscribe();
+
+    const req = httpMock.expectOne('/api/bookings/500/refunds');
+    expect(req.request.method).toBe('GET');
+    req.flush([]);
+  });
 });

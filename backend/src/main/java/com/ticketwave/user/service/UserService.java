@@ -24,17 +24,27 @@ public interface UserService {
 
     /**
      * Admin-only. Creates an account with an explicit role (operator,
-     * support, admin, or customer) — the "partner onboarding" / account
-     * provisioning path self-registration deliberately doesn't offer.
+     * support, admin, or customer) — the account provisioning path
+     * self-registration deliberately doesn't offer. partnerId links an
+     * OPERATOR account to the partner company it works for, so its
+     * staff share one route/vehicle/driver inventory (see
+     * catalog.security.TenantScope); it must be omitted for every other role.
      *
      * @throws com.ticketwave.auth.exception.DuplicateUserException if the username or email is already taken
+     * @throws com.ticketwave.user.exception.PartnerAssignmentNotAllowedException if partnerId is set for a non-OPERATOR role
+     * @throws com.ticketwave.partner.exception.PartnerNotFoundException if partnerId doesn't resolve to a partner
      */
     UserResponse createUser(String actorUsername, UserRequest request);
 
     /**
-     * Admin-only. Reassigns an existing account's role.
+     * Admin-only. Reassigns an existing account's role. An admin cannot
+     * change their own role, and the last remaining ADMIN account cannot be
+     * demoted — both would risk locking every admin out of admin-only
+     * endpoints with no recovery path short of direct DB access.
      *
      * @throws com.ticketwave.user.exception.UserNotFoundException if no such user exists
+     * @throws com.ticketwave.user.exception.SelfRoleChangeException if userId is the caller's own account
+     * @throws com.ticketwave.user.exception.LastAdminDemotionException if userId is the last remaining ADMIN and role isn't ADMIN
      */
     UserResponse updateRole(String actorUsername, Long userId, UserRole role);
 

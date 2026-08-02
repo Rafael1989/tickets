@@ -1,5 +1,6 @@
 package com.ticketwave.user.mapper;
 
+import com.ticketwave.partner.entity.Partner;
 import com.ticketwave.user.dto.UserRequest;
 import com.ticketwave.user.dto.UserResponse;
 import com.ticketwave.user.entity.User;
@@ -16,7 +17,7 @@ class UserMapperTest {
 
     @Test
     void toEntity_copiesUsernameEmailRole_ignoresPasswordHashAndCreatedAt() {
-        UserRequest request = new UserRequest("alice", "password123", "alice@example.com", UserRole.CUSTOMER);
+        UserRequest request = new UserRequest("alice", "password123", "alice@example.com", UserRole.CUSTOMER, null);
 
         User user = mapper.toEntity(request);
 
@@ -26,6 +27,15 @@ class UserMapperTest {
         assertThat(user.getId()).isNull();
         assertThat(user.getPasswordHash()).isNull();
         assertThat(user.getCreatedAt()).isNull();
+    }
+
+    @Test
+    void toEntity_ignoresPartnerEvenWhenPartnerIdIsSupplied() {
+        UserRequest request = new UserRequest("operator1", "password123", "operator1@example.com", UserRole.OPERATOR, 9L);
+
+        User user = mapper.toEntity(request);
+
+        assertThat(user.getPartner()).isNull();
     }
 
     @Test
@@ -55,6 +65,17 @@ class UserMapperTest {
         assertThat(response.username()).isEqualTo("alice");
         assertThat(response.email()).isEqualTo("alice@example.com");
         assertThat(response.role()).isEqualTo(UserRole.CUSTOMER);
+        assertThat(response.partnerId()).isNull();
         assertThat(response.createdAt()).isEqualTo(Instant.parse("2026-08-01T00:00:00Z"));
+    }
+
+    @Test
+    void toResponse_flattensThePartnerIdWhenPresent() {
+        User operator = User.builder().id(2L).username("operator1").role(UserRole.OPERATOR)
+                .partner(Partner.builder().id(9L).build()).createdAt(Instant.now()).build();
+
+        UserResponse response = mapper.toResponse(operator);
+
+        assertThat(response.partnerId()).isEqualTo(9L);
     }
 }

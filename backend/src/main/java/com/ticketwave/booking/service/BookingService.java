@@ -1,8 +1,11 @@
 package com.ticketwave.booking.service;
 
 import com.ticketwave.booking.dto.BookingDetailResponse;
+import com.ticketwave.booking.dto.BookingSearchResult;
 import com.ticketwave.booking.dto.CreateBookingRequest;
 import com.ticketwave.booking.dto.RescheduleRequest;
+
+import java.util.List;
 
 public interface BookingService {
 
@@ -68,6 +71,27 @@ public interface BookingService {
      * @throws com.ticketwave.booking.exception.BookingNotFoundException if no such PNR exists
      */
     BookingDetailResponse getBookingByPnr(String pnr);
+
+    /**
+     * Support/admin omni-search: an exact PNR match, or a substring match
+     * (case-insensitive) against the customer's email or a passenger's full
+     * name. Returns at most the newest 25 matches, newest booking first — a
+     * broad query (e.g. a common last name) is expected to be narrowed by
+     * the agent, not to return an unbounded result set. A blank query
+     * returns no results rather than every booking.
+     */
+    List<BookingSearchResult> searchBookings(String query);
+
+    /**
+     * Public "find my booking" lookup for a guest with no account/session:
+     * PNR plus the email on the booking as a second factor, so a bare PNR
+     * guess can't retrieve someone else's itinerary. Fails the same generic
+     * way whether the PNR doesn't exist or the email doesn't match it,
+     * mirroring auth.exception.InvalidCredentialsException's reasoning.
+     *
+     * @throws com.ticketwave.booking.exception.BookingNotFoundException if no such PNR exists, or email doesn't match
+     */
+    BookingDetailResponse lookupByPnrAndEmail(String pnr, String email);
 
     /**
      * The mechanical seat/schedule swap for an INITIATED or CONFIRMED

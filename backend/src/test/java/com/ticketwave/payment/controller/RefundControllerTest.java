@@ -60,7 +60,7 @@ class RefundControllerTest {
 
     @Test
     void processRefund_withoutAuthorizationHeader_isRejected() throws Exception {
-        RefundDecisionRequest request = new RefundDecisionRequest(RefundDecision.APPROVE);
+        RefundDecisionRequest request = new RefundDecisionRequest(RefundDecision.APPROVE, null, null);
 
         mockMvc.perform(put("/api/refunds/1/process")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -70,9 +70,9 @@ class RefundControllerTest {
 
     @Test
     void processRefund_withValidToken_usesAuthenticatedUsernameAndReturns200() throws Exception {
-        RefundDecisionRequest request = new RefundDecisionRequest(RefundDecision.APPROVE);
-        given(refundService.processRefund(1L, "support1", RefundDecision.APPROVE)).willReturn(
-                new RefundResponse(1L, 1L, new BigDecimal("50.00"), "FULL_REFUND", RefundStatus.PROCESSED, 9L, Instant.now()));
+        RefundDecisionRequest request = new RefundDecisionRequest(RefundDecision.APPROVE, null, null);
+        given(refundService.processRefund(1L, "support1", RefundDecision.APPROVE, null, null)).willReturn(
+                new RefundResponse(1L, 1L, new BigDecimal("50.00"), "FULL_REFUND", RefundStatus.PROCESSED, 9L, Instant.now(), null, null));
 
         mockMvc.perform(put("/api/refunds/1/process")
                         .header("Authorization", bearerToken)
@@ -80,5 +80,32 @@ class RefundControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("PROCESSED"));
+    }
+
+    @Test
+    void processRefund_withOverrideAmountAndReason_passesThemToTheService() throws Exception {
+        RefundDecisionRequest request = new RefundDecisionRequest(RefundDecision.APPROVE, new BigDecimal("100.00"), "Goodwill waiver");
+        given(refundService.processRefund(1L, "support1", RefundDecision.APPROVE, new BigDecimal("100.00"), "Goodwill waiver"))
+                .willReturn(new RefundResponse(1L, 1L, new BigDecimal("100.00"), "FULL_REFUND", RefundStatus.PROCESSED, 9L,
+                        Instant.now(), new BigDecimal("50.00"), "Goodwill waiver"));
+
+        mockMvc.perform(put("/api/refunds/1/process")
+                        .header("Authorization", bearerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.overrideDelta").value(50.00))
+                .andExpect(jsonPath("$.overrideReason").value("Goodwill waiver"));
+    }
+
+    @Test
+    void processRefund_withNegativeOverrideAmount_returns400() throws Exception {
+        RefundDecisionRequest request = new RefundDecisionRequest(RefundDecision.APPROVE, new BigDecimal("-10.00"), "reason");
+
+        mockMvc.perform(put("/api/refunds/1/process")
+                        .header("Authorization", bearerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
     }
 }

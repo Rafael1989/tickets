@@ -24,6 +24,18 @@ export class SearchService {
     if (criteria.departureDate) {
       params = params.set('departureDate', criteria.departureDate);
     }
+    if (criteria.minPrice != null) {
+      params = params.set('minPrice', criteria.minPrice);
+    }
+    if (criteria.maxPrice != null) {
+      params = params.set('maxPrice', criteria.maxPrice);
+    }
+    if (criteria.seatClass) {
+      params = params.set('seatClass', criteria.seatClass);
+    }
+    if (criteria.sortBy) {
+      params = params.set('sortBy', criteria.sortBy);
+    }
 
     return this.http.get<ScheduleSearchResult[]>('/api/search', { params });
   }

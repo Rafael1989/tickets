@@ -69,7 +69,7 @@ class AuthServiceImplTest {
                 .build();
         given(userRepository.save(any(User.class))).willReturn(saved);
 
-        UserResponse expectedResponse = new UserResponse(1L, "alice", "alice@example.com", UserRole.CUSTOMER, saved.getCreatedAt());
+        UserResponse expectedResponse = new UserResponse(1L, "alice", "alice@example.com", UserRole.CUSTOMER, null, saved.getCreatedAt());
         given(userMapper.toResponse(saved)).willReturn(expectedResponse);
 
         UserResponse result = authService.register(request);

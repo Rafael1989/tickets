@@ -72,6 +72,9 @@
           <div class="field">
             <label for="idNumber">ID number</label>
             <input id="idNumber" type="text" formControlName="idNumber" />
+            @if (newPassengerForm.controls.idNumber.touched && newPassengerForm.controls.idNumber.hasError('idFormat')) {
+              <span class="form-error">Doesn't look like a valid ID number for this ID type.</span>
+            }
           </div>
           <button class="btn secondary" type="submit" [disabled]="newPassengerForm.invalid || addingPassenger()">
             {{ addingPassenger() ? 'Saving…' : 'Save passenger' }}
@@ -129,6 +132,32 @@
               <button class="btn" type="button" (click)="retryPayment()">Try again</button>
             </div>
           }
+          @case ('requires3ds') {
+            <div class="payment-result payment-result--challenge" role="status">
+              <h3 tabindex="-1" #resultHeading>Verify your identity</h3>
+              <p>Your card issuer requires 3D Secure authentication for this payment.</p>
+              <form [formGroup]="threeDsForm" (ngSubmit)="confirmThreeDs()">
+                <div class="field">
+                  <label for="threeDsCode">Authentication code</label>
+                  <input
+                    id="threeDsCode"
+                    type="text"
+                    inputmode="numeric"
+                    formControlName="code"
+                    autocomplete="one-time-code"
+                    placeholder="6-digit code"
+                  />
+                  @if (threeDsForm.controls.code.touched && threeDsForm.controls.code.invalid) {
+                    <span class="form-error">Enter the 6-digit code.</span>
+                  }
+                </div>
+                <p class="hint">Demo mode — the simulated code is {{ demoThreeDsCode }}.</p>
+                <button class="btn" type="submit" [disabled]="submittingThreeDs()">
+                  {{ submittingThreeDs() ? 'Verifying…' : 'Verify' }}
+                </button>
+              </form>
+            </div>
+          }
           @default {
             <div class="payment-methods">
               <div class="payment-method-tabs" role="tablist" aria-label="Payment method">
@@ -173,7 +202,9 @@
                         (input)="formatCardNumberInput($event)"
                         placeholder="4242 4242 4242 4242"
                       />
-                      @if (cardForm.controls.cardNumber.touched && cardForm.controls.cardNumber.invalid) {
+                      @if (cardForm.controls.cardNumber.touched && cardForm.controls.cardNumber.hasError('luhn')) {
+                        <span class="form-error">That card number doesn't look valid — check the digits.</span>
+                      } @else if (cardForm.controls.cardNumber.touched && cardForm.controls.cardNumber.invalid) {
                         <span class="form-error">Enter a card number.</span>
                       }
                     </div>
@@ -188,7 +219,8 @@
                       </div>
                     </div>
                     <p class="hint">
-                      Demo mode — {{ demoApproveCard }} approves · {{ demoDeclineCard }} declines.
+                      Demo mode — {{ demoApproveCard }} approves · {{ demoDeclineCard }} declines ·
+                      {{ demoThreeDsCard }} requires 3D Secure.
                     </p>
                     <button class="btn" type="submit" [disabled]="paymentState() === 'processing'">
                       {{ paymentState() === 'processing' ? 'Processing…' : 'Pay now' }}

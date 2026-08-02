@@ -4,8 +4,11 @@ import com.ticketwave.catalog.dto.ScheduleSearchCriteria;
 import com.ticketwave.catalog.entity.RouteType;
 import com.ticketwave.catalog.entity.Schedule;
 import com.ticketwave.catalog.entity.ScheduleStatus;
+import com.ticketwave.catalog.entity.Seat;
+import jakarta.persistence.criteria.Subquery;
 import org.springframework.data.jpa.domain.Specification;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -22,9 +25,40 @@ public final class ScheduleSpecifications {
                 hasDestination(criteria.destination()),
                 hasVenue(criteria.venue()),
                 departsOn(criteria.departureDate()),
+                hasMinPrice(criteria.minPrice()),
+                hasMaxPrice(criteria.maxPrice()),
+                hasSeatClass(criteria.seatClass()),
                 isNotCancelled(),
                 departsInFuture(now)
         );
+    }
+
+    public static Specification<Schedule> hasMinPrice(BigDecimal minPrice) {
+        return (root, query, cb) -> minPrice == null
+                ? null
+                : cb.greaterThanOrEqualTo(root.get("baseFare"), minPrice);
+    }
+
+    public static Specification<Schedule> hasMaxPrice(BigDecimal maxPrice) {
+        return (root, query, cb) -> maxPrice == null
+                ? null
+                : cb.lessThanOrEqualTo(root.get("baseFare"), maxPrice);
+    }
+
+    /** Matches a schedule with at least one seat of the given class, in any status. */
+    public static Specification<Schedule> hasSeatClass(String seatClass) {
+        return (root, query, cb) -> {
+            if (isBlank(seatClass)) {
+                return null;
+            }
+            Subquery<Long> subquery = query.subquery(Long.class);
+            var seatRoot = subquery.from(Seat.class);
+            subquery.select(seatRoot.get("id"))
+                    .where(cb.and(
+                            cb.equal(seatRoot.get("schedule"), root),
+                            cb.equal(cb.lower(seatRoot.get("seatClass")), seatClass.trim().toLowerCase())));
+            return cb.exists(subquery);
+        };
     }
 
     public static Specification<Schedule> hasType(RouteType type) {

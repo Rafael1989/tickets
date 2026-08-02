@@ -18,6 +18,10 @@ import com.ticketwave.catalog.repository.DriverRepository;
 import com.ticketwave.catalog.repository.RouteRepository;
 import com.ticketwave.catalog.repository.ScheduleRepository;
 import com.ticketwave.catalog.repository.VehicleRepository;
+import com.ticketwave.catalog.security.TenantScope;
+import com.ticketwave.user.entity.User;
+import com.ticketwave.user.exception.UserNotFoundException;
+import com.ticketwave.user.repository.UserRepository;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,35 +39,43 @@ public class ScheduleManagementServiceImpl implements ScheduleManagementService 
     private final ScheduleRepository scheduleRepository;
     private final VehicleRepository vehicleRepository;
     private final DriverRepository driverRepository;
+    private final UserRepository userRepository;
     private final ScheduleMapper scheduleMapper;
     private final AuditService auditService;
+    private final TenantScope tenantScope;
 
     public ScheduleManagementServiceImpl(
             RouteRepository routeRepository,
             ScheduleRepository scheduleRepository,
             VehicleRepository vehicleRepository,
             DriverRepository driverRepository,
+            UserRepository userRepository,
             ScheduleMapper scheduleMapper,
-            AuditService auditService
+            AuditService auditService,
+            TenantScope tenantScope
     ) {
         this.routeRepository = routeRepository;
         this.scheduleRepository = scheduleRepository;
         this.vehicleRepository = vehicleRepository;
         this.driverRepository = driverRepository;
+        this.userRepository = userRepository;
         this.scheduleMapper = scheduleMapper;
         this.auditService = auditService;
+        this.tenantScope = tenantScope;
     }
 
     @Override
     @PreAuthorize("hasRole('OPERATOR')")
     @Transactional
     public ScheduleResponse createSchedule(String operatorUsername, ScheduleRequest request) {
+        User caller = userRepository.findByUsername(operatorUsername)
+                .orElseThrow(() -> new UserNotFoundException(operatorUsername));
         Route route = routeRepository.findById(request.routeId())
-                .filter(candidate -> candidate.getOperator().getUsername().equals(operatorUsername))
+                .filter(candidate -> tenantScope.isSameTenant(candidate.getOperator(), caller))
                 .orElseThrow(() -> new RouteNotFoundException(request.routeId()));
 
-        Vehicle vehicle = resolveVehicle(operatorUsername, request.vehicleId());
-        Driver driver = resolveDriver(operatorUsername, request.driverId());
+        Vehicle vehicle = resolveVehicle(caller, request.vehicleId());
+        Driver driver = resolveDriver(caller, request.driverId());
         requireNoVehicleConflict(vehicle, NO_SCHEDULE_TO_EXCLUDE, request.departureTime(), request.arrivalTime());
         requireNoDriverConflict(driver, NO_SCHEDULE_TO_EXCLUDE, request.departureTime(), request.arrivalTime());
 
@@ -90,12 +102,14 @@ public class ScheduleManagementServiceImpl implements ScheduleManagementService 
     @PreAuthorize("hasRole('OPERATOR')")
     @Transactional
     public ScheduleResponse updateSchedule(String operatorUsername, Long scheduleId, ScheduleRequest request) {
+        User caller = userRepository.findByUsername(operatorUsername)
+                .orElseThrow(() -> new UserNotFoundException(operatorUsername));
         Schedule schedule = scheduleRepository.findById(scheduleId)
-                .filter(candidate -> candidate.getRoute().getOperator().getUsername().equals(operatorUsername))
+                .filter(candidate -> tenantScope.isSameTenant(candidate.getRoute().getOperator(), caller))
                 .orElseThrow(() -> new ScheduleNotFoundException(scheduleId));
 
-        Vehicle vehicle = resolveVehicle(operatorUsername, request.vehicleId());
-        Driver driver = resolveDriver(operatorUsername, request.driverId());
+        Vehicle vehicle = resolveVehicle(caller, request.vehicleId());
+        Driver driver = resolveDriver(caller, request.driverId());
         requireNoVehicleConflict(vehicle, scheduleId, request.departureTime(), request.arrivalTime());
         requireNoDriverConflict(driver, scheduleId, request.departureTime(), request.arrivalTime());
 
@@ -118,8 +132,10 @@ public class ScheduleManagementServiceImpl implements ScheduleManagementService 
     @PreAuthorize("hasRole('OPERATOR')")
     @Transactional(readOnly = true)
     public List<ScheduleResponse> listSchedulesForRoute(String operatorUsername, Long routeId) {
+        User caller = userRepository.findByUsername(operatorUsername)
+                .orElseThrow(() -> new UserNotFoundException(operatorUsername));
         Route route = routeRepository.findById(routeId)
-                .filter(candidate -> candidate.getOperator().getUsername().equals(operatorUsername))
+                .filter(candidate -> tenantScope.isSameTenant(candidate.getOperator(), caller))
                 .orElseThrow(() -> new RouteNotFoundException(routeId));
 
         return scheduleRepository.findByRouteId(route.getId()).stream()
@@ -127,21 +143,21 @@ public class ScheduleManagementServiceImpl implements ScheduleManagementService 
                 .toList();
     }
 
-    private Vehicle resolveVehicle(String operatorUsername, Long vehicleId) {
+    private Vehicle resolveVehicle(User caller, Long vehicleId) {
         if (vehicleId == null) {
             return null;
         }
         return vehicleRepository.findById(vehicleId)
-                .filter(candidate -> candidate.getOperator().getUsername().equals(operatorUsername))
+                .filter(candidate -> tenantScope.isSameTenant(candidate.getOperator(), caller))
                 .orElseThrow(() -> new VehicleNotFoundException(vehicleId));
     }
 
-    private Driver resolveDriver(String operatorUsername, Long driverId) {
+    private Driver resolveDriver(User caller, Long driverId) {
         if (driverId == null) {
             return null;
         }
         return driverRepository.findById(driverId)
-                .filter(candidate -> candidate.getOperator().getUsername().equals(operatorUsername))
+                .filter(candidate -> tenantScope.isSameTenant(candidate.getOperator(), caller))
                 .orElseThrow(() -> new DriverNotFoundException(driverId));
     }
 

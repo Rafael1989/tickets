@@ -3,6 +3,7 @@ import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import {
   BookingDetailResponse,
+  BookingSearchResult,
   CreateBookingRequest,
   RescheduleQuoteResponse,
   RescheduleRequest,
@@ -24,6 +25,14 @@ export class BookingService {
     return this.http.get<BookingDetailResponse>(`/api/bookings/pnr/${encodeURIComponent(pnr)}`);
   }
 
+  /** Public guest lookup: PNR + the email on the booking as a second factor. */
+  lookupByPnrAndEmail(pnr: string, email: string): Observable<BookingDetailResponse> {
+    const params = new URLSearchParams({ email });
+    return this.http.get<BookingDetailResponse>(
+      `/api/bookings/pnr/${encodeURIComponent(pnr)}/lookup?${params.toString()}`,
+    );
+  }
+
   rescheduleBooking(bookingId: number, request: RescheduleRequest): Observable<BookingDetailResponse> {
     return this.http.put<BookingDetailResponse>(`/api/bookings/${bookingId}/reschedule`, request);
   }
@@ -35,5 +44,11 @@ export class BookingService {
       params.append('seatIds', String(seatId));
     }
     return this.http.get<RescheduleQuoteResponse>(`/api/bookings/${bookingId}/reschedule-quote?${params.toString()}`);
+  }
+
+  /** Support/admin omni-search by PNR, customer email, or passenger name. */
+  searchBookings(query: string): Observable<BookingSearchResult[]> {
+    const params = new URLSearchParams({ query });
+    return this.http.get<BookingSearchResult[]>(`/api/bookings/search?${params.toString()}`);
   }
 }

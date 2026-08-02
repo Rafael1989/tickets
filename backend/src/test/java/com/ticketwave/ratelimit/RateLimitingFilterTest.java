@@ -1,5 +1,7 @@
 package com.ticketwave.ratelimit;
 
+import com.ticketwave.auth.JwtService;
+import com.ticketwave.config.JwtProperties;
 import com.ticketwave.config.RateLimitProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockFilterChain;
@@ -15,6 +17,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class RateLimitingFilterTest {
 
+    private static final JwtService JWT_SERVICE =
+            new JwtService(new JwtProperties("test-only-secret-key-at-least-32-bytes-long", 15, 10080));
+
     private static RateLimiter newLimiter(int requestsPerWindow) {
         return new RateLimiter(new RateLimitProperties(requestsPerWindow, 60), Clock.fixed(Instant.now(), ZoneOffset.UTC));
     }
@@ -26,7 +31,7 @@ class RateLimitingFilterTest {
 
     @Test
     void matchingPath_underLimit_passesThroughEveryTime() throws Exception {
-        RateLimitingFilter filter = new RateLimitingFilter(newLimiter(2), List.of("/api/search"), 60);
+        RateLimitingFilter filter = new RateLimitingFilter(newLimiter(2), List.of("/api/search"), List.of("/api/partner/**"), JWT_SERVICE, 60);
 
         for (int i = 0; i < 2; i++) {
             MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/search");
@@ -41,7 +46,7 @@ class RateLimitingFilterTest {
 
     @Test
     void matchingPath_overLimit_returns429WithRetryAfterAndJsonBody() throws Exception {
-        RateLimitingFilter filter = new RateLimitingFilter(newLimiter(1), List.of("/api/search"), 60);
+        RateLimitingFilter filter = new RateLimitingFilter(newLimiter(1), List.of("/api/search"), List.of("/api/partner/**"), JWT_SERVICE, 60);
 
         MockHttpServletRequest first = new MockHttpServletRequest("GET", "/api/search");
         first.setRemoteAddr("10.0.0.2");
@@ -59,7 +64,7 @@ class RateLimitingFilterTest {
 
     @Test
     void differentClientIps_areRateLimitedIndependently() throws Exception {
-        RateLimitingFilter filter = new RateLimitingFilter(newLimiter(1), List.of("/api/search"), 60);
+        RateLimitingFilter filter = new RateLimitingFilter(newLimiter(1), List.of("/api/search"), List.of("/api/partner/**"), JWT_SERVICE, 60);
 
         MockHttpServletRequest clientA1 = new MockHttpServletRequest("GET", "/api/search");
         clientA1.setRemoteAddr("10.0.0.3");
@@ -80,7 +85,7 @@ class RateLimitingFilterTest {
 
     @Test
     void matchingPath_withNonEmptyContextPath_stripsContextPathBeforeMatching() throws Exception {
-        RateLimitingFilter filter = new RateLimitingFilter(newLimiter(1), List.of("/api/search"), 60);
+        RateLimitingFilter filter = new RateLimitingFilter(newLimiter(1), List.of("/api/search"), List.of("/api/partner/**"), JWT_SERVICE, 60);
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/ticketwave/api/search");
         request.setContextPath("/ticketwave");
@@ -99,7 +104,7 @@ class RateLimitingFilterTest {
 
     @Test
     void matchingPath_withNullContextPath_stillMatchesOnTheRawUri() throws Exception {
-        RateLimitingFilter filter = new RateLimitingFilter(newLimiter(1), List.of("/api/search"), 60);
+        RateLimitingFilter filter = new RateLimitingFilter(newLimiter(1), List.of("/api/search"), List.of("/api/partner/**"), JWT_SERVICE, 60);
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/search");
         request.setContextPath(null);
@@ -120,7 +125,7 @@ class RateLimitingFilterTest {
     void requestUri_notActuallyPrefixedByItsOwnContextPath_fallsBackToTheRawUri() throws Exception {
         // Defensive edge case: contextPath is non-empty but the request URI
         // doesn't start with it, so the strip is skipped and the raw URI is matched instead.
-        RateLimitingFilter filter = new RateLimitingFilter(newLimiter(1), List.of("/api/search"), 60);
+        RateLimitingFilter filter = new RateLimitingFilter(newLimiter(1), List.of("/api/search"), List.of("/api/partner/**"), JWT_SERVICE, 60);
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/search");
         request.setContextPath("/other-app");
@@ -139,7 +144,7 @@ class RateLimitingFilterTest {
 
     @Test
     void nonMatchingPath_isNeverRateLimitedRegardlessOfVolume() throws Exception {
-        RateLimitingFilter filter = new RateLimitingFilter(newLimiter(1), List.of("/api/search"), 60);
+        RateLimitingFilter filter = new RateLimitingFilter(newLimiter(1), List.of("/api/search"), List.of("/api/partner/**"), JWT_SERVICE, 60);
 
         for (int i = 0; i < 5; i++) {
             MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/bookings");
@@ -150,5 +155,79 @@ class RateLimitingFilterTest {
 
             assertThat(response.getStatus()).isEqualTo(200);
         }
+    }
+
+    @Test
+    void partnerKeyedPath_withValidPartnerApiToken_isRateLimitedByClientIdNotIp() throws Exception {
+        RateLimitingFilter filter = new RateLimitingFilter(newLimiter(1), List.of(), List.of("/api/partner/**"), JWT_SERVICE, 60);
+        String tokenA = JWT_SERVICE.generateAccessToken("pk_clientA", List.of("PARTNER_API"));
+        String tokenB = JWT_SERVICE.generateAccessToken("pk_clientB", List.of("PARTNER_API"));
+
+        MockHttpServletRequest first = new MockHttpServletRequest("GET", "/api/partner/routes");
+        first.addHeader("Authorization", "Bearer " + tokenA);
+        first.setRemoteAddr("10.0.0.9"); // same IP as the second request...
+        performRequest(filter, first, new MockHttpServletResponse());
+
+        MockHttpServletRequest second = new MockHttpServletRequest("GET", "/api/partner/routes");
+        second.addHeader("Authorization", "Bearer " + tokenB); // ...but a different partner token
+        second.setRemoteAddr("10.0.0.9");
+        MockHttpServletResponse secondResponse = new MockHttpServletResponse();
+        performRequest(filter, second, secondResponse);
+
+        assertThat(secondResponse.getStatus()).isEqualTo(200); // clientB has its own bucket, unaffected by clientA
+    }
+
+    @Test
+    void partnerKeyedPath_sameClientIdTwice_sharesOneBucket() throws Exception {
+        RateLimitingFilter filter = new RateLimitingFilter(newLimiter(1), List.of(), List.of("/api/partner/**"), JWT_SERVICE, 60);
+        String token = JWT_SERVICE.generateAccessToken("pk_clientA", List.of("PARTNER_API"));
+
+        MockHttpServletRequest first = new MockHttpServletRequest("GET", "/api/partner/routes");
+        first.addHeader("Authorization", "Bearer " + token);
+        first.setRemoteAddr("10.0.0.10");
+        performRequest(filter, first, new MockHttpServletResponse());
+
+        MockHttpServletRequest second = new MockHttpServletRequest("GET", "/api/partner/routes");
+        second.addHeader("Authorization", "Bearer " + token);
+        second.setRemoteAddr("10.0.0.11"); // different IP, same clientId
+        MockHttpServletResponse secondResponse = new MockHttpServletResponse();
+        performRequest(filter, second, secondResponse);
+
+        assertThat(secondResponse.getStatus()).isEqualTo(429);
+    }
+
+    @Test
+    void partnerKeyedPath_withoutAValidToken_fallsBackToIpKeying() throws Exception {
+        RateLimitingFilter filter = new RateLimitingFilter(newLimiter(1), List.of(), List.of("/api/partner/**"), JWT_SERVICE, 60);
+
+        MockHttpServletRequest first = new MockHttpServletRequest("GET", "/api/partner/routes");
+        first.setRemoteAddr("10.0.0.12");
+        performRequest(filter, first, new MockHttpServletResponse());
+
+        MockHttpServletRequest second = new MockHttpServletRequest("GET", "/api/partner/routes");
+        second.setRemoteAddr("10.0.0.12");
+        MockHttpServletResponse secondResponse = new MockHttpServletResponse();
+        performRequest(filter, second, secondResponse);
+
+        assertThat(secondResponse.getStatus()).isEqualTo(429); // same IP, no token to key by instead
+    }
+
+    @Test
+    void partnerKeyedPath_withNonPartnerApiToken_fallsBackToIpKeying() throws Exception {
+        RateLimitingFilter filter = new RateLimitingFilter(newLimiter(1), List.of(), List.of("/api/partner/**"), JWT_SERVICE, 60);
+        String customerToken = JWT_SERVICE.generateAccessToken("alice", List.of("CUSTOMER"));
+
+        MockHttpServletRequest first = new MockHttpServletRequest("GET", "/api/partner/routes");
+        first.addHeader("Authorization", "Bearer " + customerToken);
+        first.setRemoteAddr("10.0.0.13");
+        performRequest(filter, first, new MockHttpServletResponse());
+
+        MockHttpServletRequest second = new MockHttpServletRequest("GET", "/api/partner/routes");
+        second.addHeader("Authorization", "Bearer " + customerToken);
+        second.setRemoteAddr("10.0.0.13");
+        MockHttpServletResponse secondResponse = new MockHttpServletResponse();
+        performRequest(filter, second, secondResponse);
+
+        assertThat(secondResponse.getStatus()).isEqualTo(429); // CUSTOMER role isn't PARTNER_API, so IP keying applies
     }
 }

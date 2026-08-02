@@ -4,11 +4,15 @@ import com.ticketwave.audit.service.AuditService;
 import com.ticketwave.catalog.entity.Route;
 import com.ticketwave.catalog.exception.RouteNotFoundException;
 import com.ticketwave.catalog.repository.RouteRepository;
+import com.ticketwave.catalog.security.TenantScope;
 import com.ticketwave.pricing.dto.FareRuleRequest;
 import com.ticketwave.pricing.dto.FareRuleResponse;
 import com.ticketwave.pricing.entity.FareRule;
 import com.ticketwave.pricing.mapper.FareRuleMapper;
 import com.ticketwave.pricing.repository.FareRuleRepository;
+import com.ticketwave.user.entity.User;
+import com.ticketwave.user.exception.UserNotFoundException;
+import com.ticketwave.user.repository.UserRepository;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,19 +26,25 @@ public class FareRuleServiceImpl implements FareRuleService {
 
     private final RouteRepository routeRepository;
     private final FareRuleRepository fareRuleRepository;
+    private final UserRepository userRepository;
     private final FareRuleMapper fareRuleMapper;
     private final AuditService auditService;
+    private final TenantScope tenantScope;
 
     public FareRuleServiceImpl(
             RouteRepository routeRepository,
             FareRuleRepository fareRuleRepository,
+            UserRepository userRepository,
             FareRuleMapper fareRuleMapper,
-            AuditService auditService
+            AuditService auditService,
+            TenantScope tenantScope
     ) {
         this.routeRepository = routeRepository;
         this.fareRuleRepository = fareRuleRepository;
+        this.userRepository = userRepository;
         this.fareRuleMapper = fareRuleMapper;
         this.auditService = auditService;
+        this.tenantScope = tenantScope;
     }
 
     @Override
@@ -82,8 +92,10 @@ public class FareRuleServiceImpl implements FareRuleService {
     }
 
     private Route requireOwnedRoute(String operatorUsername, Long routeId) {
+        User caller = userRepository.findByUsername(operatorUsername)
+                .orElseThrow(() -> new UserNotFoundException(operatorUsername));
         return routeRepository.findById(routeId)
-                .filter(candidate -> candidate.getOperator().getUsername().equals(operatorUsername))
+                .filter(candidate -> tenantScope.isSameTenant(candidate.getOperator(), caller))
                 .orElseThrow(() -> new RouteNotFoundException(routeId));
     }
 }

@@ -12,6 +12,8 @@ import com.ticketwave.user.dto.UpdateEmailRequest;
 import com.ticketwave.user.dto.UserRequest;
 import com.ticketwave.user.dto.UserResponse;
 import com.ticketwave.user.entity.UserRole;
+import com.ticketwave.user.exception.LastAdminDemotionException;
+import com.ticketwave.user.exception.SelfRoleChangeException;
 import com.ticketwave.user.exception.UserNotFoundException;
 import com.ticketwave.user.service.UserService;
 import org.junit.jupiter.api.BeforeEach;
@@ -87,7 +89,7 @@ class UserControllerTest {
     @Test
     void getCurrentUser_withValidToken_usesAuthenticatedUsernameAndReturns200() throws Exception {
         given(userService.getCurrentUser("admin1")).willReturn(
-                new UserResponse(1L, "admin1", "admin1@example.com", UserRole.ADMIN, Instant.now()));
+                new UserResponse(1L, "admin1", "admin1@example.com", UserRole.ADMIN, null, Instant.now()));
 
         mockMvc.perform(get("/api/users/me").header("Authorization", bearerToken))
                 .andExpect(status().isOk())
@@ -105,7 +107,7 @@ class UserControllerTest {
     @Test
     void updateCurrentEmail_withValidToken_usesAuthenticatedUsernameAndReturns200() throws Exception {
         given(userService.updateCurrentEmail(eq("admin1"), any())).willReturn(
-                new UserResponse(1L, "admin1", "new@example.com", UserRole.ADMIN, Instant.now()));
+                new UserResponse(1L, "admin1", "new@example.com", UserRole.ADMIN, null, Instant.now()));
 
         mockMvc.perform(put("/api/users/me/email")
                         .header("Authorization", bearerToken)
@@ -160,7 +162,7 @@ class UserControllerTest {
     @Test
     void listUsers_withValidToken_returns200() throws Exception {
         given(userService.listUsers()).willReturn(List.of(
-                new UserResponse(1L, "alice", "alice@example.com", UserRole.CUSTOMER, Instant.now())));
+                new UserResponse(1L, "alice", "alice@example.com", UserRole.CUSTOMER, null, Instant.now())));
 
         mockMvc.perform(get("/api/users").header("Authorization", bearerToken))
                 .andExpect(status().isOk())
@@ -170,7 +172,7 @@ class UserControllerTest {
     @Test
     void getUser_withValidToken_returns200() throws Exception {
         given(userService.getUser(1L)).willReturn(
-                new UserResponse(1L, "alice", "alice@example.com", UserRole.CUSTOMER, Instant.now()));
+                new UserResponse(1L, "alice", "alice@example.com", UserRole.CUSTOMER, null, Instant.now()));
 
         mockMvc.perform(get("/api/users/1").header("Authorization", bearerToken))
                 .andExpect(status().isOk())
@@ -187,9 +189,9 @@ class UserControllerTest {
 
     @Test
     void createUser_withValidToken_usesAuthenticatedUsernameAndReturns201() throws Exception {
-        UserRequest request = new UserRequest("operator2", "password123", "operator2@example.com", UserRole.OPERATOR);
+        UserRequest request = new UserRequest("operator2", "password123", "operator2@example.com", UserRole.OPERATOR, null);
         given(userService.createUser(eq("admin1"), any())).willReturn(
-                new UserResponse(3L, "operator2", "operator2@example.com", UserRole.OPERATOR, Instant.now()));
+                new UserResponse(3L, "operator2", "operator2@example.com", UserRole.OPERATOR, null, Instant.now()));
 
         mockMvc.perform(post("/api/users")
                         .header("Authorization", bearerToken)
@@ -203,7 +205,7 @@ class UserControllerTest {
     void updateRole_withValidToken_returns200() throws Exception {
         RoleUpdateRequest request = new RoleUpdateRequest(UserRole.SUPPORT);
         given(userService.updateRole("admin1", 1L, UserRole.SUPPORT)).willReturn(
-                new UserResponse(1L, "alice", "alice@example.com", UserRole.SUPPORT, Instant.now()));
+                new UserResponse(1L, "alice", "alice@example.com", UserRole.SUPPORT, null, Instant.now()));
 
         mockMvc.perform(put("/api/users/1/role")
                         .header("Authorization", bearerToken)
@@ -211,5 +213,33 @@ class UserControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.role").value("SUPPORT"));
+    }
+
+    @Test
+    void updateRole_targetingOwnAccount_returns409() throws Exception {
+        RoleUpdateRequest request = new RoleUpdateRequest(UserRole.SUPPORT);
+        given(userService.updateRole("admin1", 1L, UserRole.SUPPORT))
+                .willThrow(new SelfRoleChangeException(1L));
+
+        mockMvc.perform(put("/api/users/1/role")
+                        .header("Authorization", bearerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("SELF_ROLE_CHANGE_NOT_ALLOWED"));
+    }
+
+    @Test
+    void updateRole_demotingTheLastAdmin_returns409() throws Exception {
+        RoleUpdateRequest request = new RoleUpdateRequest(UserRole.SUPPORT);
+        given(userService.updateRole("admin1", 2L, UserRole.SUPPORT))
+                .willThrow(new LastAdminDemotionException(2L));
+
+        mockMvc.perform(put("/api/users/2/role")
+                        .header("Authorization", bearerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("LAST_ADMIN_DEMOTION_NOT_ALLOWED"));
     }
 }

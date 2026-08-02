@@ -42,7 +42,9 @@ public class SecurityConfig {
                         .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST, PublicEndpoints.AUTH).permitAll()
+                        .requestMatchers(HttpMethod.POST, PublicEndpoints.PARTNER_AUTH).permitAll()
                         .requestMatchers(HttpMethod.GET, PublicEndpoints.CATALOG).permitAll()
+                        .requestMatchers(HttpMethod.GET, PublicEndpoints.BOOKING_LOOKUP).permitAll()
                         .requestMatchers(HttpMethod.POST, PublicEndpoints.PROMO).permitAll()
                         .requestMatchers(PUBLIC_DOC_ENDPOINTS).permitAll()
                         .anyRequest().authenticated()

@@ -15,7 +15,21 @@ export class RefundService {
     return this.http.post<RefundResponse>(`/api/bookings/${bookingId}/refunds`, {});
   }
 
-  processRefund(refundId: number, decision: RefundDecision): Observable<RefundResponse> {
-    return this.http.put<RefundResponse>(`/api/refunds/${refundId}/process`, { decision });
+  /** Newest first; typically zero or one, but a downward reschedule can also leave a RESCHEDULE_CREDIT refund. */
+  listRefundsForBooking(bookingId: number): Observable<RefundResponse[]> {
+    return this.http.get<RefundResponse[]>(`/api/bookings/${bookingId}/refunds`);
+  }
+
+  /**
+   * overrideAmount/reason waive part or all of the policy-computed fee on
+   * approval — omit both for an ordinary approve/reject.
+   */
+  processRefund(
+    refundId: number,
+    decision: RefundDecision,
+    overrideAmount?: number | null,
+    reason?: string | null,
+  ): Observable<RefundResponse> {
+    return this.http.put<RefundResponse>(`/api/refunds/${refundId}/process`, { decision, overrideAmount, reason });
   }
 }

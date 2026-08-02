@@ -55,7 +55,11 @@ public class DriverServiceImpl implements DriverService {
         User operator = userRepository.findByUsername(operatorUsername)
                 .orElseThrow(() -> new UserNotFoundException(operatorUsername));
 
-        return driverRepository.findByOperatorId(operator.getId()).stream()
+        List<Driver> drivers = operator.getPartner() != null
+                ? driverRepository.findByOperatorPartnerId(operator.getPartner().getId())
+                : driverRepository.findByOperatorId(operator.getId());
+
+        return drivers.stream()
                 .map(driverMapper::toResponse)
                 .toList();
     }

@@ -10,7 +10,9 @@ import com.ticketwave.payment.dto.PaymentRequest;
 import com.ticketwave.payment.dto.PaymentResponse;
 import com.ticketwave.payment.entity.Payment;
 import com.ticketwave.payment.entity.PaymentStatus;
+import com.ticketwave.payment.exception.InvalidPaymentStateException;
 import com.ticketwave.payment.exception.PaymentAmountMismatchException;
+import com.ticketwave.payment.exception.PaymentNotFoundException;
 import com.ticketwave.payment.mapper.PaymentMapper;
 import com.ticketwave.payment.repository.PaymentRepository;
 import org.junit.jupiter.api.Test;
@@ -196,5 +198,97 @@ class PaymentServiceImplTest {
         assertThatThrownBy(() -> paymentService.recordPayment(500L,
                 new PaymentRequest(new BigDecimal("50.00"), "card", "REF-1", null)))
                 .isSameAs(original);
+    }
+
+    @Test
+    void recordPayment_withThreeDsRequiredCard_savesPending3dsAndLeavesBookingUnsettled() {
+        Booking booking = booking(500L, BookingStatus.INITIATED, new BigDecimal("50.00"));
+        given(paymentRepository.findByReference("REF-1")).willReturn(Optional.empty());
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+        given(cardDeclineSimulator.requiresThreeDs("4000002500003155")).willReturn(true);
+        given(paymentRepository.save(any(Payment.class))).willAnswer(invocation -> invocation.getArgument(0));
+        PaymentResponse expectedResponse = new PaymentResponse(1L, 500L, new BigDecimal("50.00"), "card", "REF-1",
+                PaymentStatus.PENDING_3DS, null, null);
+        given(paymentMapper.toResponse(any(Payment.class))).willReturn(expectedResponse);
+
+        PaymentResponse response = paymentService.recordPayment(500L,
+                new PaymentRequest(new BigDecimal("50.00"), "card", "REF-1", "4000002500003155"));
+
+        assertThat(response).isEqualTo(expectedResponse);
+        verify(bookingService).markPaymentProcessing(500L);
+        verify(bookingService, never()).confirmBooking(any());
+        verify(bookingService, never()).failBooking(any());
+        verify(cardDeclineSimulator, never()).declineReasonFor(any());
+
+        var captor = org.mockito.ArgumentCaptor.forClass(Payment.class);
+        verify(paymentRepository).save(captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo(PaymentStatus.PENDING_3DS);
+        assertThat(captor.getValue().getPaidAt()).isNull();
+        assertThat(captor.getValue().getFailureReason()).isNull();
+    }
+
+    @Test
+    void confirmThreeDs_withValidCode_succeedsPaymentAndConfirmsBooking() {
+        Booking booking = Booking.builder().id(500L).build();
+        Payment payment = Payment.builder().id(1L).booking(booking).status(PaymentStatus.PENDING_3DS).build();
+        given(paymentRepository.findById(1L)).willReturn(Optional.of(payment));
+        given(paymentMapper.toResponse(payment)).willReturn(
+                new PaymentResponse(1L, 500L, new BigDecimal("50.00"), "card", "REF-1", PaymentStatus.SUCCEEDED, Instant.now(), null));
+
+        PaymentResponse response = paymentService.confirmThreeDs(500L, 1L, "123456");
+
+        assertThat(response.status()).isEqualTo(PaymentStatus.SUCCEEDED);
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED);
+        assertThat(payment.getPaidAt()).isNotNull();
+        verify(bookingService).confirmBooking(500L);
+        verify(bookingService, never()).failBooking(any());
+    }
+
+    @Test
+    void confirmThreeDs_withWrongCode_failsPaymentAndFailsBooking() {
+        Booking booking = Booking.builder().id(500L).build();
+        Payment payment = Payment.builder().id(1L).booking(booking).status(PaymentStatus.PENDING_3DS).build();
+        given(paymentRepository.findById(1L)).willReturn(Optional.of(payment));
+        given(paymentMapper.toResponse(payment)).willReturn(
+                new PaymentResponse(1L, 500L, new BigDecimal("50.00"), "card", "REF-1", PaymentStatus.FAILED, null, "3D Secure authentication failed."));
+
+        PaymentResponse response = paymentService.confirmThreeDs(500L, 1L, "000000");
+
+        assertThat(response.status()).isEqualTo(PaymentStatus.FAILED);
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.FAILED);
+        assertThat(payment.getFailureReason()).isEqualTo("3D Secure authentication failed.");
+        verify(bookingService).failBooking(500L);
+        verify(bookingService, never()).confirmBooking(any());
+    }
+
+    @Test
+    void confirmThreeDs_whenPaymentBelongsToDifferentBooking_throwsPaymentNotFoundException() {
+        Booking booking = Booking.builder().id(999L).build();
+        Payment payment = Payment.builder().id(1L).booking(booking).status(PaymentStatus.PENDING_3DS).build();
+        given(paymentRepository.findById(1L)).willReturn(Optional.of(payment));
+
+        assertThatThrownBy(() -> paymentService.confirmThreeDs(500L, 1L, "123456"))
+                .isInstanceOf(PaymentNotFoundException.class);
+    }
+
+    @Test
+    void confirmThreeDs_whenPaymentMissing_throwsPaymentNotFoundException() {
+        given(paymentRepository.findById(99L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> paymentService.confirmThreeDs(500L, 99L, "123456"))
+                .isInstanceOf(PaymentNotFoundException.class);
+    }
+
+    @Test
+    void confirmThreeDs_whenPaymentNotPending3ds_throwsInvalidPaymentStateException() {
+        Booking booking = Booking.builder().id(500L).build();
+        Payment payment = Payment.builder().id(1L).booking(booking).status(PaymentStatus.SUCCEEDED).build();
+        given(paymentRepository.findById(1L)).willReturn(Optional.of(payment));
+
+        assertThatThrownBy(() -> paymentService.confirmThreeDs(500L, 1L, "123456"))
+                .isInstanceOf(InvalidPaymentStateException.class);
+
+        verify(bookingService, never()).confirmBooking(any());
+        verify(bookingService, never()).failBooking(any());
     }
 }

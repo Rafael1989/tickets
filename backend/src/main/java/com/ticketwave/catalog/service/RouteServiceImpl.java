@@ -7,6 +7,7 @@ import com.ticketwave.catalog.entity.Route;
 import com.ticketwave.catalog.exception.RouteNotFoundException;
 import com.ticketwave.catalog.mapper.RouteMapper;
 import com.ticketwave.catalog.repository.RouteRepository;
+import com.ticketwave.catalog.security.TenantScope;
 import com.ticketwave.user.entity.User;
 import com.ticketwave.user.exception.UserNotFoundException;
 import com.ticketwave.user.repository.UserRepository;
@@ -23,17 +24,20 @@ public class RouteServiceImpl implements RouteService {
     private final UserRepository userRepository;
     private final RouteMapper routeMapper;
     private final AuditService auditService;
+    private final TenantScope tenantScope;
 
     public RouteServiceImpl(
             RouteRepository routeRepository,
             UserRepository userRepository,
             RouteMapper routeMapper,
-            AuditService auditService
+            AuditService auditService,
+            TenantScope tenantScope
     ) {
         this.routeRepository = routeRepository;
         this.userRepository = userRepository;
         this.routeMapper = routeMapper;
         this.auditService = auditService;
+        this.tenantScope = tenantScope;
     }
 
     @Override
@@ -53,8 +57,10 @@ public class RouteServiceImpl implements RouteService {
     @PreAuthorize("hasRole('OPERATOR')")
     @Transactional
     public RouteResponse updateRoute(String operatorUsername, Long routeId, RouteRequest request) {
+        User caller = userRepository.findByUsername(operatorUsername)
+                .orElseThrow(() -> new UserNotFoundException(operatorUsername));
         Route route = routeRepository.findById(routeId)
-                .filter(candidate -> candidate.getOperator().getUsername().equals(operatorUsername))
+                .filter(candidate -> tenantScope.isSameTenant(candidate.getOperator(), caller))
                 .orElseThrow(() -> new RouteNotFoundException(routeId));
 
         route.setType(request.type());
@@ -68,6 +74,11 @@ public class RouteServiceImpl implements RouteService {
         return routeMapper.toResponse(route);
     }
 
+    /**
+     * "Mine" broadens to "my partner's" when the caller belongs to one — a
+     * partner company's staff share one route inventory rather than each
+     * login only ever seeing what it personally created.
+     */
     @Override
     @PreAuthorize("hasRole('OPERATOR')")
     @Transactional(readOnly = true)
@@ -75,7 +86,11 @@ public class RouteServiceImpl implements RouteService {
         User operator = userRepository.findByUsername(operatorUsername)
                 .orElseThrow(() -> new UserNotFoundException(operatorUsername));
 
-        return routeRepository.findByOperatorId(operator.getId()).stream()
+        List<Route> routes = operator.getPartner() != null
+                ? routeRepository.findByOperatorPartnerId(operator.getPartner().getId())
+                : routeRepository.findByOperatorId(operator.getId());
+
+        return routes.stream()
                 .map(routeMapper::toResponse)
                 .toList();
     }

@@ -55,4 +55,16 @@ public class Refund {
 
     @Column(name = "processed_at")
     private Instant processedAt;
+
+    /**
+     * Set together, only when a support/admin agent waived part (or all) of
+     * the policy-computed cancellation fee on approval. overrideDelta is
+     * signed: positive means the agent refunded more than the policy amount.
+     * Both stay null for a refund settled without an override.
+     */
+    @Column(name = "override_delta", precision = 12, scale = 2)
+    private BigDecimal overrideDelta;
+
+    @Column(name = "override_reason", length = 500)
+    private String overrideReason;
 }

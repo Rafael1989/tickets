@@ -96,8 +96,10 @@
         <div class="floating-field">
           <input id="idNumber" type="text" formControlName="idNumber" placeholder=" " autocomplete="off" />
           <label for="idNumber">ID number</label>
-          @if (form.controls.idNumber.invalid && form.controls.idNumber.touched) {
+          @if (form.controls.idNumber.touched && form.controls.idNumber.hasError('required')) {
             <p class="form-error">ID number is required.</p>
+          } @else if (form.controls.idNumber.touched && form.controls.idNumber.hasError('idFormat')) {
+            <p class="form-error">Doesn't look like a valid ID number for this ID type.</p>
           }
         </div>
 

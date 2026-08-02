@@ -1,6 +1,7 @@
 package com.ticketwave.audit.controller;
 
 import com.ticketwave.audit.dto.AuditLogResponse;
+import com.ticketwave.audit.dto.AuditLogSearchCriteria;
 import com.ticketwave.audit.service.AuditService;
 import com.ticketwave.auth.JwtService;
 import com.ticketwave.auth.security.JwtAuthenticationFilter;
@@ -12,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -19,6 +21,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.time.Instant;
 import java.util.List;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -26,7 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Confirms /api/audit requires authentication. The ADMIN-only restriction
- * itself lives on AuditService.listAll() via @PreAuthorize and is only
+ * itself lives on AuditService.search() via @PreAuthorize and is only
  * actually enforced through Spring's method-security proxy around the real
  * bean — since this test mocks AuditService out entirely, it can't exercise
  * that proxy (same reasoning as BookingControllerTest/PassengerControllerTest).
@@ -65,11 +68,26 @@ class AuditControllerTest {
 
     @Test
     void listAudit_withValidToken_returns200() throws Exception {
-        given(auditService.listAll()).willReturn(List.of(
+        given(auditService.search(any(), any())).willReturn(List.of(
                 new AuditLogResponse(1L, "alice", "USER_REGISTERED", "USER", 1L, "role=CUSTOMER", Instant.now())));
 
         mockMvc.perform(get("/api/audit").header("Authorization", bearerToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].action").value("USER_REGISTERED"));
+    }
+
+    @Test
+    void listAudit_withFilters_passesThemAsSearchCriteria() throws Exception {
+        given(auditService.search(
+                new AuditLogSearchCriteria("alice", "USER_ROLE_CHANGED", "USER", null, null),
+                PageRequest.of(0, 50)))
+                .willReturn(List.of());
+
+        mockMvc.perform(get("/api/audit")
+                        .header("Authorization", bearerToken)
+                        .param("actor", "alice")
+                        .param("action", "USER_ROLE_CHANGED")
+                        .param("entityType", "USER"))
+                .andExpect(status().isOk());
     }
 }

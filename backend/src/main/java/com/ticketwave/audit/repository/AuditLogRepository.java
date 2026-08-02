@@ -2,10 +2,7 @@ package com.ticketwave.audit.repository;
 
 import com.ticketwave.audit.entity.AuditLog;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
-import java.util.List;
-
-public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
-
-    List<AuditLog> findAllByOrderByCreatedAtDesc();
+public interface AuditLogRepository extends JpaRepository<AuditLog, Long>, JpaSpecificationExecutor<AuditLog> {
 }

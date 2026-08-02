@@ -1,65 +1,191 @@
 <h2>Support panel</h2>
 
 <div class="card">
-  <h3>Look up a booking by PNR</h3>
-  <form class="inline-form" [formGroup]="pnrForm" (ngSubmit)="lookupByPnr()">
+  <h3>Find a booking</h3>
+  <p class="hint">Search by PNR, customer email, or passenger name.</p>
+  <form class="inline-form" [formGroup]="searchForm" (ngSubmit)="search()">
     <div class="field">
-      <label for="pnr">PNR</label>
-      <input id="pnr" type="text" formControlName="pnr" placeholder="e.g. ABC234" />
+      <label for="query">Search</label>
+      <input id="query" type="text" formControlName="query" placeholder="e.g. ABC234, jane@example.com, Jane Doe" />
     </div>
-    <button class="btn" type="submit" [disabled]="pnrForm.invalid || searching()">
-      {{ searching() ? 'Searching…' : 'Look up' }}
+    <button class="btn" type="submit" [disabled]="searchForm.invalid || searching()">
+      {{ searching() ? 'Searching…' : 'Search' }}
     </button>
   </form>
 
   @if (searchError()) {
-    <p class="form-error">No booking found for that PNR.</p>
+    <p class="form-error" role="alert">Something went wrong while searching. Please try again.</p>
   }
 
-  @if (booking(); as b) {
-    <div class="booking-summary">
-      <p><strong>Status:</strong> {{ b.booking.status }}</p>
-      <p><strong>Booked:</strong> {{ b.booking.bookingTime | date: 'medium' }}</p>
-      <p><strong>Total:</strong> {{ b.booking.totalAmount }}</p>
-      <table class="data-table">
+  @if (searching()) {
+    <div class="skeleton" style="height: 1.5rem; margin-top: 0.75rem"></div>
+    <div class="skeleton" style="height: 1.5rem; width: 80%; margin-top: 0.5rem"></div>
+  } @else if (searched() && !searchError()) {
+    @if (results().length === 0) {
+      <p class="hint">No bookings matched that search.</p>
+    } @else {
+      <table class="data-table" aria-label="Search results">
         <thead>
           <tr>
-            <th>Seat ID</th>
-            <th>Passenger ID</th>
-            <th>Fare</th>
+            <th>PNR</th>
+            <th>Customer</th>
+            <th>Route</th>
+            <th>Departure</th>
+            <th>Status</th>
+            <th>Total</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
-          @for (item of b.items; track item.id) {
+          @for (r of results(); track r.bookingId) {
             <tr>
-              <td>{{ item.seatId }}</td>
-              <td>{{ item.passengerId }}</td>
-              <td>{{ item.fare }}</td>
+              <td>{{ r.pnr }}</td>
+              <td>
+                {{ r.customerUsername }}
+                <div class="hint">{{ r.customerEmail }}</div>
+              </td>
+              <td>{{ r.origin }} → {{ r.destination }}</td>
+              <td>{{ r.departureTime | date: 'medium' }}</td>
+              <td><span class="badge" [class]="r.status.toLowerCase()">{{ r.status }}</span></td>
+              <td>{{ r.totalAmount | currency }}</td>
+              <td>
+                <button class="btn secondary" type="button" (click)="selectBooking(r.bookingId)">View</button>
+              </td>
             </tr>
           }
         </tbody>
       </table>
-    </div>
+    }
   }
 </div>
 
-<div class="card">
-  <h3>Process a refund</h3>
-  <p class="hint">Enter the refund ID from the refund-initiation response or the audit log.</p>
-  <form class="inline-form" [formGroup]="refundForm" (ngSubmit)="processRefund()">
-    <div class="field">
-      <label for="refundId">Refund ID</label>
-      <input id="refundId" type="number" formControlName="refundId" />
+@if (loadingDetail()) {
+  <div class="card" aria-live="polite">
+    <div class="skeleton" style="height: 1.25rem; margin-bottom: 0.6rem"></div>
+    <div class="skeleton" style="height: 1.25rem; width: 60%"></div>
+  </div>
+} @else if (detailError()) {
+  <div class="card">
+    <p class="form-error" role="alert">This booking couldn't be loaded.</p>
+  </div>
+} @else if (detail(); as d) {
+  <div class="card">
+    <div class="detail-header">
+      <h3>Booking {{ d.booking.pnr }}</h3>
+      <button class="icon-btn" type="button" (click)="closeDetail()" aria-label="Close booking detail">&times;</button>
     </div>
-    <div class="field">
-      <label for="decision">Decision</label>
-      <select id="decision" formControlName="decision">
-        <option value="APPROVE">Approve</option>
-        <option value="REJECT">Reject</option>
-      </select>
-    </div>
-    <button class="btn" type="submit" [disabled]="refundForm.invalid || processingRefund()">
-      {{ processingRefund() ? 'Processing…' : 'Submit decision' }}
-    </button>
-  </form>
-</div>
+    <p><span class="badge" [class]="d.booking.status.toLowerCase()">{{ d.booking.status }}</span></p>
+    <p class="hint">Booked {{ d.booking.bookingTime | date: 'medium' }}</p>
+    @if (d.booking.promoCode) {
+      <p class="hint">Promo code: {{ d.booking.promoCode }}</p>
+    }
+    <p class="total">Total: {{ d.booking.totalAmount | currency }}</p>
+
+    <table class="data-table" aria-label="Passenger manifest">
+      <thead>
+        <tr>
+          <th>Seat ID</th>
+          <th>Passenger ID</th>
+          <th>Fare</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (item of d.items; track item.id) {
+          <tr>
+            <td>{{ item.seatId }}</td>
+            <td>{{ item.passengerId }}</td>
+            <td>{{ item.fare | currency }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>Refund history</h3>
+    @if (refunds().length === 0) {
+      <p class="hint">No refunds have been raised against this booking.</p>
+    } @else {
+      <table class="data-table" aria-label="Refund history">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Policy</th>
+            <th>Amount</th>
+            <th>Status</th>
+            <th>Processed</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (r of refunds(); track r.id) {
+            <tr>
+              <td>#{{ r.id }}</td>
+              <td>{{ r.policyCode }}</td>
+              <td>
+                {{ r.amount | currency }}
+                @if (r.overrideDelta) {
+                  <div class="hint">waived {{ r.overrideDelta | currency }}</div>
+                }
+              </td>
+              <td><span class="badge" [class]="r.status.toLowerCase()">{{ r.status }}</span></td>
+              <td>{{ r.processedAt ? (r.processedAt | date: 'medium') : '—' }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+
+    @if (pendingRefund(); as refund) {
+      <div class="fee-override" [formGroup]="overrideForm">
+        <h4>Settle refund #{{ refund.id }}</h4>
+        <dl class="breakdown">
+          <div class="row">
+            <dt>Fare paid</dt>
+            <dd>{{ farePaid() | currency }}</dd>
+          </div>
+          <div class="row">
+            <dt>Policy amount ({{ refund.policyCode }})</dt>
+            <dd>{{ refund.amount | currency }}</dd>
+          </div>
+          <div class="row">
+            <dt>Cancellation fee withheld</dt>
+            <dd>{{ currentFee() | currency }}</dd>
+          </div>
+        </dl>
+
+        <label class="toggle">
+          <input type="checkbox" formControlName="waiveFee" (change)="toggleWaiveFee()" />
+          Waive cancellation fee
+        </label>
+
+        @if (overrideForm.controls.waiveFee.value) {
+          <div class="field">
+            <label for="approveAmount">Approved refund amount</label>
+            <input
+              id="approveAmount"
+              type="number"
+              step="0.01"
+              min="0"
+              [max]="farePaid()"
+              formControlName="approveAmount"
+            />
+          </div>
+          <div class="field">
+            <label for="reason">Reason for waiver (required)</label>
+            <textarea id="reason" formControlName="reason" rows="2" placeholder="e.g. Goodwill — service disruption"></textarea>
+          </div>
+          <p class="waiver-preview">Fee waived: {{ waivedAmount() | currency }} — customer receives {{ overrideForm.controls.approveAmount.value | currency }}</p>
+        }
+
+        <div class="dialog-actions">
+          <button class="btn secondary" type="button" (click)="rejectRefund()" [disabled]="processingRefund()">
+            Reject
+          </button>
+          <button class="btn" type="button" (click)="approveRefund()" [disabled]="processingRefund()">
+            {{ processingRefund() ? 'Submitting…' : 'Approve' }}
+          </button>
+        </div>
+      </div>
+    }
+  </div>
+}

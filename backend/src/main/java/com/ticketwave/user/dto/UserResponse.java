@@ -9,6 +9,7 @@ public record UserResponse(
         String username,
         String email,
         UserRole role,
+        Long partnerId,
         Instant createdAt
 ) {
 }

@@ -18,6 +18,14 @@ vi.mock('jspdf', () => {
   };
 });
 
+const zipFile = vi.fn();
+const zipGenerateAsync = vi.fn().mockResolvedValue(new Blob(['fake-zip']));
+vi.mock('jszip', () => ({
+  default: vi.fn().mockImplementation(function (this: object) {
+    return Object.assign(this, { file: zipFile, generateAsync: zipGenerateAsync });
+  }),
+}));
+
 describe('ETicketCardComponent', () => {
   let fixture: ComponentFixture<ETicketCardComponent>;
   let component: ETicketCardComponent;
@@ -100,12 +108,12 @@ describe('ETicketCardComponent', () => {
     expect(html).toContain('Jane Doe');
   });
 
-  it('disables the Add to Wallet button with an explanatory label', () => {
+  it('labels the wallet-pass button as an unsigned demo, not a real Wallet import', () => {
     const button = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button')).find((btn) =>
       btn.textContent?.includes('Add to Wallet'),
     );
-    expect(button?.disabled).toBe(true);
-    expect(button?.getAttribute('aria-label')).toContain('unavailable');
+    expect(button?.disabled).toBeFalsy();
+    expect(button?.getAttribute('aria-label')).toContain('unsigned demo');
   });
 
   it('seatLabel and passengerName fall back to the raw id when not found', () => {
@@ -128,5 +136,63 @@ describe('ETicketCardComponent', () => {
     const instance = (jsPDF as unknown as ReturnType<typeof vi.fn>).mock.results[0].value;
     expect(instance.text).toHaveBeenCalledWith(expect.stringContaining('ABC234'), expect.any(Number), expect.any(Number));
     expect(instance.save).toHaveBeenCalledWith('ticketwave-ABC234.pdf');
+  });
+
+  describe('downloadWalletPass', () => {
+    let createObjectURLSpy: ReturnType<typeof vi.spyOn>;
+    let revokeObjectURLSpy: ReturnType<typeof vi.spyOn>;
+    let clickSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      zipFile.mockClear();
+      zipGenerateAsync.mockClear();
+      createObjectURLSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:fake-url');
+      revokeObjectURLSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+      clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      clickSpy.mockRestore();
+      createObjectURLSpy.mockRestore();
+      revokeObjectURLSpy.mockRestore();
+    });
+
+    it('zips an unsigned pass.json + manifest.json and triggers a .pkpass download', async () => {
+      await component.downloadWalletPass();
+
+      expect(zipFile.mock.calls[0][0]).toBe('pass.json');
+      expect(ArrayBuffer.isView(zipFile.mock.calls[0][1])).toBe(true);
+      expect(zipFile).toHaveBeenCalledWith('manifest.json', expect.any(String));
+      expect(zipFile).not.toHaveBeenCalledWith('signature', expect.anything());
+      expect(zipGenerateAsync).toHaveBeenCalledWith({ type: 'blob' });
+      expect(createObjectURLSpy).toHaveBeenCalled();
+      expect(clickSpy).toHaveBeenCalled();
+      expect(revokeObjectURLSpy).toHaveBeenCalledWith('blob:fake-url');
+    });
+
+    it('includes the PNR as the pass serial number', async () => {
+      await component.downloadWalletPass();
+
+      const [, passBytes] = zipFile.mock.calls.find(([name]) => name === 'pass.json')!;
+      const passJson = JSON.parse(new TextDecoder().decode(passBytes as Uint8Array));
+      expect(passJson.serialNumber).toBe('ABC234');
+      expect(passJson.boardingPass.secondaryFields).toEqual([{ key: 'seat-0', label: 'Seat', value: '1A · economy' }]);
+    });
+
+    it('manifest.json is a SHA-1 hex digest of pass.json', async () => {
+      await component.downloadWalletPass();
+
+      const [, manifestJson] = zipFile.mock.calls.find(([name]) => name === 'manifest.json')!;
+      const manifest = JSON.parse(manifestJson as string);
+      expect(manifest['pass.json']).toMatch(/^[0-9a-f]{40}$/);
+    });
+
+    it('surfaces an honest notice that the pass is unsigned and demo-only', async () => {
+      const infoSpy = vi.spyOn(notifications, 'info');
+
+      await component.downloadWalletPass();
+
+      expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('unsigned demo pass'));
+    });
   });
 });

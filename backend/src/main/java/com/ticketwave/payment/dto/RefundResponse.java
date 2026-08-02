@@ -12,6 +12,8 @@ public record RefundResponse(
         String policyCode,
         RefundStatus status,
         Long processedByUserId,
-        Instant processedAt
+        Instant processedAt,
+        BigDecimal overrideDelta,
+        String overrideReason
 ) {
 }

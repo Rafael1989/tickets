@@ -2,6 +2,7 @@ package com.ticketwave.catalog.service;
 
 import com.ticketwave.catalog.dto.ScheduleSearchCriteria;
 import com.ticketwave.catalog.dto.ScheduleSearchResult;
+import com.ticketwave.catalog.dto.ScheduleSortBy;
 import com.ticketwave.catalog.entity.Route;
 import com.ticketwave.catalog.entity.RouteType;
 import com.ticketwave.catalog.entity.Schedule;
@@ -113,7 +114,7 @@ class ScheduleSearchServiceImplTest {
                 .willReturn(List.of(new TestSeatCount(1L, 12L)));
 
         List<ScheduleSearchResult> results = searchService.search(
-                new ScheduleSearchCriteria(null, "NYC", "Boston", null, null));
+                new ScheduleSearchCriteria(null, "NYC", "Boston", null, null, null, null, null, null));
 
         assertThat(results).hasSize(2);
 
@@ -135,7 +136,7 @@ class ScheduleSearchServiceImplTest {
         given(clock.instant()).willReturn(Instant.parse("2026-01-01T00:00:00Z"));
         given(scheduleRepository.findAll(any(Specification.class), any(Sort.class))).willReturn(List.of());
 
-        searchService.search(new ScheduleSearchCriteria(null, null, null, null, null));
+        searchService.search(new ScheduleSearchCriteria(null, null, null, null, null, null, null, null, null));
 
         ArgumentCaptor<Sort> sortCaptor = ArgumentCaptor.forClass(Sort.class);
         verify(scheduleRepository).findAll(any(Specification.class), sortCaptor.capture());
@@ -143,6 +144,36 @@ class ScheduleSearchServiceImplTest {
         Sort.Order order = sortCaptor.getValue().getOrderFor("departureTime");
         assertThat(order).isNotNull();
         assertThat(order.getDirection()).isEqualTo(Sort.Direction.ASC);
+    }
+
+    @Test
+    void search_withSortByPriceAsc_sortsByBaseFareAscending() {
+        given(clock.instant()).willReturn(Instant.parse("2026-01-01T00:00:00Z"));
+        given(scheduleRepository.findAll(any(Specification.class), any(Sort.class))).willReturn(List.of());
+
+        searchService.search(new ScheduleSearchCriteria(null, null, null, null, null, null, null, null, ScheduleSortBy.PRICE_ASC));
+
+        ArgumentCaptor<Sort> sortCaptor = ArgumentCaptor.forClass(Sort.class);
+        verify(scheduleRepository).findAll(any(Specification.class), sortCaptor.capture());
+
+        Sort.Order order = sortCaptor.getValue().getOrderFor("baseFare");
+        assertThat(order).isNotNull();
+        assertThat(order.getDirection()).isEqualTo(Sort.Direction.ASC);
+    }
+
+    @Test
+    void search_withSortByPriceDesc_sortsByBaseFareDescending() {
+        given(clock.instant()).willReturn(Instant.parse("2026-01-01T00:00:00Z"));
+        given(scheduleRepository.findAll(any(Specification.class), any(Sort.class))).willReturn(List.of());
+
+        searchService.search(new ScheduleSearchCriteria(null, null, null, null, null, null, null, null, ScheduleSortBy.PRICE_DESC));
+
+        ArgumentCaptor<Sort> sortCaptor = ArgumentCaptor.forClass(Sort.class);
+        verify(scheduleRepository).findAll(any(Specification.class), sortCaptor.capture());
+
+        Sort.Order order = sortCaptor.getValue().getOrderFor("baseFare");
+        assertThat(order).isNotNull();
+        assertThat(order.getDirection()).isEqualTo(Sort.Direction.DESC);
     }
 
     @Test

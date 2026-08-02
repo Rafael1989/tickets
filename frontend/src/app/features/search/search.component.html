@@ -54,6 +54,33 @@
         }
       </button>
     </div>
+
+    <div class="more-filters">
+      <div class="field-group">
+        <label for="minPrice">Min price</label>
+        <input id="minPrice" type="number" min="0" step="1" formControlName="minPrice" placeholder="Any" />
+      </div>
+      <div class="field-group">
+        <label for="maxPrice">Max price</label>
+        <input id="maxPrice" type="number" min="0" step="1" formControlName="maxPrice" placeholder="Any" />
+      </div>
+      <div class="field-group">
+        <label for="seatClass">Seat class</label>
+        <select id="seatClass" formControlName="seatClass">
+          @for (option of seatClassOptions; track option) {
+            <option [value]="option">{{ option === '' ? 'Any' : option }}</option>
+          }
+        </select>
+      </div>
+      <div class="field-group">
+        <label for="sortBy">Sort by</label>
+        <select id="sortBy" formControlName="sortBy">
+          @for (option of sortOptions; track option.value) {
+            <option [value]="option.value">{{ option.label }}</option>
+          }
+        </select>
+      </div>
+    </div>
   </form>
 </div>
 

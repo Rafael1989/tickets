@@ -4,7 +4,7 @@ import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { finalize } from 'rxjs';
-import { RouteType, ScheduleSearchResult } from '../../core/models/catalog.model';
+import { RouteType, ScheduleSearchResult, ScheduleSortBy } from '../../core/models/catalog.model';
 import { SearchService } from '../../core/services/search.service';
 
 interface TypeOption {
@@ -44,12 +44,24 @@ export class SearchComponent {
     { value: 'EVENT', label: 'Event', icon: '🎫' },
   ];
 
+  readonly sortOptions: { value: ScheduleSortBy | ''; label: string }[] = [
+    { value: '', label: 'Soonest departure' },
+    { value: 'PRICE_ASC', label: 'Price: low to high' },
+    { value: 'PRICE_DESC', label: 'Price: high to low' },
+  ];
+
+  readonly seatClassOptions = ['', 'economy', 'business', 'first'];
+
   readonly form = this.fb.nonNullable.group({
     type: this.fb.nonNullable.control<RouteType | ''>(''),
     origin: [''],
     destination: [''],
     venue: [''],
     departureDate: [''],
+    minPrice: this.fb.nonNullable.control<number | null>(null),
+    maxPrice: this.fb.nonNullable.control<number | null>(null),
+    seatClass: [''],
+    sortBy: this.fb.nonNullable.control<ScheduleSortBy | ''>(''),
   });
 
   readonly selectedType = toSignal(this.form.controls.type.valueChanges, {

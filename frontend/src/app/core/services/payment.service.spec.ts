@@ -36,4 +36,22 @@ describe('PaymentService', () => {
       paidAt: '2026-01-01T00:00:00Z',
     });
   });
+
+  it('confirmThreeDs posts the code to /api/bookings/{id}/payments/{paymentId}/confirm-3ds', () => {
+    service.confirmThreeDs(500, 1, '123456').subscribe();
+
+    const req = httpMock.expectOne('/api/bookings/500/payments/1/confirm-3ds');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ code: '123456' });
+    req.flush({
+      id: 1,
+      bookingId: 500,
+      amount: 20,
+      method: 'card',
+      reference: 'ref-1',
+      status: 'SUCCEEDED',
+      paidAt: '2026-01-01T00:00:00Z',
+      failureReason: null,
+    });
+  });
 });

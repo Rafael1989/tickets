@@ -12,5 +12,7 @@ public interface RouteRepository extends JpaRepository<Route, Long> {
 
     List<Route> findByOperatorId(Long operatorId);
 
+    List<Route> findByOperatorPartnerId(Long partnerId);
+
     List<Route> findByOriginIgnoreCaseAndDestinationIgnoreCase(String origin, String destination);
 }

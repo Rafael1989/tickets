@@ -36,6 +36,15 @@ describe('CountdownComponent', () => {
     expect(component.isUrgent()).toBe(true);
   });
 
+  it('applies the bare class when requested, for use in tight spaces', async () => {
+    await createComponent(new Date(Date.now() + 90_000).toISOString());
+    fixture.componentRef.setInput('bare', true);
+    fixture.detectChanges();
+
+    const span = (fixture.nativeElement as HTMLElement).querySelector('.countdown');
+    expect(span?.classList.contains('bare')).toBe(true);
+  });
+
   it('shows "Expired" and emits expired for an already-passed deadline', async () => {
     await TestBed.configureTestingModule({ imports: [CountdownComponent] }).compileComponents();
     fixture = TestBed.createComponent(CountdownComponent);

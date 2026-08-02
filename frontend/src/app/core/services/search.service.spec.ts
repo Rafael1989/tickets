@@ -39,6 +39,20 @@ describe('SearchService', () => {
     req.flush([]);
   });
 
+  it('sends price range, seat class, and sort filters when present', () => {
+    service.search({ minPrice: 10, maxPrice: 100, seatClass: 'business', sortBy: 'PRICE_ASC' }).subscribe();
+
+    const req = httpMock.expectOne(
+      (r) =>
+        r.url === '/api/search' &&
+        r.params.get('minPrice') === '10' &&
+        r.params.get('maxPrice') === '100' &&
+        r.params.get('seatClass') === 'business' &&
+        r.params.get('sortBy') === 'PRICE_ASC',
+    );
+    req.flush([]);
+  });
+
   it('omits every criteria field when the search is empty', () => {
     service.search({}).subscribe();
 

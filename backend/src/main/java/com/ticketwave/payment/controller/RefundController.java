@@ -42,6 +42,7 @@ public class RefundController {
             @PathVariable("id") Long refundId,
             @Valid @RequestBody RefundDecisionRequest request
     ) {
-        return ResponseEntity.ok(refundService.processRefund(refundId, authentication.getName(), request.decision()));
+        return ResponseEntity.ok(refundService.processRefund(refundId, authentication.getName(), request.decision(),
+                request.overrideAmount(), request.reason()));
     }
 }

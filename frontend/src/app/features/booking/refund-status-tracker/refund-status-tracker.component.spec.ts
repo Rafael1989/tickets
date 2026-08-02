@@ -22,6 +22,8 @@ describe('RefundStatusTrackerComponent', () => {
     status: 'PENDING',
     processedByUserId: null,
     processedAt: null,
+    overrideDelta: null,
+    overrideReason: null,
   };
 
   it('marks "Under review" as current while PENDING', () => {

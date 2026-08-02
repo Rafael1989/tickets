@@ -6,13 +6,20 @@ import { RouteType } from '../../core/models/catalog.model';
 import { RouteResponse } from '../../core/models/route.model';
 import { NotificationService } from '../../core/services/notification.service';
 import { RouteService } from '../../core/services/route.service';
+import { AnalyticsDashboardComponent } from './analytics-dashboard/analytics-dashboard.component';
 import { FareMatrixComponent } from './fare-matrix/fare-matrix.component';
 import { FleetManagerComponent } from './fleet-manager/fleet-manager.component';
 import { ScheduleManagerComponent } from './schedule-manager/schedule-manager.component';
 
 @Component({
   selector: 'tw-operator-portal',
-  imports: [ReactiveFormsModule, ScheduleManagerComponent, FleetManagerComponent, FareMatrixComponent],
+  imports: [
+    ReactiveFormsModule,
+    ScheduleManagerComponent,
+    FleetManagerComponent,
+    FareMatrixComponent,
+    AnalyticsDashboardComponent,
+  ],
   templateUrl: './operator-portal.component.html',
   styleUrl: './operator-portal.component.scss',
 })

@@ -51,11 +51,11 @@
       <button
         type="button"
         class="btn secondary"
-        disabled
-        title="Apple/Google Wallet passes need signing credentials that aren't configured for this demo"
-        aria-label="Add to Wallet — unavailable in this demo, requires wallet signing credentials"
+        (click)="downloadWalletPass()"
+        title="Downloads an unsigned demo .pkpass — real Apple/Google Wallet passes need signing credentials this demo doesn't have"
+        aria-label="Download Wallet pass — unsigned demo file, will not import into Apple or Google Wallet"
       >
-        Add to Wallet
+        Add to Wallet (demo)
       </button>
     </div>
   </div>

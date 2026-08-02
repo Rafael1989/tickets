@@ -1,6 +1,7 @@
 package com.ticketwave.booking.service;
 
 import com.ticketwave.booking.dto.BookingDetailResponse;
+import com.ticketwave.booking.dto.BookingSearchResult;
 import com.ticketwave.booking.dto.CreateBookingRequest;
 import com.ticketwave.booking.dto.RescheduleRequest;
 import com.ticketwave.booking.dto.SeatSelection;
@@ -13,6 +14,7 @@ import com.ticketwave.booking.mapper.BookingItemMapper;
 import com.ticketwave.booking.mapper.BookingMapper;
 import com.ticketwave.booking.repository.BookingItemRepository;
 import com.ticketwave.booking.repository.BookingRepository;
+import com.ticketwave.catalog.entity.Route;
 import com.ticketwave.catalog.entity.Schedule;
 import com.ticketwave.catalog.entity.Seat;
 import com.ticketwave.catalog.exception.ScheduleNotFoundException;
@@ -26,6 +28,8 @@ import com.ticketwave.user.exception.PassengerNotFoundException;
 import com.ticketwave.user.exception.UserNotFoundException;
 import com.ticketwave.user.repository.PassengerRepository;
 import com.ticketwave.user.repository.UserRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -284,6 +288,57 @@ public class BookingServiceImpl implements BookingService {
     public BookingDetailResponse getBookingByPnr(String pnr) {
         Booking booking = bookingRepository.findByPnr(pnr)
                 .orElseThrow(() -> new BookingNotFoundException(pnr));
+        List<BookingItem> items = bookingItemRepository.findByBookingId(booking.getId());
+        return toDetailResponse(booking, items);
+    }
+
+    private static final int SEARCH_RESULT_LIMIT = 25;
+    private static final char LIKE_ESCAPE = '\\';
+
+    @Override
+    @PreAuthorize("hasAnyRole('SUPPORT', 'ADMIN')")
+    @Transactional(readOnly = true)
+    public List<BookingSearchResult> searchBookings(String query) {
+        if (query == null || query.isBlank()) {
+            return List.of();
+        }
+
+        String trimmed = query.trim();
+        Page<Booking> matches = bookingRepository.search(trimmed, likePattern(trimmed),
+                PageRequest.of(0, SEARCH_RESULT_LIMIT));
+        return matches.map(this::toSearchResult).toList();
+    }
+
+    private BookingSearchResult toSearchResult(Booking booking) {
+        Route route = booking.getSchedule().getRoute();
+        return new BookingSearchResult(
+                booking.getId(),
+                booking.getPnr(),
+                booking.getStatus(),
+                booking.getTotalAmount(),
+                booking.getBookingTime(),
+                booking.getUser().getUsername(),
+                booking.getUser().getEmail(),
+                route.getOrigin(),
+                route.getDestination(),
+                booking.getSchedule().getDepartureTime());
+    }
+
+    private static String likePattern(String value) {
+        String escaped = value.toLowerCase()
+                .replace(String.valueOf(LIKE_ESCAPE), "" + LIKE_ESCAPE + LIKE_ESCAPE)
+                .replace("%", LIKE_ESCAPE + "%")
+                .replace("_", LIKE_ESCAPE + "_");
+        return "%" + escaped + "%";
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public BookingDetailResponse lookupByPnrAndEmail(String pnr, String email) {
+        Booking booking = bookingRepository.findByPnr(pnr)
+                .filter(candidate -> candidate.getUser().getEmail().equalsIgnoreCase(email))
+                .orElseThrow(() -> new BookingNotFoundException(pnr));
+
         List<BookingItem> items = bookingItemRepository.findByBookingId(booking.getId());
         return toDetailResponse(booking, items);
     }

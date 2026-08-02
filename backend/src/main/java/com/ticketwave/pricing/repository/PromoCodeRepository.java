@@ -13,6 +13,8 @@ public interface PromoCodeRepository extends JpaRepository<PromoCode, Long> {
 
     Optional<PromoCode> findByCode(String code);
 
+    boolean existsByCode(String code);
+
     /**
      * Row-locks the promo code for the duration of the caller's transaction,
      * so two concurrent redemptions can't both read the same redemptionCount

@@ -1,0 +1,61 @@
+<div class="card analytics-card">
+  <div class="panel-header">
+    <h3>Analytics</h3>
+    <button type="button" class="btn secondary" (click)="refresh()" [disabled]="loading()">
+      {{ loading() ? 'Refreshing…' : 'Refresh' }}
+    </button>
+  </div>
+
+  @if (loading()) {
+    <p>Loading…</p>
+  } @else if (loadError()) {
+    <p class="form-error">Couldn't load your analytics. Try refreshing.</p>
+  } @else if (report(); as r) {
+    @if (r.routes.length === 0) {
+      <p>No routes yet — analytics will appear once you create routes and take bookings.</p>
+    } @else {
+      <div class="summary-row">
+        <div class="summary-tile">
+          <span class="summary-label">Confirmed bookings</span>
+          <span class="summary-value">{{ r.totalConfirmedBookings }}</span>
+        </div>
+        <div class="summary-tile">
+          <span class="summary-label">Total revenue</span>
+          <span class="summary-value">{{ r.totalRevenue | number: '1.2-2' }}</span>
+        </div>
+      </div>
+
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Route</th>
+            <th>Type</th>
+            <th>Confirmed bookings</th>
+            <th>Revenue</th>
+            <th>Occupancy</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (route of r.routes; track route.routeId) {
+            <tr>
+              <td>{{ routeLabel(route) }}</td>
+              <td>{{ route.type }}</td>
+              <td>{{ route.confirmedBookings }}</td>
+              <td>{{ route.revenue | number: '1.2-2' }}</td>
+              <td>
+                <div class="occupancy" [attr.aria-label]="occupancyPercent(route.occupancyRate) + '% occupied'">
+                  <div class="occupancy-bar">
+                    <div class="occupancy-fill" [style.width.%]="occupancyPercent(route.occupancyRate)"></div>
+                  </div>
+                  <span class="occupancy-text">
+                    {{ occupancyPercent(route.occupancyRate) }}% ({{ route.bookedSeats }}/{{ route.totalSeats }})
+                  </span>
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+  }
+</div>

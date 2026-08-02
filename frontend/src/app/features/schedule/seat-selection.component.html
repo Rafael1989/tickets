@@ -68,7 +68,7 @@
             <span class="seat-number">{{ seat.seatNumber }}</span>
             <span class="seat-fare">{{ (seat.estimatedFare ?? 0).toFixed(2) }}</span>
             @if (seat.heldByMe && seat.heldUntil) {
-              <span class="seat-countdown">{{ formatCountdown(seat) }}</span>
+              <tw-countdown class="seat-countdown" [expiresAt]="seat.heldUntil" [bare]="true" (expired)="onSeatHoldExpired()" />
             }
           </button>
           <div class="seat-tooltip" role="tooltip">

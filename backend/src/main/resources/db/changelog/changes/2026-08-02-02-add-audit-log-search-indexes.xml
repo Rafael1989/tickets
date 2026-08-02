@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="2026-08-02-02" author="ticketwave">
+        <comment>
+            Audit logs: indexes on actor_username and action to support the
+            admin audit explorer's actor-lookup and action filters, alongside
+            the existing created_at index used for its default newest-first
+            ordering.
+        </comment>
+        <createIndex tableName="audit_logs" indexName="ix_audit_logs_actor_username">
+            <column name="actor_username"/>
+        </createIndex>
+        <createIndex tableName="audit_logs" indexName="ix_audit_logs_action">
+            <column name="action"/>
+        </createIndex>
+
+        <rollback>
+            <dropIndex tableName="audit_logs" indexName="ix_audit_logs_actor_username"/>
+            <dropIndex tableName="audit_logs" indexName="ix_audit_logs_action"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

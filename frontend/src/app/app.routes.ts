@@ -23,6 +23,11 @@ export const routes: Routes = [
       import('./features/schedule/seat-selection.component').then((m) => m.SeatSelectionComponent),
   },
   {
+    path: 'find-booking',
+    loadComponent: () =>
+      import('./features/booking/guest-lookup/guest-lookup.component').then((m) => m.GuestLookupComponent),
+  },
+  {
     path: 'checkout',
     canActivate: [authGuard],
     loadComponent: () => import('./features/checkout/checkout.component').then((m) => m.CheckoutComponent),

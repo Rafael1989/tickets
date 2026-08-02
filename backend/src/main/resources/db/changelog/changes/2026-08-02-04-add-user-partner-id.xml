@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="2026-08-02-04" author="ticketwave">
+        <comment>
+            Users: partner_id links an OPERATOR account to the partner
+            company it works for. Nullable and meaningful only for OPERATOR
+            accounts (enforced at the service layer, not the DB, since the
+            same column has no meaning for the other three roles) — a
+            standalone operator with no partner_id keeps today's behavior of
+            only ever seeing its own resources.
+        </comment>
+        <addColumn tableName="users">
+            <column name="partner_id" type="BIGINT">
+                <constraints nullable="true"
+                             foreignKeyName="fk_users_partner"
+                             references="partners(partner_id)"/>
+            </column>
+        </addColumn>
+
+        <createIndex tableName="users" indexName="ix_users_partner_id">
+            <column name="partner_id"/>
+        </createIndex>
+
+        <rollback>
+            <dropColumn tableName="users" columnName="partner_id"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

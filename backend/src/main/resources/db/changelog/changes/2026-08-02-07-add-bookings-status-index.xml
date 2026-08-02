@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="2026-08-02-07" author="ticketwave">
+        <comment>
+            Bookings: index on status alone, alongside the existing
+            user_id/schedule_id indexes — support/admin queries that filter
+            by status only (e.g. every CANCELLED booking) would otherwise scan.
+        </comment>
+        <createIndex tableName="bookings" indexName="ix_bookings_status">
+            <column name="status"/>
+        </createIndex>
+
+        <rollback>
+            <dropIndex tableName="bookings" indexName="ix_bookings_status"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -54,7 +54,7 @@ class SearchControllerTest {
                 1L, 10L, RouteType.BUS, "NYC", "Boston", null,
                 Instant.parse("2026-08-01T10:00:00Z"), Instant.parse("2026-08-01T12:00:00Z"),
                 new BigDecimal("25.00"), "USD", ScheduleStatus.SCHEDULED, 5L);
-        given(scheduleSearchService.search(new ScheduleSearchCriteria(null, "NYC", "Boston", null, null)))
+        given(scheduleSearchService.search(new ScheduleSearchCriteria(null, "NYC", "Boston", null, null, null, null, null, null)))
                 .willReturn(List.of(result));
 
         mockMvc.perform(get("/api/search").param("origin", "NYC").param("destination", "Boston"))
@@ -66,7 +66,7 @@ class SearchControllerTest {
     @Test
     void search_withDepartureDateAndType_bindsQueryParamsCorrectly() throws Exception {
         given(scheduleSearchService.search(
-                new ScheduleSearchCriteria(RouteType.EVENT, null, null, "Arena", LocalDate.of(2026, 8, 1))))
+                new ScheduleSearchCriteria(RouteType.EVENT, null, null, "Arena", LocalDate.of(2026, 8, 1), null, null, null, null)))
                 .willReturn(List.of());
 
         mockMvc.perform(get("/api/search")

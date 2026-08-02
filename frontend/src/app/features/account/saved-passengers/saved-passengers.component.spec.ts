@@ -103,6 +103,22 @@ describe('SavedPassengersComponent', () => {
     expect(component.passengers()).toEqual([updated]);
   });
 
+  it('does not submit and shows a format error for an ID number that does not match the selected ID type', () => {
+    vi.spyOn(passengerService, 'listMyPassengers').mockReturnValue(of([]));
+    const createSpy = vi.spyOn(passengerService, 'createPassenger');
+    fixture.detectChanges();
+
+    component.openAddForm();
+    component.form.setValue({ fullName: 'Alex Guest', dob: '1990-01-01', idType: 'passport', idNumber: 'A1' });
+    component.form.controls.idNumber.markAsTouched();
+    component.submit();
+    fixture.detectChanges();
+
+    expect(createSpy).not.toHaveBeenCalled();
+    const html = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(html).toContain("Doesn't look like a valid ID number");
+  });
+
   it('does not submit an invalid form', () => {
     vi.spyOn(passengerService, 'listMyPassengers').mockReturnValue(of([]));
     const createSpy = vi.spyOn(passengerService, 'createPassenger');

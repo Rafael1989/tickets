@@ -97,6 +97,17 @@ describe('CheckoutComponent', () => {
     failureReason: 'Your card was declined.',
   };
 
+  const pending3dsPayment: PaymentResponse = {
+    id: 3,
+    bookingId: 500,
+    amount: 20,
+    method: 'card',
+    reference: 'ref-3',
+    status: 'PENDING_3DS',
+    paidAt: null,
+    failureReason: null,
+  };
+
   async function createComponent(withDraft: boolean) {
     await TestBed.configureTestingModule({
       imports: [CheckoutComponent],
@@ -213,6 +224,37 @@ describe('CheckoutComponent', () => {
       });
     });
 
+    describe('addPassenger', () => {
+      it('does not submit when the ID number fails the Luhn-style format check for the selected ID type', () => {
+        const createSpy = vi.spyOn(passengerService, 'createPassenger');
+        component.newPassengerForm.setValue({
+          fullName: 'Alex Guest',
+          dob: '1990-01-01',
+          idType: 'passport',
+          idNumber: 'A1',
+        });
+
+        component.addPassenger();
+
+        expect(createSpy).not.toHaveBeenCalled();
+        expect(component.newPassengerForm.controls.idNumber.hasError('idFormat')).toBe(true);
+      });
+
+      it('re-validates the ID number format when the ID type changes', () => {
+        component.newPassengerForm.setValue({
+          fullName: 'Alex Guest',
+          dob: '1990-01-01',
+          idType: 'passport',
+          idNumber: '123456789012345',
+        });
+        expect(component.newPassengerForm.controls.idNumber.hasError('idFormat')).toBe(true);
+
+        component.newPassengerForm.controls.idType.setValue('national_id');
+
+        expect(component.newPassengerForm.controls.idNumber.hasError('idFormat')).toBe(false);
+      });
+    });
+
     describe('card payment', () => {
       beforeEach(() => {
         vi.useFakeTimers();
@@ -228,6 +270,16 @@ describe('CheckoutComponent', () => {
 
         expect(paySpy).not.toHaveBeenCalled();
         expect(component.paymentState()).toBe('idle');
+      });
+
+      it('does nothing when the card number fails the Luhn checksum', () => {
+        const paySpy = vi.spyOn(paymentService, 'recordPayment');
+        fillCardForm({ cardNumber: '4242 4242 4242 4241' });
+
+        component.payWithCard();
+
+        expect(paySpy).not.toHaveBeenCalled();
+        expect(component.cardForm.controls.cardNumber.hasError('luhn')).toBe(true);
       });
 
       it('goes through a processing state before revealing success', () => {
@@ -277,6 +329,64 @@ describe('CheckoutComponent', () => {
 
         expect(component.paymentState()).toBe('idle');
         expect(component.payment()).toBeNull();
+      });
+
+      describe('3D Secure challenge', () => {
+        beforeEach(() => {
+          vi.spyOn(paymentService, 'recordPayment').mockReturnValue(of(pending3dsPayment));
+          fillCardForm({ cardNumber: '4000 0025 0000 3155' });
+          component.payWithCard();
+          vi.advanceTimersByTime(1200);
+        });
+
+        it('moves to the requires3ds state without clearing the draft', () => {
+          const clearSpy = vi.spyOn(bookingDraftService, 'clear');
+
+          expect(component.paymentState()).toBe('requires3ds');
+          expect(component.payment()).toEqual(pending3dsPayment);
+          expect(clearSpy).not.toHaveBeenCalled();
+        });
+
+        it('confirmThreeDs does nothing while the code is invalid', () => {
+          const confirmSpy = vi.spyOn(paymentService, 'confirmThreeDs');
+          component.threeDsForm.setValue({ code: '123' });
+
+          component.confirmThreeDs();
+
+          expect(confirmSpy).not.toHaveBeenCalled();
+        });
+
+        it('confirmThreeDs with the correct code succeeds and clears the draft', () => {
+          vi.spyOn(paymentService, 'confirmThreeDs').mockReturnValue(of(succeededPayment));
+          const clearSpy = vi.spyOn(bookingDraftService, 'clear');
+          component.threeDsForm.setValue({ code: '123456' });
+
+          component.confirmThreeDs();
+
+          expect(paymentService.confirmThreeDs).toHaveBeenCalledWith(500, 3, '123456');
+          expect(component.paymentState()).toBe('succeeded');
+          expect(component.payment()).toEqual(succeededPayment);
+          expect(clearSpy).toHaveBeenCalled();
+        });
+
+        it('confirmThreeDs with the wrong code declines the payment', () => {
+          const failed: PaymentResponse = { ...declinedPayment, id: 3, failureReason: '3D Secure authentication failed.' };
+          vi.spyOn(paymentService, 'confirmThreeDs').mockReturnValue(of(failed));
+
+          component.threeDsForm.setValue({ code: '000000' });
+          component.confirmThreeDs();
+
+          expect(component.paymentState()).toBe('declined');
+          expect(component.payment()?.failureReason).toBe('3D Secure authentication failed.');
+        });
+
+        it('retryPayment resets the 3DS code form', () => {
+          component.threeDsForm.setValue({ code: '123456' });
+
+          component.retryPayment();
+
+          expect(component.threeDsForm.getRawValue().code).toBe('');
+        });
       });
 
       it('sends a fresh idempotency reference on every attempt', () => {

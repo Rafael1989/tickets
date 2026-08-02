@@ -3,6 +3,12 @@
   gap: 1rem;
   align-items: end;
   flex-wrap: wrap;
+
+  .field {
+    flex: 1;
+    min-width: 16rem;
+    margin-bottom: 0;
+  }
 }
 
 .hint {
@@ -10,19 +16,150 @@
   font-size: 0.85rem;
 }
 
-.booking-summary {
-  margin-top: 1rem;
-}
-
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 0.5rem;
+  margin-top: 0.75rem;
 
   th,
   td {
     text-align: left;
     padding: 0.5rem 0.4rem;
     border-bottom: 1px solid #eee;
+    vertical-align: top;
   }
+}
+
+.detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  h3 {
+    margin: 0;
+  }
+}
+
+.icon-btn {
+  background: transparent;
+  border: none;
+  font-size: 1.3rem;
+  line-height: 1;
+  color: #666;
+  cursor: pointer;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.3rem;
+
+  &:hover {
+    background: #f0f1f5;
+  }
+
+  &:focus-visible {
+    outline: 2px solid #2471a3;
+    outline-offset: 2px;
+  }
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 1rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  background: #eaecef;
+  color: #444;
+
+  &.confirmed,
+  &.processed,
+  &.succeeded {
+    background: #d5f5e3;
+    color: #1e8449;
+  }
+
+  &.pending,
+  &.payment_processing,
+  &.initiated {
+    background: #fdebd0;
+    color: #9c640c;
+  }
+
+  &.cancelled,
+  &.rejected,
+  &.failed {
+    background: #f2d7d5;
+    color: #922b21;
+  }
+}
+
+.total {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.fee-override {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid #eee;
+
+  h4 {
+    margin: 0 0 0.6rem;
+  }
+}
+
+.breakdown {
+  margin: 0 0 0.75rem;
+
+  .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid #f2f2f2;
+
+    dt {
+      color: #555;
+      font-size: 0.9rem;
+    }
+
+    dd {
+      margin: 0;
+      font-weight: 600;
+    }
+  }
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin: 0.5rem 0 0.75rem;
+  cursor: pointer;
+
+  input {
+    width: auto;
+    padding: 0;
+  }
+}
+
+.waiver-preview {
+  font-weight: 600;
+  color: #1e8449;
+  margin: 0.5rem 0 0.75rem;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: flex-end;
+}
+
+textarea {
+  font-family: inherit;
+  font-size: 0.95rem;
+  padding: 0.5rem;
+  border: 1px solid #c8c8d8;
+  border-radius: 0.25rem;
+  resize: vertical;
 }

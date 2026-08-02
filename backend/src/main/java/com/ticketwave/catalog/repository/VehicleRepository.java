@@ -8,4 +8,6 @@ import java.util.List;
 public interface VehicleRepository extends JpaRepository<Vehicle, Long> {
 
     List<Vehicle> findByOperatorId(Long operatorId);
+
+    List<Vehicle> findByOperatorPartnerId(Long partnerId);
 }

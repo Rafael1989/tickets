@@ -187,9 +187,27 @@ class RefundFlowIT {
         RefundResponse initiated = refundService.initiateRefund(booking.booking().id());
 
         authenticateAs(support.getUsername(), UserRole.SUPPORT);
-        RefundResponse processed = refundService.processRefund(initiated.id(), support.getUsername(), RefundDecision.APPROVE);
+        RefundResponse processed = refundService.processRefund(initiated.id(), support.getUsername(), RefundDecision.APPROVE, null, null);
 
         assertThat(processed.status()).isEqualTo(RefundStatus.PROCESSED);
+        assertThat(paymentRepository.findById(initiated.paymentId()).orElseThrow().getStatus())
+                .isEqualTo(PaymentStatus.REFUNDED);
+    }
+
+    @Test
+    void processRefund_approveWithOverride_persistsWaivedDeltaAndReason() {
+        BookingDetailResponse booking = newConfirmedBooking("waived", Duration.ofHours(48)); // partial-refund window
+        User support = newUser("support-waiver", UserRole.SUPPORT);
+        RefundResponse initiated = refundService.initiateRefund(booking.booking().id());
+        BigDecimal fullFare = booking.booking().totalAmount();
+
+        authenticateAs(support.getUsername(), UserRole.SUPPORT);
+        RefundResponse processed = refundService.processRefund(initiated.id(), support.getUsername(),
+                RefundDecision.APPROVE, fullFare, "Goodwill waiver - service disruption");
+
+        assertThat(processed.amount()).isEqualByComparingTo(fullFare);
+        assertThat(processed.overrideDelta()).isEqualByComparingTo(fullFare.subtract(initiated.amount()));
+        assertThat(processed.overrideReason()).isEqualTo("Goodwill waiver - service disruption");
         assertThat(paymentRepository.findById(initiated.paymentId()).orElseThrow().getStatus())
                 .isEqualTo(PaymentStatus.REFUNDED);
     }
@@ -203,7 +221,7 @@ class RefundFlowIT {
         // Still authenticated as the booking's own customer from
         // newConfirmedBooking/initiateRefund above — exactly the role that
         // must not be able to settle a refund.
-        assertThatThrownBy(() -> refundService.processRefund(initiated.id(), support.getUsername(), RefundDecision.APPROVE))
+        assertThatThrownBy(() -> refundService.processRefund(initiated.id(), support.getUsername(), RefundDecision.APPROVE, null, null))
                 .isInstanceOf(AccessDeniedException.class);
     }
 }

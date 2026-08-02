@@ -8,6 +8,7 @@ import com.ticketwave.catalog.entity.RouteType;
 import com.ticketwave.catalog.exception.RouteNotFoundException;
 import com.ticketwave.catalog.mapper.RouteMapper;
 import com.ticketwave.catalog.repository.RouteRepository;
+import com.ticketwave.catalog.security.TenantScope;
 import com.ticketwave.user.entity.User;
 import com.ticketwave.user.exception.UserNotFoundException;
 import com.ticketwave.user.repository.UserRepository;
@@ -38,6 +39,8 @@ class RouteServiceImplTest {
     private RouteMapper routeMapper;
     @Mock
     private AuditService auditService;
+    @Mock
+    private TenantScope tenantScope;
 
     @InjectMocks
     private RouteServiceImpl routeService;
@@ -85,6 +88,22 @@ class RouteServiceImplTest {
     }
 
     @Test
+    void listMyRoutes_whenOperatorBelongsToAPartner_returnsThePartnersRoutes() {
+        com.ticketwave.partner.entity.Partner partner = com.ticketwave.partner.entity.Partner.builder().id(9L).build();
+        User operator = User.builder().id(1L).username("operator1").partner(partner).build();
+        Route route = Route.builder().id(5L).operator(operator).type(RouteType.BUS).build();
+        RouteResponse response = new RouteResponse(5L, 1L, RouteType.BUS, "NYC", "Boston", null, 240);
+
+        given(userRepository.findByUsername("operator1")).willReturn(Optional.of(operator));
+        given(routeRepository.findByOperatorPartnerId(9L)).willReturn(List.of(route));
+        given(routeMapper.toResponse(route)).willReturn(response);
+
+        List<RouteResponse> result = routeService.listMyRoutes("operator1");
+
+        assertThat(result).containsExactly(response);
+    }
+
+    @Test
     void listMyRoutes_whenOperatorMissing_throwsUserNotFoundException() {
         given(userRepository.findByUsername("ghost")).willReturn(Optional.empty());
 
@@ -98,6 +117,8 @@ class RouteServiceImplTest {
         Route route = Route.builder().id(5L).operator(operator).type(RouteType.BUS)
                 .origin("NYC").destination("Boston").durationMinutes(240).build();
         RouteRequest request = new RouteRequest(RouteType.TRAIN, "Boston", "NYC", null, 200);
+        given(userRepository.findByUsername("operator1")).willReturn(Optional.of(operator));
+        given(tenantScope.isSameTenant(operator, operator)).willReturn(true);
         given(routeRepository.findById(5L)).willReturn(Optional.of(route));
         given(routeMapper.toResponse(route)).willReturn(
                 new RouteResponse(5L, 1L, RouteType.TRAIN, "Boston", "NYC", null, 200));
@@ -115,7 +136,9 @@ class RouteServiceImplTest {
     @Test
     void updateRoute_whenOwnedByDifferentOperator_throwsRouteNotFoundException() {
         User operator = User.builder().id(1L).username("operator1").build();
+        User mallory = User.builder().id(2L).username("mallory").build();
         Route route = Route.builder().id(5L).operator(operator).type(RouteType.BUS).build();
+        given(userRepository.findByUsername("mallory")).willReturn(Optional.of(mallory));
         given(routeRepository.findById(5L)).willReturn(Optional.of(route));
         RouteRequest request = new RouteRequest(RouteType.TRAIN, "Boston", "NYC", null, 200);
 
@@ -124,7 +147,18 @@ class RouteServiceImplTest {
     }
 
     @Test
+    void updateRoute_whenCallerMissing_throwsUserNotFoundException() {
+        given(userRepository.findByUsername("ghost")).willReturn(Optional.empty());
+        RouteRequest request = new RouteRequest(RouteType.TRAIN, "Boston", "NYC", null, 200);
+
+        assertThatThrownBy(() -> routeService.updateRoute("ghost", 5L, request))
+                .isInstanceOf(UserNotFoundException.class);
+    }
+
+    @Test
     void updateRoute_whenMissing_throwsRouteNotFoundException() {
+        User operator = User.builder().id(1L).username("operator1").build();
+        given(userRepository.findByUsername("operator1")).willReturn(Optional.of(operator));
         given(routeRepository.findById(99L)).willReturn(Optional.empty());
         RouteRequest request = new RouteRequest(RouteType.TRAIN, "Boston", "NYC", null, 200);
 

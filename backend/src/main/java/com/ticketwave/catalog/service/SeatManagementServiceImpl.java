@@ -13,6 +13,10 @@ import com.ticketwave.catalog.exception.SeatUnavailableException;
 import com.ticketwave.catalog.mapper.SeatMapper;
 import com.ticketwave.catalog.repository.ScheduleRepository;
 import com.ticketwave.catalog.repository.SeatRepository;
+import com.ticketwave.catalog.security.TenantScope;
+import com.ticketwave.user.entity.User;
+import com.ticketwave.user.exception.UserNotFoundException;
+import com.ticketwave.user.repository.UserRepository;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,27 +28,35 @@ public class SeatManagementServiceImpl implements SeatManagementService {
 
     private final ScheduleRepository scheduleRepository;
     private final SeatRepository seatRepository;
+    private final UserRepository userRepository;
     private final SeatMapper seatMapper;
     private final AuditService auditService;
+    private final TenantScope tenantScope;
 
     public SeatManagementServiceImpl(
             ScheduleRepository scheduleRepository,
             SeatRepository seatRepository,
+            UserRepository userRepository,
             SeatMapper seatMapper,
-            AuditService auditService
+            AuditService auditService,
+            TenantScope tenantScope
     ) {
         this.scheduleRepository = scheduleRepository;
         this.seatRepository = seatRepository;
+        this.userRepository = userRepository;
         this.seatMapper = seatMapper;
         this.auditService = auditService;
+        this.tenantScope = tenantScope;
     }
 
     @Override
     @PreAuthorize("hasRole('OPERATOR')")
     @Transactional
     public SeatResponse addSeat(String operatorUsername, SeatRequest request) {
+        User caller = userRepository.findByUsername(operatorUsername)
+                .orElseThrow(() -> new UserNotFoundException(operatorUsername));
         Schedule schedule = scheduleRepository.findById(request.scheduleId())
-                .filter(candidate -> candidate.getRoute().getOperator().getUsername().equals(operatorUsername))
+                .filter(candidate -> tenantScope.isSameTenant(candidate.getRoute().getOperator(), caller))
                 .orElseThrow(() -> new ScheduleNotFoundException(request.scheduleId()));
 
         Seat seat = seatMapper.toEntity(request, schedule);
@@ -74,8 +86,10 @@ public class SeatManagementServiceImpl implements SeatManagementService {
     @PreAuthorize("hasRole('OPERATOR')")
     @Transactional
     public SeatResponse updateSeat(String operatorUsername, Long seatId, SeatUpdateRequest request) {
+        User caller = userRepository.findByUsername(operatorUsername)
+                .orElseThrow(() -> new UserNotFoundException(operatorUsername));
         Seat seat = seatRepository.findByIdForUpdate(seatId)
-                .filter(candidate -> candidate.getSchedule().getRoute().getOperator().getUsername().equals(operatorUsername))
+                .filter(candidate -> tenantScope.isSameTenant(candidate.getSchedule().getRoute().getOperator(), caller))
                 .orElseThrow(() -> new SeatNotFoundException(seatId));
 
         if (seat.getStatus() == SeatStatus.BOOKED) {

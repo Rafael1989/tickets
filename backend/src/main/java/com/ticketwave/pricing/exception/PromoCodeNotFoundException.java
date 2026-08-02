@@ -8,4 +8,8 @@ public class PromoCodeNotFoundException extends TicketwaveException {
     public PromoCodeNotFoundException(String code) {
         super(HttpStatus.NOT_FOUND, "PROMO_CODE_NOT_FOUND", "Promo code '" + code + "' was not found");
     }
+
+    public PromoCodeNotFoundException(Long promoCodeId) {
+        super(HttpStatus.NOT_FOUND, "PROMO_CODE_NOT_FOUND", "Promo code " + promoCodeId + " was not found");
+    }
 }

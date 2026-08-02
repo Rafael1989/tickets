@@ -18,4 +18,9 @@
     background: #f9e2e0;
     color: #c0392b;
   }
+
+  &.bare {
+    padding: 0;
+    background: none;
+  }
 }

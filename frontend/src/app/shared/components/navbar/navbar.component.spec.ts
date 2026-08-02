@@ -39,6 +39,14 @@ describe('NavbarComponent', () => {
     expect(html).toContain('Register');
   });
 
+  it('shows the Find my booking link when not authenticated', async () => {
+    localStorage.clear();
+    await createComponent();
+
+    const html = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(html).toContain('Find my booking');
+  });
+
   it('shows the username and a log out button when authenticated', async () => {
     localStorage.setItem('tw.accessToken', fakeJwt('alice'));
     await createComponent();

@@ -1,0 +1,65 @@
+<div class="card lookup-card">
+  <h2>Find my booking</h2>
+  <p class="hint">No account needed — enter your PNR and the email address used at booking.</p>
+
+  <form [formGroup]="form" (ngSubmit)="search()">
+    <div class="field">
+      <label for="pnr">PNR</label>
+      <input id="pnr" type="text" formControlName="pnr" autocomplete="off" placeholder="e.g. AB12CD" />
+    </div>
+
+    <div class="field">
+      <label for="email">Email</label>
+      <input id="email" type="email" formControlName="email" autocomplete="email" placeholder="you@example.com" />
+    </div>
+
+    <button class="btn" type="submit" [disabled]="form.invalid || loading()">
+      {{ loading() ? 'Looking up…' : 'Find booking' }}
+    </button>
+  </form>
+</div>
+
+@if (notFound()) {
+  <div class="card">
+    <p>We couldn't find a booking matching that PNR and email. Double-check both and try again.</p>
+  </div>
+} @else if (searched() && detail(); as d) {
+  @if (d.booking.status === 'CONFIRMED') {
+    <tw-e-ticket-card [booking]="d" [schedule]="schedule()" [seats]="seats()" />
+  } @else {
+    <div class="card">
+      <h2>Booking {{ d.booking.pnr }}</h2>
+      <p class="status" [class]="d.booking.status.toLowerCase()">{{ d.booking.status }}</p>
+      <p class="meta">Booked {{ d.booking.bookingTime | date: 'medium' }}</p>
+      @if (d.booking.promoCode) {
+        <p class="meta">Promo code: {{ d.booking.promoCode }}</p>
+      }
+      <p class="total">Total: {{ d.booking.totalAmount }}</p>
+    </div>
+
+    <div class="card">
+      <h3>Items</h3>
+      <table class="item-table">
+        <thead>
+          <tr>
+            <th>Seat</th>
+            <th>Fare</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (item of d.items; track item.id) {
+            <tr>
+              <td>{{ seatNumber(item.seatId) }}</td>
+              <td>{{ item.fare }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+
+  <div class="card">
+    <p class="hint">To cancel, reschedule, or track a refund, log in to your account or contact support.</p>
+    <a class="btn secondary" routerLink="/login">Log in</a>
+  </div>
+}

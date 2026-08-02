@@ -177,9 +177,51 @@ class ScheduleSpecificationsTest {
     }
 
     @Test
+    void hasMinPrice_withNull_returnsNoPredicate() {
+        assertThat(ScheduleSpecifications.hasMinPrice(null).toPredicate(root, query, cb)).isNull();
+    }
+
+    @Test
+    void hasMinPrice_withValue_buildsGreaterThanOrEqualPredicateOnBaseFare() {
+        java.math.BigDecimal min = new java.math.BigDecimal("20.00");
+        given(root.get("baseFare")).willReturn(fieldPath);
+        given(cb.greaterThanOrEqualTo(fieldPath, min)).willReturn(predicate);
+
+        Predicate result = ScheduleSpecifications.hasMinPrice(min).toPredicate(root, query, cb);
+
+        assertThat(result).isSameAs(predicate);
+    }
+
+    @Test
+    void hasMaxPrice_withNull_returnsNoPredicate() {
+        assertThat(ScheduleSpecifications.hasMaxPrice(null).toPredicate(root, query, cb)).isNull();
+    }
+
+    @Test
+    void hasMaxPrice_withValue_buildsLessThanOrEqualPredicateOnBaseFare() {
+        java.math.BigDecimal max = new java.math.BigDecimal("100.00");
+        given(root.get("baseFare")).willReturn(fieldPath);
+        given(cb.lessThanOrEqualTo(fieldPath, max)).willReturn(predicate);
+
+        Predicate result = ScheduleSpecifications.hasMaxPrice(max).toPredicate(root, query, cb);
+
+        assertThat(result).isSameAs(predicate);
+    }
+
+    @Test
+    void hasSeatClass_withNull_returnsNoPredicate() {
+        assertThat(ScheduleSpecifications.hasSeatClass(null).toPredicate(root, query, cb)).isNull();
+    }
+
+    @Test
+    void hasSeatClass_withBlank_returnsNoPredicate() {
+        assertThat(ScheduleSpecifications.hasSeatClass("   ").toPredicate(root, query, cb)).isNull();
+    }
+
+    @Test
     void matching_combinesAllCriteriaIntoASingleSpecification() {
         ScheduleSearchCriteria criteria = new ScheduleSearchCriteria(
-                RouteType.BUS, "Boston", "Chicago", "Arena", LocalDate.of(2026, 1, 15));
+                RouteType.BUS, "Boston", "Chicago", "Arena", LocalDate.of(2026, 1, 15), null, null, null, null);
 
         Specification<Schedule> specification = ScheduleSpecifications.matching(criteria, Instant.now());
 
@@ -188,7 +230,7 @@ class ScheduleSpecificationsTest {
 
     @Test
     void matching_withAllNullCriteria_stillReturnsASpecification() {
-        ScheduleSearchCriteria criteria = new ScheduleSearchCriteria(null, null, null, null, null);
+        ScheduleSearchCriteria criteria = new ScheduleSearchCriteria(null, null, null, null, null, null, null, null, null);
 
         Specification<Schedule> specification = ScheduleSpecifications.matching(criteria, Instant.now());
 

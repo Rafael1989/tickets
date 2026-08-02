@@ -61,7 +61,7 @@ class AuthControllerTest {
     @Test
     void register_withValidPayload_returns201WithUser() throws Exception {
         RegisterRequest request = new RegisterRequest("alice", "password123", "alice@example.com");
-        UserResponse response = new UserResponse(1L, "alice", "alice@example.com", UserRole.CUSTOMER, Instant.now());
+        UserResponse response = new UserResponse(1L, "alice", "alice@example.com", UserRole.CUSTOMER, null, Instant.now());
         given(authService.register(any())).willReturn(response);
 
         mockMvc.perform(post("/api/register")

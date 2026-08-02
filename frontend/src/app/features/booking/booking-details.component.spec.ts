@@ -9,6 +9,7 @@ import { PassengerResponse } from '../../core/models/passenger.model';
 import { RefundResponse } from '../../core/models/payment.model';
 import { BookingService } from '../../core/services/booking.service';
 import { PassengerService } from '../../core/services/passenger.service';
+import { RefundService } from '../../core/services/refund.service';
 import { RescheduleContextService } from '../../core/services/reschedule-context.service';
 import { ScheduleService } from '../../core/services/schedule.service';
 import { BookingDetailsComponent } from './booking-details.component';
@@ -19,6 +20,7 @@ describe('BookingDetailsComponent', () => {
   let bookingService: BookingService;
   let scheduleService: ScheduleService;
   let passengerService: PassengerService;
+  let refundService: RefundService;
   let rescheduleContext: RescheduleContextService;
   let router: Router;
 
@@ -74,7 +76,7 @@ describe('BookingDetailsComponent', () => {
     };
   }
 
-  async function createComponent(detail: BookingDetailResponse | 'error') {
+  async function createComponent(detail: BookingDetailResponse | 'error', existingRefunds: RefundResponse[] = []) {
     await TestBed.configureTestingModule({
       imports: [BookingDetailsComponent],
       providers: [
@@ -98,6 +100,9 @@ describe('BookingDetailsComponent', () => {
     passengerService = TestBed.inject(PassengerService);
     vi.spyOn(passengerService, 'listMyPassengers').mockReturnValue(of([passenger]));
 
+    refundService = TestBed.inject(RefundService);
+    vi.spyOn(refundService, 'listRefundsForBooking').mockReturnValue(of(existingRefunds));
+
     rescheduleContext = TestBed.inject(RescheduleContextService);
     router = TestBed.inject(Router);
     vi.spyOn(router, 'navigate').mockResolvedValue(true);
@@ -105,6 +110,20 @@ describe('BookingDetailsComponent', () => {
     fixture = TestBed.createComponent(BookingDetailsComponent);
     component = fixture.componentInstance;
     fixture.detectChanges();
+  }
+
+  function refundWith(status: 'PENDING' | 'PROCESSED' | 'REJECTED'): RefundResponse {
+    return {
+      id: 1,
+      paymentId: 1,
+      amount: 20,
+      policyCode: 'FULL_REFUND',
+      status,
+      processedByUserId: null,
+      processedAt: null,
+      overrideDelta: null,
+      overrideReason: null,
+    };
   }
 
   afterEach(() => localStorage.clear());
@@ -153,15 +172,7 @@ describe('BookingDetailsComponent', () => {
 
   it('onCancelled records the refund, updates status to CANCELLED, and closes the wizard', async () => {
     await createComponent(detailWith('CONFIRMED'));
-    const refund: RefundResponse = {
-      id: 1,
-      paymentId: 1,
-      amount: 20,
-      policyCode: 'FULL_REFUND',
-      status: 'PENDING',
-      processedByUserId: null,
-      processedAt: null,
-    };
+    const refund = refundWith('PENDING');
     component.openCancellationWizard();
 
     component.onCancelled(refund);
@@ -170,6 +181,53 @@ describe('BookingDetailsComponent', () => {
     expect(component.detail()?.booking.status).toBe('CANCELLED');
     expect(component.canRefund()).toBe(false);
     expect(component.showCancellationWizard()).toBe(false);
+  });
+
+  it('loads an existing refund from a prior session and reflects it in canRefund', async () => {
+    await createComponent(detailWith('CONFIRMED'), [refundWith('PENDING')]);
+
+    expect(component.refund()).toEqual(refundWith('PENDING'));
+    expect(component.canRefund()).toBe(false);
+  });
+
+  it('picks the newest refund when more than one is returned', async () => {
+    const newest = refundWith('PROCESSED');
+    await createComponent(detailWith('CONFIRMED'), [newest, refundWith('REJECTED')]);
+
+    expect(component.refund()).toEqual(newest);
+  });
+
+  it('polls for a PENDING refund and stops once support resolves it', async () => {
+    vi.useFakeTimers();
+    await createComponent(detailWith('CONFIRMED'), [refundWith('PENDING')]);
+    const resolved = refundWith('PROCESSED');
+    vi.spyOn(refundService, 'listRefundsForBooking').mockReturnValue(of([resolved]));
+
+    vi.advanceTimersByTime(10_000);
+
+    expect(component.refund()).toEqual(resolved);
+    expect(component.canRefund()).toBe(false);
+
+    const callsAfterResolution = (refundService.listRefundsForBooking as ReturnType<typeof vi.spyOn>).mock.calls
+      .length;
+    vi.advanceTimersByTime(30_000);
+
+    expect((refundService.listRefundsForBooking as ReturnType<typeof vi.spyOn>).mock.calls.length).toBe(
+      callsAfterResolution,
+    );
+    vi.useRealTimers();
+  });
+
+  it('does not poll when there is no refund yet', async () => {
+    vi.useFakeTimers();
+    await createComponent(detailWith('CONFIRMED'), []);
+    const spy = vi.spyOn(refundService, 'listRefundsForBooking');
+    spy.mockClear();
+
+    vi.advanceTimersByTime(30_000);
+
+    expect(spy).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
 
   it('renders the cancellation wizard once opened', async () => {

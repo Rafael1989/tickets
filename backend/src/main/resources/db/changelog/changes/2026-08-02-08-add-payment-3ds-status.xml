@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="2026-08-02-08" author="ticketwave">
+        <comment>
+            Payments: adds pending_3ds to the status state machine — set when
+            the simulated gateway decides a card requires a 3D Secure
+            challenge before it can be approved or declined. Resolved into
+            succeeded/failed by confirming the (simulated) challenge, never
+            left open across requests otherwise.
+        </comment>
+        <sql dbms="postgresql">
+            ALTER TABLE payments DROP CONSTRAINT ck_payments_status;
+            ALTER TABLE payments ADD CONSTRAINT ck_payments_status
+                CHECK (status IN ('pending', 'pending_3ds', 'succeeded', 'failed', 'refunded'));
+        </sql>
+
+        <rollback>
+            <sql dbms="postgresql">
+                ALTER TABLE payments DROP CONSTRAINT ck_payments_status;
+                ALTER TABLE payments ADD CONSTRAINT ck_payments_status
+                    CHECK (status IN ('pending', 'succeeded', 'failed', 'refunded'));
+            </sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

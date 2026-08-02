@@ -1,4 +1,4 @@
-export type PaymentStatus = 'SUCCEEDED' | 'FAILED' | 'REFUNDED';
+export type PaymentStatus = 'SUCCEEDED' | 'FAILED' | 'REFUNDED' | 'PENDING_3DS';
 
 export type RefundStatus = 'PENDING' | 'PROCESSED' | 'REJECTED';
 
@@ -29,6 +29,9 @@ export interface RefundResponse {
   status: RefundStatus;
   processedByUserId: number | null;
   processedAt: string | null;
+  /** Signed: positive means a support/admin agent waived more than the policy amount. Null if no override was applied. */
+  overrideDelta: number | null;
+  overrideReason: string | null;
 }
 
 export interface RefundQuoteResponse {
@@ -44,6 +47,13 @@ export interface RefundQuoteResponse {
 
 export type RefundDecision = 'APPROVE' | 'REJECT';
 
+/**
+ * overrideAmount/reason let a SUPPORT/ADMIN agent waive part or all of the
+ * policy-computed cancellation fee on approval — both are ignored on a
+ * REJECT decision, and reason is mandatory whenever overrideAmount is set.
+ */
 export interface RefundDecisionRequest {
   decision: RefundDecision;
+  overrideAmount?: number | null;
+  reason?: string | null;
 }

@@ -15,6 +15,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
+/**
+ * listMyVehicles broadens to "my partner's" when the caller belongs to one —
+ * see RouteServiceImpl.listMyRoutes for the same rationale.
+ */
+
 @Service
 public class VehicleServiceImpl implements VehicleService {
 
@@ -55,7 +60,11 @@ public class VehicleServiceImpl implements VehicleService {
         User operator = userRepository.findByUsername(operatorUsername)
                 .orElseThrow(() -> new UserNotFoundException(operatorUsername));
 
-        return vehicleRepository.findByOperatorId(operator.getId()).stream()
+        List<Vehicle> vehicles = operator.getPartner() != null
+                ? vehicleRepository.findByOperatorPartnerId(operator.getPartner().getId())
+                : vehicleRepository.findByOperatorId(operator.getId());
+
+        return vehicles.stream()
                 .map(vehicleMapper::toResponse)
                 .toList();
     }

@@ -291,28 +291,30 @@ describe('SeatSelectionComponent', () => {
   describe('countdown', () => {
     beforeEach(async () => {
       localStorage.clear();
-      await createComponent(false);
+      await createComponent(true);
     });
 
-    it('remainingSeconds is 0 for a seat with no heldUntil', () => {
-      expect(component.remainingSeconds(availableSeat)).toBe(0);
+    it('renders exactly one tw-countdown once the caller holds a seat', () => {
+      const future = new Date(Date.now() + 5 * 60_000).toISOString();
+      const held: SeatResponse = { ...availableSeat, status: 'HELD', heldByMe: true, heldUntil: future };
+      vi.spyOn(scheduleService, 'holdSeat').mockReturnValue(of(held));
+      fixture.detectChanges();
+      expect((fixture.nativeElement as HTMLElement).querySelectorAll('tw-countdown').length).toBe(0);
+
+      component.toggleSeat(availableSeat);
+      fixture.detectChanges();
+
+      expect((fixture.nativeElement as HTMLElement).querySelectorAll('tw-countdown').length).toBe(1);
     });
 
-    it('remainingSeconds counts down to the heldUntil instant', () => {
-      const future = new Date(Date.now() + 90_000).toISOString();
-      const seat: SeatResponse = { ...availableSeat, heldUntil: future };
+    it('onSeatHoldExpired refreshes the seat map immediately instead of waiting for the next poll', () => {
+      const refreshedSeats = [{ ...availableSeat, status: 'HELD' as const }, heldByOtherSeat];
+      const getSeatsSpy = vi.spyOn(scheduleService, 'getSeats').mockReturnValue(of(refreshedSeats));
 
-      const remaining = component.remainingSeconds(seat);
+      component.onSeatHoldExpired();
 
-      expect(remaining).toBeGreaterThan(85);
-      expect(remaining).toBeLessThanOrEqual(90);
-    });
-
-    it('formatCountdown renders minutes:seconds', () => {
-      const future = new Date(Date.now() + 65_000).toISOString();
-      const seat: SeatResponse = { ...availableSeat, heldUntil: future };
-
-      expect(component.formatCountdown(seat)).toMatch(/^1:0[0-9]$/);
+      expect(getSeatsSpy).toHaveBeenCalled();
+      expect(component.seats()).toEqual(refreshedSeats);
     });
   });
 

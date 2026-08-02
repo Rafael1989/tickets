@@ -131,6 +131,22 @@
   }
 }
 
+.payment-result--challenge {
+  h3 {
+    color: #9c5a00;
+  }
+
+  form {
+    max-width: 16rem;
+    margin: 0 auto;
+    text-align: left;
+  }
+
+  input {
+    width: 100%;
+  }
+}
+
 .checkmark {
   position: relative;
   width: 4rem;

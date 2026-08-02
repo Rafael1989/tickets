@@ -15,11 +15,11 @@ import { NotificationService } from '../../core/services/notification.service';
 import { PromoService } from '../../core/services/promo.service';
 import { RescheduleContextService } from '../../core/services/reschedule-context.service';
 import { ScheduleService } from '../../core/services/schedule.service';
+import { CountdownComponent } from '../../shared/components/countdown/countdown.component';
 
 type FareSettlementMethod = 'card' | 'pix';
 
 const POLL_INTERVAL_MS = 6000;
-const TICK_INTERVAL_MS = 1000;
 
 /** economy/general read as Standard; business/vip read as Premium — the only
  * two tiers the current seed data actually produces. "Extra legroom" has its
@@ -37,7 +37,7 @@ function seatTier(seatClass: string): 'standard' | 'premium' | 'extra-legroom' {
 
 @Component({
   selector: 'tw-seat-selection',
-  imports: [DatePipe, ReactiveFormsModule],
+  imports: [DatePipe, ReactiveFormsModule, CountdownComponent],
   templateUrl: './seat-selection.component.html',
   styleUrl: './seat-selection.component.scss',
 })
@@ -63,7 +63,6 @@ export class SeatSelectionComponent {
   readonly guestSelectedSeatIds = signal<Set<number>>(new Set());
   readonly pendingSeatId = signal<number | null>(null);
   readonly rescheduling = signal(false);
-  readonly now = signal(Date.now());
 
   readonly isAuthenticated = this.auth.isAuthenticated;
   readonly isRescheduleMode = computed(() => this.rescheduleContext.context() !== null);
@@ -145,10 +144,6 @@ export class SeatSelectionComponent {
         },
       });
 
-    interval(TICK_INTERVAL_MS)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.now.set(Date.now()));
-
     this.destroyRef.onDestroy(() => this.pollSub?.unsubscribe());
   }
 
@@ -193,18 +188,9 @@ export class SeatSelectionComponent {
     }
   }
 
-  remainingSeconds(seat: SeatResponse): number {
-    if (!seat.heldUntil) {
-      return 0;
-    }
-    return Math.max(0, Math.round((Date.parse(seat.heldUntil) - this.now()) / 1000));
-  }
-
-  formatCountdown(seat: SeatResponse): string {
-    const total = this.remainingSeconds(seat);
-    const minutes = Math.floor(total / 60);
-    const seconds = total % 60;
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  /** A seat's own hold countdown just hit zero — refresh now instead of waiting for the next poll tick. */
+  onSeatHoldExpired(): void {
+    this.refreshSeats();
   }
 
   toggleSeat(seat: SeatResponse): void {

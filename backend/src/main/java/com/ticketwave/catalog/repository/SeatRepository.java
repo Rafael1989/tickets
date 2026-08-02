@@ -50,6 +50,19 @@ public interface SeatRepository extends JpaRepository<Seat, Long> {
     Optional<Seat> findByIdForUpdate(@Param("id") Long id);
 
     /**
+     * One grouped seat-inventory/occupancy count per route, for the operator
+     * analytics report — instead of one query per route.
+     */
+    @Query("""
+            SELECT s.schedule.route.id AS routeId, COUNT(s) AS totalSeats,
+                   SUM(CASE WHEN s.status = com.ticketwave.catalog.entity.SeatStatus.BOOKED THEN 1L ELSE 0L END) AS bookedSeats
+            FROM Seat s
+            WHERE s.schedule.route.id IN :routeIds
+            GROUP BY s.schedule.route.id
+            """)
+    List<RouteSeatStats> aggregateSeatsByRouteId(@Param("routeIds") Collection<Long> routeIds);
+
+    /**
      * Bulk-reclaims every HELD seat whose hold has expired, for the
      * background sweeper. On-access reclaim (a fresh hold attempt on an
      * individually expired seat) is handled in the service layer instead.

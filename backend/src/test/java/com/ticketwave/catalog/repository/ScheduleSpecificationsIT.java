@@ -74,7 +74,7 @@ class ScheduleSpecificationsIT {
                 schedule(laToSf, Instant.parse("2026-08-10T09:00:00Z"), ScheduleStatus.SCHEDULED));
 
         ScheduleSearchCriteria criteria =
-                new ScheduleSearchCriteria(null, "yc", "osto", null, LocalDate.of(2026, 8, 10));
+                new ScheduleSearchCriteria(null, "yc", "osto", null, LocalDate.of(2026, 8, 10), null, null, null, null);
 
         List<Schedule> results = scheduleRepository.findAll(ScheduleSpecifications.matching(criteria, NOW));
 
@@ -93,7 +93,7 @@ class ScheduleSpecificationsIT {
                 schedule(route, Instant.parse("2026-08-11T00:00:01Z"), ScheduleStatus.SCHEDULED));
 
         ScheduleSearchCriteria criteria =
-                new ScheduleSearchCriteria(null, null, null, null, LocalDate.of(2026, 8, 10));
+                new ScheduleSearchCriteria(null, null, null, null, LocalDate.of(2026, 8, 10), null, null, null, null);
 
         List<Schedule> results = scheduleRepository.findAll(ScheduleSpecifications.matching(criteria, NOW));
 
@@ -111,7 +111,7 @@ class ScheduleSpecificationsIT {
         Schedule upcoming = scheduleRepository.save(
                 schedule(route, NOW.plusSeconds(3600), ScheduleStatus.SCHEDULED));
 
-        ScheduleSearchCriteria criteria = new ScheduleSearchCriteria(null, null, null, null, null);
+        ScheduleSearchCriteria criteria = new ScheduleSearchCriteria(null, null, null, null, null, null, null, null, null);
 
         List<Schedule> results = scheduleRepository.findAll(ScheduleSpecifications.matching(criteria, NOW));
 

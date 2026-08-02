@@ -25,4 +25,39 @@ describe('PromoService', () => {
     expect(req.request.body).toEqual({ code: 'SAVE20', subtotal: 100 });
     req.flush({ code: 'SAVE20', discountAmount: 20, totalAfterDiscount: 80 });
   });
+
+  it('listPromoCodes gets /api/promos', () => {
+    service.listPromoCodes().subscribe();
+
+    const req = httpMock.expectOne('/api/promos');
+    expect(req.request.method).toBe('GET');
+    req.flush([]);
+  });
+
+  it('createPromoCode posts to /api/promos', () => {
+    const request = {
+      code: 'SAVE20',
+      discountType: 'PERCENTAGE' as const,
+      discountValue: 20,
+      validFrom: '2026-01-01T00:00:00.000Z',
+      validTo: '2026-12-31T00:00:00.000Z',
+      maxRedemptions: 100,
+    };
+
+    service.createPromoCode(request).subscribe();
+
+    const req = httpMock.expectOne('/api/promos');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual(request);
+    req.flush({});
+  });
+
+  it('updateStatus puts to /api/promos/{id}/status', () => {
+    service.updateStatus(9, false).subscribe();
+
+    const req = httpMock.expectOne('/api/promos/9/status');
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toEqual({ active: false });
+    req.flush({});
+  });
 });

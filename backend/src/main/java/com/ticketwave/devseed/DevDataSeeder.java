@@ -533,6 +533,6 @@ public class DevDataSeeder implements ApplicationRunner {
     private void settleRefund(List<User> support, int index, Long refundId, RefundDecision decision) {
         User supportAgent = support.get(index % support.size());
         SeedAuthContext.runAs(supportAgent.getUsername(), "SUPPORT",
-                () -> refundService.processRefund(refundId, supportAgent.getUsername(), decision));
+                () -> refundService.processRefund(refundId, supportAgent.getUsername(), decision, null, null));
     }
 }

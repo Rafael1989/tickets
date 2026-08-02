@@ -122,13 +122,17 @@ public class UserController {
     }
 
     @PutMapping("/{id}/role")
-    @Operation(summary = "Reassign a user's role")
+    @Operation(
+            summary = "Reassign a user's role",
+            description = "An admin cannot change their own role, and the last remaining ADMIN account cannot be demoted."
+    )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Role updated"),
             @ApiResponse(responseCode = "400", description = "Validation failed"),
             @ApiResponse(responseCode = "401", description = "Missing or invalid bearer token"),
             @ApiResponse(responseCode = "403", description = "Caller is not an admin"),
-            @ApiResponse(responseCode = "404", description = "No such user")
+            @ApiResponse(responseCode = "404", description = "No such user"),
+            @ApiResponse(responseCode = "409", description = "Target is the caller's own account, or the last remaining ADMIN")
     })
     public ResponseEntity<UserResponse> updateRole(
             Authentication authentication,

@@ -1,8 +1,10 @@
 <h2>Admin panel</h2>
 
-<div class="tabs">
-  <button type="button" [class.active]="tab() === 'users'" (click)="selectTab('users')">Users</button>
-  <button type="button" [class.active]="tab() === 'audit'" (click)="selectTab('audit')">Audit log</button>
+<div class="tabs" role="tablist">
+  <button type="button" role="tab" [attr.aria-selected]="tab() === 'users'" [class.active]="tab() === 'users'" (click)="selectTab('users')">Users</button>
+  <button type="button" role="tab" [attr.aria-selected]="tab() === 'partners'" [class.active]="tab() === 'partners'" (click)="selectTab('partners')">Partners</button>
+  <button type="button" role="tab" [attr.aria-selected]="tab() === 'audit'" [class.active]="tab() === 'audit'" (click)="selectTab('audit')">Audit log</button>
+  <button type="button" role="tab" [attr.aria-selected]="tab() === 'promos'" [class.active]="tab() === 'promos'" (click)="selectTab('promos')">Promo codes</button>
 </div>
 
 @if (tab() === 'users') {
@@ -31,6 +33,17 @@
           <option value="CUSTOMER">Customer</option>
         </select>
       </div>
+      @if (newUserForm.controls.role.value === 'OPERATOR') {
+        <div class="field">
+          <label for="partnerId">Partner (optional)</label>
+          <select id="partnerId" formControlName="partnerId">
+            <option [ngValue]="null">No partner (standalone operator)</option>
+            @for (partner of partners(); track partner.id) {
+              <option [ngValue]="partner.id">{{ partner.name }}</option>
+            }
+          </select>
+        </div>
+      }
       <button class="btn" type="submit" [disabled]="newUserForm.invalid || creatingUser()">
         {{ creatingUser() ? 'Creating…' : 'Create account' }}
       </button>
@@ -39,6 +52,23 @@
 
   <div class="card">
     <h3>All accounts</h3>
+    <form class="inline-form" [formGroup]="userFilterForm">
+      <div class="field">
+        <label for="userQuery">Search</label>
+        <input id="userQuery" type="text" formControlName="query" placeholder="username or email" />
+      </div>
+      <div class="field">
+        <label for="userRoleFilter">Role</label>
+        <select id="userRoleFilter" formControlName="role">
+          <option value="">All roles</option>
+          <option value="CUSTOMER">Customer</option>
+          <option value="OPERATOR">Operator</option>
+          <option value="SUPPORT">Support</option>
+          <option value="ADMIN">Admin</option>
+        </select>
+      </div>
+    </form>
+
     @if (loadingUsers()) {
       <p>Loading…</p>
     } @else {
@@ -53,7 +83,7 @@
           </tr>
         </thead>
         <tbody>
-          @for (user of users(); track user.id) {
+          @for (user of filteredUsers(); track user.id) {
             <tr>
               <td>{{ user.id }}</td>
               <td>{{ user.username }}</td>
@@ -62,15 +92,323 @@
                 <select
                   [value]="user.role"
                   [disabled]="updatingRoleForUserId() === user.id"
-                  (change)="changeRole(user, $event)"
+                  (change)="requestRoleChange(user, $event)"
+                  [attr.aria-label]="'Role for ' + user.username"
                 >
                   <option value="CUSTOMER">Customer</option>
                   <option value="OPERATOR">Operator</option>
                   <option value="SUPPORT">Support</option>
                   <option value="ADMIN">Admin</option>
                 </select>
+                @if (pendingRoleChange(); as pending) {
+                  @if (pending.user.id === user.id) {
+                    <div class="confirm-row" role="alertdialog" aria-label="Confirm role change">
+                      <span>Change {{ pending.user.username }} to {{ pending.role }}?</span>
+                      <button class="btn secondary" type="button" (click)="cancelRoleChange()">Cancel</button>
+                      <button class="btn" type="button" (click)="confirmRoleChange()" [disabled]="updatingRoleForUserId() === user.id">
+                        {{ updatingRoleForUserId() === user.id ? 'Saving…' : 'Confirm' }}
+                      </button>
+                    </div>
+                  }
+                }
               </td>
               <td>{{ user.createdAt | date: 'medium' }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+  </div>
+}
+
+@if (tab() === 'partners') {
+  <div class="card">
+    <h3>Onboard a partner</h3>
+    <p class="hint">Created in PENDING status — activate it below once its details are verified.</p>
+    <form class="grid-form" [formGroup]="newPartnerForm" (ngSubmit)="createPartner()">
+      <div class="field">
+        <label for="partnerName">Name</label>
+        <input id="partnerName" type="text" formControlName="name" />
+      </div>
+      <div class="field">
+        <label for="partnerEmail">Contact email</label>
+        <input id="partnerEmail" type="email" formControlName="contactEmail" />
+      </div>
+      <div class="field">
+        <label for="commissionRate">Commission rate (0–1)</label>
+        <input id="commissionRate" type="number" step="0.01" min="0" max="1" formControlName="commissionRate" />
+      </div>
+      <button class="btn" type="submit" [disabled]="newPartnerForm.invalid || creatingPartner()">
+        {{ creatingPartner() ? 'Creating…' : 'Create partner' }}
+      </button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>All partners</h3>
+    @if (loadingPartners()) {
+      <p>Loading…</p>
+    } @else if (partners().length === 0) {
+      <p>No partners onboarded yet.</p>
+    } @else {
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Contact</th>
+            <th>Commission</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (partner of partners(); track partner.id) {
+            <tr>
+              <td>{{ partner.id }}</td>
+              <td>{{ partner.name }}</td>
+              <td>{{ partner.contactEmail }}</td>
+              <td>{{ partner.commissionRate | number: '1.0-4' }}</td>
+              <td>
+                <select
+                  [value]="partner.status"
+                  [disabled]="updatingPartnerStatusId() === partner.id"
+                  (change)="requestPartnerStatusChange(partner, $event)"
+                  [attr.aria-label]="'Status for ' + partner.name"
+                >
+                  <option value="PENDING">Pending</option>
+                  <option value="ACTIVE">Active</option>
+                  <option value="SUSPENDED">Suspended</option>
+                </select>
+                @if (pendingPartnerStatusChange(); as pending) {
+                  @if (pending.partner.id === partner.id) {
+                    <div class="confirm-row" role="alertdialog" aria-label="Confirm partner status change">
+                      <span>Change {{ pending.partner.name }} to {{ pending.status }}?</span>
+                      <button class="btn secondary" type="button" (click)="cancelPartnerStatusChange()">Cancel</button>
+                      <button class="btn" type="button" (click)="confirmPartnerStatusChange()" [disabled]="updatingPartnerStatusId() === partner.id">
+                        {{ updatingPartnerStatusId() === partner.id ? 'Saving…' : 'Confirm' }}
+                      </button>
+                    </div>
+                  }
+                }
+              </td>
+              <td>
+                <button class="btn secondary" type="button" (click)="selectPartner(partner)">Manage</button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+  </div>
+
+  @if (selectedPartner(); as partner) {
+    <div class="card">
+      <div class="detail-header">
+        <h3>{{ partner.name }} — API credentials</h3>
+        <button class="icon-btn" type="button" (click)="closePartnerDetail()" aria-label="Close partner detail">&times;</button>
+      </div>
+      <p class="hint">OAuth2 client-credentials for this partner's own systems to call the API without a human login.</p>
+
+      <button class="btn secondary" type="button" (click)="issueCredential()" [disabled]="issuingCredential()">
+        {{ issuingCredential() ? 'Issuing…' : 'Issue new credential' }}
+      </button>
+
+      @if (justIssuedSecret(); as secret) {
+        <div class="secret-banner" role="alert">
+          <p><strong>Copy this now — it will never be shown again.</strong></p>
+          <p>client_id: <code>{{ secret.clientId }}</code></p>
+          <p>client_secret: <code>{{ secret.clientSecret }}</code></p>
+          <button class="btn secondary" type="button" (click)="dismissIssuedSecret()">I've copied it</button>
+        </div>
+      }
+
+      @if (loadingCredentials()) {
+        <p>Loading…</p>
+      } @else if (credentials().length === 0) {
+        <p class="hint">No credentials issued yet.</p>
+      } @else {
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Client ID</th>
+              <th>Status</th>
+              <th>Created</th>
+              <th>Last used</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (credential of credentials(); track credential.id) {
+              <tr>
+                <td>{{ credential.clientId }}</td>
+                <td><span class="badge" [class]="credential.status.toLowerCase()">{{ credential.status }}</span></td>
+                <td>{{ credential.createdAt | date: 'medium' }}</td>
+                <td>{{ credential.lastUsedAt ? (credential.lastUsedAt | date: 'medium') : 'never' }}</td>
+                <td>
+                  @if (credential.status === 'ACTIVE') {
+                    <button
+                      class="btn secondary"
+                      type="button"
+                      (click)="revokeCredential(credential)"
+                      [disabled]="revokingCredentialId() === credential.id"
+                    >
+                      {{ revokingCredentialId() === credential.id ? 'Revoking…' : 'Revoke' }}
+                    </button>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+    </div>
+
+    <div class="card">
+      <h3>{{ partner.name }} — webhooks</h3>
+      <p class="hint">TicketWave POSTs a signed payload to these URLs when a registered event fires (e.g. a booking cancellation).</p>
+
+      <form class="inline-form" [formGroup]="newWebhookForm" (ngSubmit)="registerWebhook()">
+        <div class="field">
+          <label for="webhookUrl">URL</label>
+          <input id="webhookUrl" type="url" formControlName="url" placeholder="https://partner.example/webhooks" />
+        </div>
+        <div class="field">
+          <label for="eventType">Event type</label>
+          <select id="eventType" formControlName="eventType">
+            <option value="BOOKING_CANCELLED">Booking cancelled</option>
+          </select>
+        </div>
+        <button class="btn" type="submit" [disabled]="newWebhookForm.invalid || registeringWebhook()">
+          {{ registeringWebhook() ? 'Registering…' : 'Register webhook' }}
+        </button>
+      </form>
+
+      @if (justRegisteredWebhookSecret(); as secret) {
+        <div class="secret-banner" role="alert">
+          <p><strong>Copy this now — it will never be shown again.</strong></p>
+          <p>{{ secret.url }}</p>
+          <p>signing secret: <code>{{ secret.secret }}</code></p>
+          <button class="btn secondary" type="button" (click)="dismissWebhookSecret()">I've copied it</button>
+        </div>
+      }
+
+      @if (loadingWebhooks()) {
+        <p>Loading…</p>
+      } @else if (webhooks().length === 0) {
+        <p class="hint">No webhooks registered yet.</p>
+      } @else {
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>URL</th>
+              <th>Event</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (webhook of webhooks(); track webhook.id) {
+              <tr>
+                <td>{{ webhook.url }}</td>
+                <td>{{ webhook.eventType }}</td>
+                <td><span class="badge" [class]="webhook.status.toLowerCase()">{{ webhook.status }}</span></td>
+                <td>
+                  <button
+                    class="btn secondary"
+                    type="button"
+                    (click)="toggleWebhookStatus(webhook)"
+                    [disabled]="updatingWebhookStatusId() === webhook.id"
+                  >
+                    {{ webhook.status === 'ACTIVE' ? 'Disable' : 'Enable' }}
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+    </div>
+  }
+}
+
+@if (tab() === 'promos') {
+  <div class="card">
+    <h3>Create a promo code</h3>
+    <form class="grid-form" [formGroup]="newPromoForm" (ngSubmit)="createPromoCode()">
+      <div class="field">
+        <label for="promoCode">Code</label>
+        <input id="promoCode" type="text" formControlName="code" placeholder="e.g. SAVE20" />
+      </div>
+      <div class="field">
+        <label for="discountType">Discount type</label>
+        <select id="discountType" formControlName="discountType">
+          <option value="PERCENTAGE">Percentage</option>
+          <option value="FIXED_AMOUNT">Fixed amount</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="discountValue">
+          {{ newPromoForm.controls.discountType.value === 'PERCENTAGE' ? 'Discount (%)' : 'Discount amount' }}
+        </label>
+        <input id="discountValue" type="number" step="0.01" min="0.01" formControlName="discountValue" />
+      </div>
+      <div class="field">
+        <label for="promoValidFrom">Valid from</label>
+        <input id="promoValidFrom" type="datetime-local" formControlName="validFrom" />
+      </div>
+      <div class="field">
+        <label for="promoValidTo">Valid to</label>
+        <input id="promoValidTo" type="datetime-local" formControlName="validTo" />
+      </div>
+      <div class="field">
+        <label for="maxRedemptions">Max redemptions (optional)</label>
+        <input id="maxRedemptions" type="number" step="1" min="1" formControlName="maxRedemptions" placeholder="Unlimited" />
+      </div>
+      <button class="btn" type="submit" [disabled]="newPromoForm.invalid || creatingPromoCode()">
+        {{ creatingPromoCode() ? 'Creating…' : 'Create promo code' }}
+      </button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>All promo codes</h3>
+    @if (loadingPromoCodes()) {
+      <p>Loading…</p>
+    } @else if (promoCodes().length === 0) {
+      <p>No promo codes created yet.</p>
+    } @else {
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Discount</th>
+            <th>Valid window</th>
+            <th>Redemptions</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (promo of promoCodes(); track promo.id) {
+            <tr>
+              <td>{{ promo.code }}</td>
+              <td>
+                {{ promo.discountType === 'PERCENTAGE' ? promo.discountValue + '%' : (promo.discountValue | number: '1.2-2') }}
+              </td>
+              <td>{{ promo.validFrom | date: 'medium' }} &ndash; {{ promo.validTo | date: 'medium' }}</td>
+              <td>{{ promo.redemptionCount }}{{ promo.maxRedemptions ? ' / ' + promo.maxRedemptions : '' }}</td>
+              <td><span class="badge" [class]="promo.active ? 'active' : 'disabled'">{{ promo.active ? 'Active' : 'Inactive' }}</span></td>
+              <td>
+                <button
+                  class="btn secondary"
+                  type="button"
+                  (click)="togglePromoStatus(promo)"
+                  [disabled]="updatingPromoStatusId() === promo.id"
+                >
+                  {{ updatingPromoStatusId() === promo.id ? 'Saving…' : promo.active ? 'Deactivate' : 'Activate' }}
+                </button>
+              </td>
             </tr>
           }
         </tbody>
@@ -82,10 +420,39 @@
 @if (tab() === 'audit') {
   <div class="card">
     <h3>Audit log</h3>
+    <form class="inline-form" [formGroup]="auditFilterForm" (ngSubmit)="searchAudit()">
+      <div class="field">
+        <label for="actor">Actor</label>
+        <input id="actor" type="text" formControlName="actor" placeholder="username" />
+      </div>
+      <div class="field">
+        <label for="action">Action</label>
+        <input id="action" type="text" formControlName="action" placeholder="e.g. USER_ROLE_CHANGED" />
+      </div>
+      <div class="field">
+        <label for="entityType">Entity type</label>
+        <input id="entityType" type="text" formControlName="entityType" placeholder="e.g. USER" />
+      </div>
+      <div class="field">
+        <label for="from">From</label>
+        <input id="from" type="datetime-local" formControlName="from" />
+      </div>
+      <div class="field">
+        <label for="to">To</label>
+        <input id="to" type="datetime-local" formControlName="to" />
+      </div>
+      <button class="btn" type="submit" [disabled]="loadingAudit()">
+        {{ loadingAudit() ? 'Searching…' : 'Apply filters' }}
+      </button>
+      <button class="btn secondary" type="button" (click)="resetAuditFilters()" [disabled]="loadingAudit()">
+        Reset
+      </button>
+    </form>
+
     @if (loadingAudit()) {
       <p>Loading…</p>
     } @else if (auditLog().length === 0) {
-      <p>No entries yet.</p>
+      <p>No entries match these filters.</p>
     } @else {
       <table class="data-table">
         <thead>

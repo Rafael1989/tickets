@@ -4,12 +4,18 @@ export type ScheduleStatus = 'SCHEDULED' | 'DELAYED' | 'CANCELLED' | 'COMPLETED'
 
 export type SeatStatus = 'AVAILABLE' | 'HELD' | 'BOOKED' | 'BLOCKED' | 'RESERVED_OPERATOR';
 
+export type ScheduleSortBy = 'DEPARTURE_TIME' | 'PRICE_ASC' | 'PRICE_DESC';
+
 export interface ScheduleSearchCriteria {
   type?: RouteType | '';
   origin?: string;
   destination?: string;
   venue?: string;
   departureDate?: string;
+  minPrice?: number | null;
+  maxPrice?: number | null;
+  seatClass?: string;
+  sortBy?: ScheduleSortBy | '';
 }
 
 export interface ScheduleSearchResult {

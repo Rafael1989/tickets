@@ -3,12 +3,18 @@ package com.ticketwave.user.service;
 import com.ticketwave.audit.service.AuditService;
 import com.ticketwave.auth.exception.DuplicateUserException;
 import com.ticketwave.auth.exception.IncorrectPasswordException;
+import com.ticketwave.partner.entity.Partner;
+import com.ticketwave.partner.exception.PartnerNotFoundException;
+import com.ticketwave.partner.repository.PartnerRepository;
 import com.ticketwave.user.dto.ChangePasswordRequest;
 import com.ticketwave.user.dto.UpdateEmailRequest;
 import com.ticketwave.user.dto.UserRequest;
 import com.ticketwave.user.dto.UserResponse;
 import com.ticketwave.user.entity.User;
 import com.ticketwave.user.entity.UserRole;
+import com.ticketwave.user.exception.LastAdminDemotionException;
+import com.ticketwave.user.exception.PartnerAssignmentNotAllowedException;
+import com.ticketwave.user.exception.SelfRoleChangeException;
 import com.ticketwave.user.exception.UserNotFoundException;
 import com.ticketwave.user.mapper.UserMapper;
 import com.ticketwave.user.repository.UserRepository;
@@ -46,6 +52,9 @@ class UserServiceImplTest {
     @Mock
     private AuditService auditService;
 
+    @Mock
+    private PartnerRepository partnerRepository;
+
     @InjectMocks
     private UserServiceImpl userService;
 
@@ -60,8 +69,8 @@ class UserServiceImplTest {
         User op = user(2L, "operator1", UserRole.OPERATOR);
         given(userRepository.findAll()).willReturn(List.of(alice, op));
 
-        UserResponse aliceResponse = new UserResponse(1L, "alice", "alice@example.com", UserRole.CUSTOMER, alice.getCreatedAt());
-        UserResponse opResponse = new UserResponse(2L, "operator1", "operator1@example.com", UserRole.OPERATOR, op.getCreatedAt());
+        UserResponse aliceResponse = new UserResponse(1L, "alice", "alice@example.com", UserRole.CUSTOMER, null, alice.getCreatedAt());
+        UserResponse opResponse = new UserResponse(2L, "operator1", "operator1@example.com", UserRole.OPERATOR, null, op.getCreatedAt());
         given(userMapper.toResponse(alice)).willReturn(aliceResponse);
         given(userMapper.toResponse(op)).willReturn(opResponse);
 
@@ -81,7 +90,7 @@ class UserServiceImplTest {
     void getUser_whenFound_returnsMappedResponse() {
         User alice = user(1L, "alice", UserRole.CUSTOMER);
         given(userRepository.findById(1L)).willReturn(Optional.of(alice));
-        UserResponse response = new UserResponse(1L, "alice", "alice@example.com", UserRole.CUSTOMER, alice.getCreatedAt());
+        UserResponse response = new UserResponse(1L, "alice", "alice@example.com", UserRole.CUSTOMER, null, alice.getCreatedAt());
         given(userMapper.toResponse(alice)).willReturn(response);
 
         assertThat(userService.getUser(1L)).isEqualTo(response);
@@ -97,7 +106,7 @@ class UserServiceImplTest {
 
     @Test
     void createUser_whenUsernameAndEmailAvailable_createsWithHashedPasswordAndAudits() {
-        UserRequest request = new UserRequest("operator2", "password123", "operator2@example.com", UserRole.OPERATOR);
+        UserRequest request = new UserRequest("operator2", "password123", "operator2@example.com", UserRole.OPERATOR, null);
         User mapped = User.builder().username("operator2").email("operator2@example.com").role(UserRole.OPERATOR).build();
         User saved = user(3L, "operator2", UserRole.OPERATOR);
 
@@ -106,7 +115,7 @@ class UserServiceImplTest {
         given(userMapper.toEntity(request)).willReturn(mapped);
         given(passwordEncoder.encode("password123")).willReturn("hashed-password");
         given(userRepository.save(mapped)).willReturn(saved);
-        UserResponse response = new UserResponse(3L, "operator2", "operator2@example.com", UserRole.OPERATOR, saved.getCreatedAt());
+        UserResponse response = new UserResponse(3L, "operator2", "operator2@example.com", UserRole.OPERATOR, null, saved.getCreatedAt());
         given(userMapper.toResponse(saved)).willReturn(response);
 
         UserResponse result = userService.createUser("admin1", request);
@@ -119,7 +128,7 @@ class UserServiceImplTest {
     @Test
     void createUser_whenUsernameTaken_throwsDuplicateUserExceptionAndNeverSaves() {
         given(userRepository.existsByUsername("operator2")).willReturn(true);
-        UserRequest request = new UserRequest("operator2", "password123", "operator2@example.com", UserRole.OPERATOR);
+        UserRequest request = new UserRequest("operator2", "password123", "operator2@example.com", UserRole.OPERATOR, null);
 
         assertThatThrownBy(() -> userService.createUser("admin1", request))
                 .isInstanceOf(DuplicateUserException.class);
@@ -131,10 +140,58 @@ class UserServiceImplTest {
     void createUser_whenEmailTaken_throwsDuplicateUserExceptionAndNeverSaves() {
         given(userRepository.existsByUsername("operator2")).willReturn(false);
         given(userRepository.existsByEmail("operator2@example.com")).willReturn(true);
-        UserRequest request = new UserRequest("operator2", "password123", "operator2@example.com", UserRole.OPERATOR);
+        UserRequest request = new UserRequest("operator2", "password123", "operator2@example.com", UserRole.OPERATOR, null);
 
         assertThatThrownBy(() -> userService.createUser("admin1", request))
                 .isInstanceOf(DuplicateUserException.class);
+
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void createUser_withPartnerIdForOperatorRole_linksThePartner() {
+        Partner partner = Partner.builder().id(9L).name("Acme Transit").build();
+        UserRequest request = new UserRequest("operator2", "password123", "operator2@example.com", UserRole.OPERATOR, 9L);
+        User mapped = User.builder().username("operator2").email("operator2@example.com").role(UserRole.OPERATOR).build();
+        User saved = user(3L, "operator2", UserRole.OPERATOR);
+
+        given(userRepository.existsByUsername("operator2")).willReturn(false);
+        given(userRepository.existsByEmail("operator2@example.com")).willReturn(false);
+        given(userMapper.toEntity(request)).willReturn(mapped);
+        given(partnerRepository.findById(9L)).willReturn(Optional.of(partner));
+        given(passwordEncoder.encode("password123")).willReturn("hashed-password");
+        given(userRepository.save(mapped)).willReturn(saved);
+        given(userMapper.toResponse(saved)).willReturn(
+                new UserResponse(3L, "operator2", "operator2@example.com", UserRole.OPERATOR, 9L, saved.getCreatedAt()));
+
+        userService.createUser("admin1", request);
+
+        assertThat(mapped.getPartner()).isEqualTo(partner);
+    }
+
+    @Test
+    void createUser_withPartnerIdForNonOperatorRole_throwsPartnerAssignmentNotAllowedException() {
+        UserRequest request = new UserRequest("support2", "password123", "support2@example.com", UserRole.SUPPORT, 9L);
+
+        assertThatThrownBy(() -> userService.createUser("admin1", request))
+                .isInstanceOf(PartnerAssignmentNotAllowedException.class);
+
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void createUser_withUnknownPartnerId_throwsPartnerNotFoundException() {
+        UserRequest request = new UserRequest("operator2", "password123", "operator2@example.com", UserRole.OPERATOR, 99L);
+        User mapped = User.builder().username("operator2").email("operator2@example.com").role(UserRole.OPERATOR).build();
+
+        given(userRepository.existsByUsername("operator2")).willReturn(false);
+        given(userRepository.existsByEmail("operator2@example.com")).willReturn(false);
+        given(userMapper.toEntity(request)).willReturn(mapped);
+        given(passwordEncoder.encode("password123")).willReturn("hashed-password");
+        given(partnerRepository.findById(99L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.createUser("admin1", request))
+                .isInstanceOf(PartnerNotFoundException.class);
 
         verify(userRepository, never()).save(any());
     }
@@ -144,7 +201,7 @@ class UserServiceImplTest {
         User alice = user(1L, "alice", UserRole.CUSTOMER);
         given(userRepository.findById(1L)).willReturn(Optional.of(alice));
         given(userMapper.toResponse(alice)).willReturn(
-                new UserResponse(1L, "alice", "alice@example.com", UserRole.SUPPORT, alice.getCreatedAt()));
+                new UserResponse(1L, "alice", "alice@example.com", UserRole.SUPPORT, null, alice.getCreatedAt()));
 
         UserResponse result = userService.updateRole("admin1", 1L, UserRole.SUPPORT);
 
@@ -162,10 +219,62 @@ class UserServiceImplTest {
     }
 
     @Test
+    void updateRole_whenTargetingOwnAccount_throwsSelfRoleChangeExceptionAndNeverAudits() {
+        User admin = user(1L, "admin1", UserRole.ADMIN);
+        given(userRepository.findById(1L)).willReturn(Optional.of(admin));
+
+        assertThatThrownBy(() -> userService.updateRole("admin1", 1L, UserRole.SUPPORT))
+                .isInstanceOf(SelfRoleChangeException.class);
+
+        assertThat(admin.getRole()).isEqualTo(UserRole.ADMIN);
+        verify(auditService, never()).record(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void updateRole_whenDemotingTheLastAdmin_throwsLastAdminDemotionExceptionAndNeverAudits() {
+        User lastAdmin = user(2L, "admin2", UserRole.ADMIN);
+        given(userRepository.findById(2L)).willReturn(Optional.of(lastAdmin));
+        given(userRepository.countByRole(UserRole.ADMIN)).willReturn(1L);
+
+        assertThatThrownBy(() -> userService.updateRole("admin1", 2L, UserRole.SUPPORT))
+                .isInstanceOf(LastAdminDemotionException.class);
+
+        assertThat(lastAdmin.getRole()).isEqualTo(UserRole.ADMIN);
+        verify(auditService, never()).record(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void updateRole_whenDemotingOneOfSeveralAdmins_isAllowed() {
+        User anotherAdmin = user(2L, "admin2", UserRole.ADMIN);
+        given(userRepository.findById(2L)).willReturn(Optional.of(anotherAdmin));
+        given(userRepository.countByRole(UserRole.ADMIN)).willReturn(2L);
+        given(userMapper.toResponse(anotherAdmin)).willReturn(
+                new UserResponse(2L, "admin2", "admin2@example.com", UserRole.SUPPORT, null, anotherAdmin.getCreatedAt()));
+
+        UserResponse result = userService.updateRole("admin1", 2L, UserRole.SUPPORT);
+
+        assertThat(result.role()).isEqualTo(UserRole.SUPPORT);
+        verify(auditService).record("admin1", "USER_ROLE_CHANGED", "USER", 2L, "ADMIN -> SUPPORT");
+    }
+
+    @Test
+    void updateRole_whenReassigningTheLastAdminToAdminAgain_isAllowed() {
+        User lastAdmin = user(2L, "admin2", UserRole.ADMIN);
+        given(userRepository.findById(2L)).willReturn(Optional.of(lastAdmin));
+        given(userMapper.toResponse(lastAdmin)).willReturn(
+                new UserResponse(2L, "admin2", "admin2@example.com", UserRole.ADMIN, null, lastAdmin.getCreatedAt()));
+
+        UserResponse result = userService.updateRole("admin1", 2L, UserRole.ADMIN);
+
+        assertThat(result.role()).isEqualTo(UserRole.ADMIN);
+        verify(userRepository, never()).countByRole(any());
+    }
+
+    @Test
     void getCurrentUser_whenFound_returnsMappedResponse() {
         User alice = user(1L, "alice", UserRole.CUSTOMER);
         given(userRepository.findByUsername("alice")).willReturn(Optional.of(alice));
-        UserResponse response = new UserResponse(1L, "alice", "alice@example.com", UserRole.CUSTOMER, alice.getCreatedAt());
+        UserResponse response = new UserResponse(1L, "alice", "alice@example.com", UserRole.CUSTOMER, null, alice.getCreatedAt());
         given(userMapper.toResponse(alice)).willReturn(response);
 
         assertThat(userService.getCurrentUser("alice")).isEqualTo(response);
@@ -185,7 +294,7 @@ class UserServiceImplTest {
         given(userRepository.findByUsername("alice")).willReturn(Optional.of(alice));
         given(userRepository.existsByEmail("new@example.com")).willReturn(false);
         given(userMapper.toResponse(alice)).willReturn(
-                new UserResponse(1L, "alice", "new@example.com", UserRole.CUSTOMER, alice.getCreatedAt()));
+                new UserResponse(1L, "alice", "new@example.com", UserRole.CUSTOMER, null, alice.getCreatedAt()));
 
         UserResponse result = userService.updateCurrentEmail("alice", new UpdateEmailRequest("new@example.com"));
 
@@ -198,7 +307,7 @@ class UserServiceImplTest {
         User alice = user(1L, "alice", UserRole.CUSTOMER);
         given(userRepository.findByUsername("alice")).willReturn(Optional.of(alice));
         given(userMapper.toResponse(alice)).willReturn(
-                new UserResponse(1L, "alice", "alice@example.com", UserRole.CUSTOMER, alice.getCreatedAt()));
+                new UserResponse(1L, "alice", "alice@example.com", UserRole.CUSTOMER, null, alice.getCreatedAt()));
 
         userService.updateCurrentEmail("alice", new UpdateEmailRequest("alice@example.com"));
 

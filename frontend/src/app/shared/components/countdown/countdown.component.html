@@ -1,5 +1,12 @@
 @if (formatted(); as time) {
-  <span class="countdown" [class.urgent]="isUrgent()" [class.expired]="isExpired()" role="timer" aria-live="off">
+  <span
+    class="countdown"
+    [class.urgent]="isUrgent()"
+    [class.expired]="isExpired()"
+    [class.bare]="bare()"
+    role="timer"
+    aria-live="off"
+  >
     {{ isExpired() ? 'Expired' : time }}
   </span>
 }

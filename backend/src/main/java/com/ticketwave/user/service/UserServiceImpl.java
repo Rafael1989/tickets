@@ -3,12 +3,18 @@ package com.ticketwave.user.service;
 import com.ticketwave.audit.service.AuditService;
 import com.ticketwave.auth.exception.DuplicateUserException;
 import com.ticketwave.auth.exception.IncorrectPasswordException;
+import com.ticketwave.partner.entity.Partner;
+import com.ticketwave.partner.exception.PartnerNotFoundException;
+import com.ticketwave.partner.repository.PartnerRepository;
 import com.ticketwave.user.dto.ChangePasswordRequest;
 import com.ticketwave.user.dto.UpdateEmailRequest;
 import com.ticketwave.user.dto.UserRequest;
 import com.ticketwave.user.dto.UserResponse;
 import com.ticketwave.user.entity.User;
 import com.ticketwave.user.entity.UserRole;
+import com.ticketwave.user.exception.LastAdminDemotionException;
+import com.ticketwave.user.exception.PartnerAssignmentNotAllowedException;
+import com.ticketwave.user.exception.SelfRoleChangeException;
 import com.ticketwave.user.exception.UserNotFoundException;
 import com.ticketwave.user.mapper.UserMapper;
 import com.ticketwave.user.repository.UserRepository;
@@ -26,17 +32,20 @@ public class UserServiceImpl implements UserService {
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final AuditService auditService;
+    private final PartnerRepository partnerRepository;
 
     public UserServiceImpl(
             UserRepository userRepository,
             UserMapper userMapper,
             PasswordEncoder passwordEncoder,
-            AuditService auditService
+            AuditService auditService,
+            PartnerRepository partnerRepository
     ) {
         this.userRepository = userRepository;
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
         this.auditService = auditService;
+        this.partnerRepository = partnerRepository;
     }
 
     @Override
@@ -67,9 +76,17 @@ public class UserServiceImpl implements UserService {
         if (userRepository.existsByEmail(request.email())) {
             throw new DuplicateUserException("Email '" + request.email() + "' is already registered");
         }
+        if (request.partnerId() != null && request.role() != UserRole.OPERATOR) {
+            throw new PartnerAssignmentNotAllowedException();
+        }
 
         User user = userMapper.toEntity(request);
         user.setPasswordHash(passwordEncoder.encode(request.password()));
+        if (request.partnerId() != null) {
+            Partner partner = partnerRepository.findById(request.partnerId())
+                    .orElseThrow(() -> new PartnerNotFoundException(request.partnerId()));
+            user.setPartner(partner);
+        }
         User saved = userRepository.save(user);
 
         auditService.record(actorUsername, "USER_CREATED", "USER", saved.getId(), "role=" + saved.getRole());
@@ -82,6 +99,16 @@ public class UserServiceImpl implements UserService {
     public UserResponse updateRole(String actorUsername, Long userId, UserRole role) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException(userId));
+
+        if (user.getUsername().equals(actorUsername)) {
+            throw new SelfRoleChangeException(userId);
+        }
+        // Only a demotion away from ADMIN can strand the account with no
+        // admin left; reassigning the last ADMIN to ADMIN again (a no-op
+        // role) is harmless and shouldn't be blocked by this check.
+        if (user.getRole() == UserRole.ADMIN && role != UserRole.ADMIN && userRepository.countByRole(UserRole.ADMIN) <= 1) {
+            throw new LastAdminDemotionException(userId);
+        }
 
         UserRole previousRole = user.getRole();
         user.setRole(role);

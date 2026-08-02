@@ -29,5 +29,13 @@
     <include file="changes/2026-08-01-09-create-drivers-table.xml" relativeToChangelogFile="true"/>
     <include file="changes/2026-08-01-10-add-schedule-vehicle-driver.xml" relativeToChangelogFile="true"/>
     <include file="changes/2026-08-01-11-create-fare-rules-table.xml" relativeToChangelogFile="true"/>
+    <include file="changes/2026-08-02-01-add-refund-override-fields.xml" relativeToChangelogFile="true"/>
+    <include file="changes/2026-08-02-02-add-audit-log-search-indexes.xml" relativeToChangelogFile="true"/>
+    <include file="changes/2026-08-02-03-create-partners-table.xml" relativeToChangelogFile="true"/>
+    <include file="changes/2026-08-02-04-add-user-partner-id.xml" relativeToChangelogFile="true"/>
+    <include file="changes/2026-08-02-05-create-partner-api-credentials-table.xml" relativeToChangelogFile="true"/>
+    <include file="changes/2026-08-02-06-create-partner-webhooks-tables.xml" relativeToChangelogFile="true"/>
+    <include file="changes/2026-08-02-07-add-bookings-status-index.xml" relativeToChangelogFile="true"/>
+    <include file="changes/2026-08-02-08-add-payment-3ds-status.xml" relativeToChangelogFile="true"/>
 
 </databaseChangeLog>

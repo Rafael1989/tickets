@@ -76,4 +76,80 @@ export class ETicketCardComponent {
     // that never actually goes anywhere.
     this.notifications.info("Email delivery isn't wired up in this demo yet — use Download PDF for now.");
   }
+
+  /**
+   * Builds a structurally correct but UNSIGNED .pkpass (a zip of pass.json +
+   * manifest.json with a SHA-1 digest of pass.json, per Apple's PassKit
+   * format). Real Apple/Google Wallet passes require a detached signature
+   * produced with a Pass Type ID certificate issued by the Apple Developer
+   * Program — we don't have one, so this file has no `signature` entry and
+   * will be rejected by any real wallet app. It exists purely to demonstrate
+   * the pass structure; the UI is explicit about that limitation.
+   */
+  async downloadWalletPass(): Promise<void> {
+    const { default: JSZip } = await import('jszip');
+
+    const detail = this.booking();
+    const schedule = this.schedule();
+    const pnr = detail.booking.pnr;
+
+    const primaryFields = schedule
+      ? [
+          { key: 'origin', label: schedule.venue ? 'Venue' : 'From', value: schedule.origin ?? schedule.venue ?? '' },
+          ...(schedule.destination ? [{ key: 'destination', label: 'To', value: schedule.destination }] : []),
+        ]
+      : [];
+
+    const passJson = {
+      formatVersion: 1,
+      passTypeIdentifier: 'pass.com.ticketwave.demo',
+      teamIdentifier: 'DEMOTEAMID',
+      serialNumber: pnr,
+      organizationName: 'TicketWave',
+      description: `TicketWave e-ticket ${pnr}`,
+      logoText: 'TicketWave',
+      foregroundColor: 'rgb(255, 255, 255)',
+      backgroundColor: 'rgb(36, 113, 163)',
+      barcodes: [{ format: 'PKBarcodeFormatQR', message: this.checkInCode(), messageEncoding: 'iso-8859-1' }],
+      boardingPass: {
+        transitType: 'PKTransitTypeGeneric',
+        primaryFields,
+        secondaryFields: detail.items.map((item, index) => ({
+          key: `seat-${index}`,
+          label: 'Seat',
+          value: this.seatLabel(item.seatId),
+        })),
+        auxiliaryFields: schedule
+          ? [{ key: 'departs', label: 'Departs', value: new Date(schedule.departureTime).toLocaleString() }]
+          : [],
+        backFields: [{ key: 'pnr', label: 'PNR', value: pnr }],
+      },
+    };
+
+    const passBytes = new TextEncoder().encode(JSON.stringify(passJson));
+    const manifest = { 'pass.json': await sha1Hex(passBytes) };
+
+    const zip = new JSZip();
+    zip.file('pass.json', passBytes);
+    zip.file('manifest.json', JSON.stringify(manifest));
+    const blob = await zip.generateAsync({ type: 'blob' });
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `ticketwave-${pnr}.pkpass`;
+    link.click();
+    URL.revokeObjectURL(url);
+
+    this.notifications.info(
+      "This is an unsigned demo pass — it won't import into Apple/Google Wallet, which require a real signing certificate this demo doesn't have.",
+    );
+  }
+}
+
+async function sha1Hex(data: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-1', data as unknown as ArrayBuffer);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
 }

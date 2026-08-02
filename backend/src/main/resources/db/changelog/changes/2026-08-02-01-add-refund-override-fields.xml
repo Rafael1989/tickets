@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="2026-08-02-01" author="ticketwave">
+        <comment>
+            Refunds: override_delta/override_reason record a support/admin
+            agent's manual fee waiver applied when approving a refund.
+            override_delta is the signed difference between the
+            policy-computed amount and what the agent actually approved
+            (positive means the agent refunded more than policy alone would
+            have). override_reason is the agent's mandatory explanation for
+            that delta. Both stay null for a refund settled without an
+            override.
+        </comment>
+        <addColumn tableName="refunds">
+            <column name="override_delta" type="DECIMAL(12,2)">
+                <constraints nullable="true"/>
+            </column>
+            <column name="override_reason" type="VARCHAR(500)">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+
+        <rollback>
+            <dropColumn tableName="refunds" columnName="override_delta"/>
+            <dropColumn tableName="refunds" columnName="override_reason"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

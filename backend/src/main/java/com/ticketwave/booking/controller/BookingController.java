@@ -1,6 +1,7 @@
 package com.ticketwave.booking.controller;
 
 import com.ticketwave.booking.dto.BookingDetailResponse;
+import com.ticketwave.booking.dto.BookingSearchResult;
 import com.ticketwave.booking.dto.CreateBookingRequest;
 import com.ticketwave.booking.dto.RescheduleQuoteResponse;
 import com.ticketwave.booking.dto.RescheduleRequest;
@@ -9,6 +10,7 @@ import com.ticketwave.payment.dto.PaymentRequest;
 import com.ticketwave.payment.dto.PaymentResponse;
 import com.ticketwave.payment.dto.RefundQuoteResponse;
 import com.ticketwave.payment.dto.RefundResponse;
+import com.ticketwave.payment.dto.ThreeDsConfirmationRequest;
 import com.ticketwave.payment.service.PaymentService;
 import com.ticketwave.payment.service.RefundService;
 import com.ticketwave.payment.service.RescheduleService;
@@ -95,6 +97,27 @@ public class BookingController {
         return ResponseEntity.status(HttpStatus.CREATED).body(paymentService.recordPayment(bookingId, request));
     }
 
+    @PostMapping("/{id}/payments/{paymentId}/confirm-3ds")
+    @Operation(
+            summary = "Settle a PENDING_3DS payment's simulated challenge",
+            description = "code must match the simulated authentication code; a mismatch fails the payment/booking exactly like an ordinary decline. See POST .../payments — a card requiring 3DS lands here instead of being immediately approved/declined."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Challenge settled (payment succeeded or failed)"),
+            @ApiResponse(responseCode = "400", description = "Validation failed"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid bearer token"),
+            @ApiResponse(responseCode = "403", description = "Booking belongs to a different customer"),
+            @ApiResponse(responseCode = "404", description = "No such booking or payment"),
+            @ApiResponse(responseCode = "409", description = "Payment isn't currently PENDING_3DS")
+    })
+    public ResponseEntity<PaymentResponse> confirmThreeDs(
+            @PathVariable("id") Long bookingId,
+            @PathVariable("paymentId") Long paymentId,
+            @Valid @RequestBody ThreeDsConfirmationRequest request
+    ) {
+        return ResponseEntity.ok(paymentService.confirmThreeDs(bookingId, paymentId, request.code()));
+    }
+
     @GetMapping("/{id}")
     @Operation(summary = "Get a booking's details")
     @ApiResponses({
@@ -117,6 +140,38 @@ public class BookingController {
     })
     public ResponseEntity<BookingDetailResponse> getBookingByPnr(@PathVariable("pnr") String pnr) {
         return ResponseEntity.ok(bookingService.getBookingByPnr(pnr));
+    }
+
+    @GetMapping("/search")
+    @Operation(
+            summary = "Search bookings by PNR, customer email, or passenger name (support/admin)",
+            description = "Matches an exact PNR, or a case-insensitive substring of the customer's email or a passenger's full name. Returns at most 25 matches, newest first."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Zero or more matching bookings"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid bearer token"),
+            @ApiResponse(responseCode = "403", description = "Caller is not support or admin")
+    })
+    public ResponseEntity<List<BookingSearchResult>> searchBookings(@RequestParam("query") String query) {
+        return ResponseEntity.ok(bookingService.searchBookings(query));
+    }
+
+    @GetMapping("/pnr/{pnr}/lookup")
+    @Operation(
+            summary = "Guest \"find my booking\" lookup by PNR and email",
+            description = "Public — no bearer token needed. email must match the booking's account email as a second factor, so a bare PNR guess can't retrieve someone else's itinerary.",
+            security = {}
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Booking found"),
+            @ApiResponse(responseCode = "404", description = "No such PNR, or email doesn't match it"),
+            @ApiResponse(responseCode = "429", description = "Rate limit exceeded")
+    })
+    public ResponseEntity<BookingDetailResponse> lookupByPnrAndEmail(
+            @PathVariable("pnr") String pnr,
+            @RequestParam("email") String email
+    ) {
+        return ResponseEntity.ok(bookingService.lookupByPnrAndEmail(pnr, email));
     }
 
     @GetMapping("/{id}/reschedule-quote")
@@ -189,5 +244,20 @@ public class BookingController {
     })
     public ResponseEntity<RefundResponse> initiateRefund(@PathVariable("id") Long bookingId) {
         return ResponseEntity.status(HttpStatus.CREATED).body(refundService.initiateRefund(bookingId));
+    }
+
+    @GetMapping("/{id}/refunds")
+    @Operation(
+            summary = "List every refund raised against a booking's payment(s)",
+            description = "Newest first. Typically zero or one, but a booking rescheduled downward can also carry a RESCHEDULE_CREDIT refund. Lets support find a PENDING refund to settle without already knowing its id."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Zero or more refunds"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid bearer token"),
+            @ApiResponse(responseCode = "403", description = "Booking belongs to a different customer"),
+            @ApiResponse(responseCode = "404", description = "No such booking")
+    })
+    public ResponseEntity<List<RefundResponse>> listRefunds(@PathVariable("id") Long bookingId) {
+        return ResponseEntity.ok(refundService.listRefundsForBooking(bookingId));
     }
 }

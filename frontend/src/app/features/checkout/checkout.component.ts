@@ -13,17 +13,23 @@ import { NotificationService } from '../../core/services/notification.service';
 import { PassengerService } from '../../core/services/passenger.service';
 import { PaymentService } from '../../core/services/payment.service';
 import { ScheduleService } from '../../core/services/schedule.service';
+import { idNumberValidator } from '../../core/validators/id-number.validator';
+import { luhnValidator } from '../../core/validators/luhn.validator';
 import { CountdownComponent } from '../../shared/components/countdown/countdown.component';
 import { ETicketCardComponent } from '../../shared/components/e-ticket-card/e-ticket-card.component';
 import { QrCodeComponent } from '../../shared/components/qr-code/qr-code.component';
 
 type CheckoutStep = 'assign' | 'payment';
 type PaymentMethod = 'card' | 'pix';
-type PaymentState = 'idle' | 'processing' | 'succeeded' | 'declined';
+type PaymentState = 'idle' | 'processing' | 'requires3ds' | 'succeeded' | 'declined';
 
 /** Simulated gateway's own test PANs (see backend CardDeclineSimulator) — surfaced so a demo user can actually exercise both outcomes. */
 const DEMO_APPROVE_CARD = '4242 4242 4242 4242';
 const DEMO_DECLINE_CARD = '4000 0000 0000 0002';
+/** Stripe's real "requires authentication" test PAN — lands the payment in PENDING_3DS instead of an immediate approve/decline. */
+const DEMO_THREE_DS_CARD = '4000 0025 0000 3155';
+/** The simulated authentication code confirmThreeDs() accepts — see backend PaymentServiceImpl.THREE_DS_VALID_CODE. */
+const DEMO_THREE_DS_CODE = '123456';
 
 /** Static, obviously-fake demo Pix key — no real payment provider is wired up. */
 const DEMO_PIX_KEY = 'ticketwave-demo-pix@example.com';
@@ -50,6 +56,8 @@ export class CheckoutComponent implements OnInit {
 
   readonly demoApproveCard = DEMO_APPROVE_CARD;
   readonly demoDeclineCard = DEMO_DECLINE_CARD;
+  readonly demoThreeDsCard = DEMO_THREE_DS_CARD;
+  readonly demoThreeDsCode = DEMO_THREE_DS_CODE;
   readonly demoPixKey = DEMO_PIX_KEY;
 
   readonly draft = signal<BookingDraft | null>(null);
@@ -60,6 +68,7 @@ export class CheckoutComponent implements OnInit {
   readonly payment = signal<PaymentResponse | null>(null);
   readonly creatingBooking = signal(false);
   readonly addingPassenger = signal(false);
+  readonly submittingThreeDs = signal(false);
 
   readonly paymentMethod = signal<PaymentMethod>('card');
   readonly paymentState = signal<PaymentState>('idle');
@@ -96,20 +105,24 @@ export class CheckoutComponent implements OnInit {
     fullName: ['', Validators.required],
     dob: ['', Validators.required],
     idType: ['passport', Validators.required],
-    idNumber: ['', Validators.required],
+    idNumber: ['', [Validators.required, idNumberValidator()]],
   });
 
   readonly cardForm = this.fb.nonNullable.group({
     cardholderName: ['', Validators.required],
-    cardNumber: ['', [Validators.required, Validators.pattern(/^[0-9 ]{12,24}$/)]],
+    cardNumber: ['', [Validators.required, Validators.pattern(/^[0-9 ]{12,24}$/), luhnValidator()]],
     expiry: ['', [Validators.required, Validators.pattern(/^\d{2}\/\d{2}$/)]],
     cvc: ['', [Validators.required, Validators.pattern(/^\d{3,4}$/)]],
+  });
+
+  readonly threeDsForm = this.fb.nonNullable.group({
+    code: ['', [Validators.required, Validators.pattern(/^\d{6}$/)]],
   });
 
   constructor() {
     afterRenderEffect(() => {
       const state = this.paymentState();
-      if (state === 'succeeded' || state === 'declined') {
+      if (state === 'succeeded' || state === 'declined' || state === 'requires3ds') {
         this.resultHeading()?.nativeElement.focus();
       }
     });
@@ -132,6 +145,10 @@ export class CheckoutComponent implements OnInit {
       .subscribe({
         next: (passengers) => this.passengers.set(passengers),
       });
+
+    this.newPassengerForm.controls.idType.valueChanges
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.newPassengerForm.controls.idNumber.updateValueAndValidity());
   }
 
   onAssignChange(seatId: number, event: Event): void {
@@ -262,6 +279,8 @@ export class CheckoutComponent implements OnInit {
           if (payment.status === 'SUCCEEDED') {
             this.paymentState.set('succeeded');
             this.bookingDraftService.clear();
+          } else if (payment.status === 'PENDING_3DS') {
+            this.paymentState.set('requires3ds');
           } else {
             this.paymentState.set('declined');
           }
@@ -270,9 +289,36 @@ export class CheckoutComponent implements OnInit {
       });
   }
 
+  confirmThreeDs(): void {
+    const booking = this.booking();
+    const payment = this.payment();
+    if (!booking || !payment || this.threeDsForm.invalid || this.submittingThreeDs()) {
+      this.threeDsForm.markAllAsTouched();
+      return;
+    }
+
+    this.submittingThreeDs.set(true);
+    this.paymentService
+      .confirmThreeDs(booking.booking.id, payment.id, this.threeDsForm.getRawValue().code)
+      .pipe(finalize(() => this.submittingThreeDs.set(false)), takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (result) => {
+          this.payment.set(result);
+          this.threeDsForm.reset({ code: '' });
+          if (result.status === 'SUCCEEDED') {
+            this.paymentState.set('succeeded');
+            this.bookingDraftService.clear();
+          } else {
+            this.paymentState.set('declined');
+          }
+        },
+      });
+  }
+
   retryPayment(): void {
     this.payment.set(null);
     this.paymentState.set('idle');
+    this.threeDsForm.reset({ code: '' });
   }
 
   viewBooking(): void {

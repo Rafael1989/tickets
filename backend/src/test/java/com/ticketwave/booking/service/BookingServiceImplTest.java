@@ -3,6 +3,7 @@ package com.ticketwave.booking.service;
 import com.ticketwave.booking.dto.BookingDetailResponse;
 import com.ticketwave.booking.dto.BookingItemResponse;
 import com.ticketwave.booking.dto.BookingResponse;
+import com.ticketwave.booking.dto.BookingSearchResult;
 import com.ticketwave.booking.dto.CreateBookingRequest;
 import com.ticketwave.booking.dto.RescheduleRequest;
 import com.ticketwave.booking.dto.SeatSelection;
@@ -15,6 +16,7 @@ import com.ticketwave.booking.mapper.BookingItemMapper;
 import com.ticketwave.booking.mapper.BookingMapper;
 import com.ticketwave.booking.repository.BookingItemRepository;
 import com.ticketwave.booking.repository.BookingRepository;
+import com.ticketwave.catalog.entity.Route;
 import com.ticketwave.catalog.entity.Schedule;
 import com.ticketwave.catalog.entity.Seat;
 import com.ticketwave.catalog.entity.SeatStatus;
@@ -38,6 +40,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -49,6 +52,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
@@ -571,6 +575,75 @@ class BookingServiceImplTest {
 
         assertThatThrownBy(() -> bookingService.getBookingByPnr("GHOST1"))
                 .isInstanceOf(BookingNotFoundException.class);
+    }
+
+    @Test
+    void lookupByPnrAndEmail_whenPnrAndEmailMatch_returnsBookingWithItems() {
+        User customer = User.builder().id(1L).email("alice@example.com").build();
+        Booking booking = Booking.builder().id(500L).user(customer).status(BookingStatus.CONFIRMED)
+                .totalAmount(new BigDecimal("50.00")).build();
+        BookingItem item = BookingItem.builder().id(1L).booking(booking).seat(seat(2L, BigDecimal.ONE)).build();
+
+        given(bookingRepository.findByPnr("ABC234")).willReturn(Optional.of(booking));
+        given(bookingItemRepository.findByBookingId(500L)).willReturn(List.of(item));
+        given(bookingMapper.toResponse(booking)).willReturn(
+                new BookingResponse(500L, 1L, 10L, "ABC234", Instant.now(), BookingStatus.CONFIRMED, booking.getTotalAmount(), null));
+        given(bookingItemMapper.toResponse(item)).willReturn(
+                new BookingItemResponse(1L, 500L, 2L, 100L, BigDecimal.ONE));
+
+        BookingDetailResponse response = bookingService.lookupByPnrAndEmail("ABC234", "ALICE@EXAMPLE.COM");
+
+        assertThat(response.booking().id()).isEqualTo(500L);
+    }
+
+    @Test
+    void lookupByPnrAndEmail_whenEmailDoesNotMatch_throwsBookingNotFoundException() {
+        User customer = User.builder().id(1L).email("alice@example.com").build();
+        Booking booking = Booking.builder().id(500L).user(customer).build();
+        given(bookingRepository.findByPnr("ABC234")).willReturn(Optional.of(booking));
+
+        assertThatThrownBy(() -> bookingService.lookupByPnrAndEmail("ABC234", "mallory@example.com"))
+                .isInstanceOf(BookingNotFoundException.class);
+    }
+
+    @Test
+    void lookupByPnrAndEmail_whenPnrMissing_throwsBookingNotFoundException() {
+        given(bookingRepository.findByPnr("GHOST1")).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> bookingService.lookupByPnrAndEmail("GHOST1", "alice@example.com"))
+                .isInstanceOf(BookingNotFoundException.class);
+    }
+
+    @Test
+    void searchBookings_withBlankQuery_returnsEmptyListWithoutQueryingRepository() {
+        List<BookingSearchResult> results = bookingService.searchBookings("   ");
+
+        assertThat(results).isEmpty();
+        verify(bookingRepository, never()).search(any(), any(), any());
+    }
+
+    @Test
+    void searchBookings_withMatches_returnsMappedResults() {
+        User customer = User.builder().id(1L).username("alice").email("alice@example.com").build();
+        Route route = Route.builder().id(20L).origin("NYC").destination("Boston").build();
+        Schedule schedule = Schedule.builder().id(10L).route(route).departureTime(Instant.parse("2026-09-01T00:00:00Z")).build();
+        Booking booking = Booking.builder().id(500L).user(customer).schedule(schedule).pnr("ABC234")
+                .status(BookingStatus.CONFIRMED).totalAmount(new BigDecimal("50.00"))
+                .bookingTime(Instant.parse("2026-08-01T00:00:00Z")).build();
+
+        given(bookingRepository.search(eq("alice"), anyString(), any()))
+                .willReturn(new PageImpl<>(List.of(booking)));
+
+        List<BookingSearchResult> results = bookingService.searchBookings("alice");
+
+        assertThat(results).hasSize(1);
+        BookingSearchResult result = results.get(0);
+        assertThat(result.bookingId()).isEqualTo(500L);
+        assertThat(result.pnr()).isEqualTo("ABC234");
+        assertThat(result.customerUsername()).isEqualTo("alice");
+        assertThat(result.customerEmail()).isEqualTo("alice@example.com");
+        assertThat(result.origin()).isEqualTo("NYC");
+        assertThat(result.destination()).isEqualTo("Boston");
     }
 
     @Test

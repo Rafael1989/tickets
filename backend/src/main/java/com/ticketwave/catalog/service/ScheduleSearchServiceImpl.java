@@ -2,6 +2,7 @@ package com.ticketwave.catalog.service;
 
 import com.ticketwave.catalog.dto.ScheduleSearchCriteria;
 import com.ticketwave.catalog.dto.ScheduleSearchResult;
+import com.ticketwave.catalog.dto.ScheduleSortBy;
 import com.ticketwave.catalog.dto.SeatResponse;
 import com.ticketwave.catalog.entity.Route;
 import com.ticketwave.catalog.entity.Schedule;
@@ -57,7 +58,7 @@ public class ScheduleSearchServiceImpl implements ScheduleSearchService {
     public List<ScheduleSearchResult> search(ScheduleSearchCriteria criteria) {
         List<Schedule> schedules = scheduleRepository.findAll(
                 ScheduleSpecifications.matching(criteria, clock.instant()),
-                Sort.by(Sort.Direction.ASC, "departureTime"));
+                sortFor(criteria.sortBy()));
 
         if (schedules.isEmpty()) {
             return List.of();
@@ -124,6 +125,18 @@ public class ScheduleSearchServiceImpl implements ScheduleSearchService {
                 base.heldUntil(),
                 heldByMe
         );
+    }
+
+    /** Defaults to soonest-departing-first when sortBy is omitted. */
+    private static Sort sortFor(ScheduleSortBy sortBy) {
+        if (sortBy == null) {
+            return Sort.by(Sort.Direction.ASC, "departureTime");
+        }
+        return switch (sortBy) {
+            case PRICE_ASC -> Sort.by(Sort.Direction.ASC, "baseFare");
+            case PRICE_DESC -> Sort.by(Sort.Direction.DESC, "baseFare");
+            case DEPARTURE_TIME -> Sort.by(Sort.Direction.ASC, "departureTime");
+        };
     }
 
     private ScheduleSearchResult toSearchResult(Schedule schedule, long availableSeats) {

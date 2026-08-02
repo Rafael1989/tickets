@@ -14,7 +14,10 @@ import com.ticketwave.catalog.exception.SeatUnavailableException;
 import com.ticketwave.catalog.mapper.SeatMapper;
 import com.ticketwave.catalog.repository.ScheduleRepository;
 import com.ticketwave.catalog.repository.SeatRepository;
+import com.ticketwave.catalog.security.TenantScope;
 import com.ticketwave.user.entity.User;
+import com.ticketwave.user.repository.UserRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -40,12 +43,30 @@ class SeatManagementServiceImplTest {
     @Mock
     private SeatRepository seatRepository;
     @Mock
+    private UserRepository userRepository;
+    @Mock
     private SeatMapper seatMapper;
     @Mock
     private AuditService auditService;
+    @Mock
+    private TenantScope tenantScope;
 
     @InjectMocks
     private SeatManagementServiceImpl seatManagementService;
+
+    /**
+     * Reproduces the pre-multi-tenant "exact same username" ownership check
+     * through the new UserRepository/TenantScope collaborators, so every
+     * existing test below keeps its original username-based semantics
+     * without needing to stub these two on a per-test basis.
+     */
+    @BeforeEach
+    void stubTenantResolutionByUsername() {
+        org.mockito.Mockito.lenient().when(userRepository.findByUsername(any()))
+                .thenAnswer(inv -> Optional.of(User.builder().username(inv.getArgument(0)).build()));
+        org.mockito.Mockito.lenient().when(tenantScope.isSameTenant(any(), any()))
+                .thenAnswer(inv -> inv.getArgument(0, User.class).getUsername().equals(inv.getArgument(1, User.class).getUsername()));
+    }
 
     private static Schedule scheduleOwnedBy(long id, String operatorUsername) {
         Route route = Route.builder().operator(User.builder().username(operatorUsername).build()).build();

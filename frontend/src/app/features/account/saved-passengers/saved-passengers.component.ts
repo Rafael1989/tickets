@@ -6,6 +6,7 @@ import { finalize } from 'rxjs';
 import { PassengerResponse } from '../../../core/models/passenger.model';
 import { NotificationService } from '../../../core/services/notification.service';
 import { PassengerService } from '../../../core/services/passenger.service';
+import { idNumberValidator } from '../../../core/validators/id-number.validator';
 
 @Component({
   selector: 'tw-saved-passengers',
@@ -38,7 +39,7 @@ export class SavedPassengersComponent implements OnInit {
     fullName: ['', [Validators.required, Validators.maxLength(150)]],
     dob: ['', Validators.required],
     idType: ['passport', Validators.required],
-    idNumber: ['', [Validators.required, Validators.maxLength(50)]],
+    idNumber: ['', [Validators.required, Validators.maxLength(50), idNumberValidator()]],
   });
 
   ngOnInit(): void {
@@ -48,6 +49,10 @@ export class SavedPassengersComponent implements OnInit {
       .subscribe({
         next: (passengers) => this.passengers.set(passengers),
       });
+
+    this.form.controls.idType.valueChanges
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.form.controls.idNumber.updateValueAndValidity());
   }
 
   openAddForm(): void {

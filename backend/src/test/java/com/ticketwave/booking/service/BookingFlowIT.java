@@ -19,9 +19,13 @@ import com.ticketwave.user.entity.User;
 import com.ticketwave.user.entity.UserRole;
 import com.ticketwave.user.repository.PassengerRepository;
 import com.ticketwave.user.repository.UserRepository;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -232,5 +236,45 @@ class BookingFlowIT {
         executor.shutdown();
 
         assertThat(succeededA ^ succeededB).as("exactly one of the two racing bookings should succeed").isTrue();
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
+
+    private void authenticateAs(String username, UserRole role) {
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                username, null, List.of(new SimpleGrantedAuthority("ROLE_" + role.name()))));
+    }
+
+    /**
+     * Exercises the real JPQL against Postgres (LIKE ... ESCAPE, the implicit
+     * BookingItem join) end to end, not just its shape against a mock.
+     */
+    @Test
+    void searchBookings_matchesByPnrEmailAndPassengerName() {
+        User operator = newOperator("operator-search-1");
+        User customer = newCustomer("customer-search-1");
+        User support = userRepository.save(User.builder()
+                .username("support-search-1").email("support-search-1@example.com")
+                .passwordHash("hash").role(UserRole.SUPPORT).build());
+        Schedule schedule = newSchedule(operator);
+        newFillerSeats(schedule, 2);
+        Seat seat = newSeat(schedule, "4A");
+        Passenger passenger = newPassenger(customer);
+
+        BookingDetailResponse created = bookingService.createBooking(customer.getUsername(), new CreateBookingRequest(
+                schedule.getId(), List.of(new SeatSelection(seat.getId(), passenger.getId())), null));
+
+        authenticateAs(support.getUsername(), UserRole.SUPPORT);
+
+        assertThat(bookingService.searchBookings(created.booking().pnr()))
+                .extracting(r -> r.bookingId()).containsExactly(created.booking().id());
+        assertThat(bookingService.searchBookings(customer.getEmail()))
+                .extracting(r -> r.bookingId()).contains(created.booking().id());
+        assertThat(bookingService.searchBookings("Jane Doe"))
+                .extracting(r -> r.bookingId()).contains(created.booking().id());
+        assertThat(bookingService.searchBookings("no-such-customer-anywhere")).isEmpty();
     }
 }

@@ -7,6 +7,7 @@ import com.ticketwave.booking.exception.BookingNotFoundException;
 import com.ticketwave.booking.exception.InvalidBookingStateException;
 import com.ticketwave.booking.repository.BookingRepository;
 import com.ticketwave.booking.service.BookingService;
+import com.ticketwave.catalog.entity.Route;
 import com.ticketwave.catalog.entity.Schedule;
 import com.ticketwave.config.RefundProperties;
 import com.ticketwave.payment.dto.RefundDecision;
@@ -20,6 +21,8 @@ import com.ticketwave.payment.exception.CancellationNotAllowedException;
 import com.ticketwave.payment.exception.InvalidRefundStateException;
 import com.ticketwave.payment.exception.PaymentNotFoundException;
 import com.ticketwave.payment.exception.RefundNotFoundException;
+import com.ticketwave.payment.exception.RefundOverrideAmountExceedsPaymentException;
+import com.ticketwave.payment.exception.RefundOverrideReasonRequiredException;
 import com.ticketwave.payment.mapper.RefundMapper;
 import com.ticketwave.payment.repository.PaymentRepository;
 import com.ticketwave.payment.repository.RefundRepository;
@@ -68,6 +71,8 @@ class RefundServiceImplTest {
     private RefundMapper refundMapper;
     @Mock
     private AuditService auditService;
+    @Mock
+    private com.ticketwave.partner.service.PartnerWebhookDeliveryService webhookDeliveryService;
 
     private static final RefundProperties PROPERTIES = new RefundProperties(7, 24, new BigDecimal("0.50"));
 
@@ -84,7 +89,7 @@ class RefundServiceImplTest {
 
     private RefundServiceImpl newService(RefundProperties properties) {
         return new RefundServiceImpl(refundRepository, paymentRepository, bookingRepository, userRepository,
-                bookingService, new RefundPolicyService(properties), refundMapper, auditService);
+                bookingService, new RefundPolicyService(properties), refundMapper, auditService, webhookDeliveryService);
     }
 
     private static Booking booking(long id, BookingStatus status, Schedule schedule) {
@@ -95,8 +100,18 @@ class RefundServiceImplTest {
         return Schedule.builder().id(10L).departureTime(Instant.now().plus(untilDeparture)).build();
     }
 
+    /**
+     * booking/schedule/route/operator are wired up (operator with no
+     * partner) purely so processRefund's webhook-notification branch has
+     * something non-null to navigate through — these tests aren't
+     * exercising webhook delivery itself, just mustn't NPE reaching it.
+     */
     private static Payment succeededPayment(BigDecimal amount) {
-        return Payment.builder().id(1L).amount(amount).status(PaymentStatus.SUCCEEDED).build();
+        User operator = User.builder().id(99L).username("operator-webhook-test").build();
+        Route route = Route.builder().id(1L).operator(operator).build();
+        Schedule schedule = Schedule.builder().id(50L).route(route).build();
+        Booking booking = Booking.builder().id(500L).schedule(schedule).pnr("TEST01").build();
+        return Payment.builder().id(1L).amount(amount).status(PaymentStatus.SUCCEEDED).booking(booking).build();
     }
 
     @Test
@@ -114,7 +129,7 @@ class RefundServiceImplTest {
         given(refundRepository.save(any(Refund.class))).willAnswer(inv -> inv.getArgument(0));
         given(refundMapper.toResponse(any(Refund.class))).willAnswer(inv -> {
             Refund r = inv.getArgument(0);
-            return new RefundResponse(null, 1L, r.getAmount(), r.getPolicyCode(), r.getStatus(), null, null);
+            return new RefundResponse(null, 1L, r.getAmount(), r.getPolicyCode(), r.getStatus(), null, null, null, null);
         });
 
         RefundResponse response = service.initiateRefund(500L);
@@ -139,7 +154,7 @@ class RefundServiceImplTest {
         given(refundRepository.save(any(Refund.class))).willAnswer(inv -> inv.getArgument(0));
         given(refundMapper.toResponse(any(Refund.class))).willAnswer(inv -> {
             Refund r = inv.getArgument(0);
-            return new RefundResponse(null, 1L, r.getAmount(), r.getPolicyCode(), r.getStatus(), null, null);
+            return new RefundResponse(null, 1L, r.getAmount(), r.getPolicyCode(), r.getStatus(), null, null, null, null);
         });
 
         RefundResponse response = service.initiateRefund(500L);
@@ -216,6 +231,35 @@ class RefundServiceImplTest {
 
         assertThatThrownBy(() -> service.initiateRefund(500L))
                 .isInstanceOf(PaymentNotFoundException.class);
+    }
+
+    @Test
+    void listRefundsForBooking_whenFound_returnsNewestFirstMapped() {
+        RefundServiceImpl service = newService(PROPERTIES);
+        Refund refund1 = Refund.builder().id(1L).amount(new BigDecimal("50.00")).policyCode("PARTIAL_REFUND")
+                .status(RefundStatus.PROCESSED).build();
+        Refund refund2 = Refund.builder().id(2L).amount(new BigDecimal("20.00")).policyCode("RESCHEDULE_CREDIT")
+                .status(RefundStatus.PENDING).build();
+
+        given(bookingRepository.existsById(500L)).willReturn(true);
+        given(refundRepository.findByPaymentBookingIdOrderByIdDesc(500L)).willReturn(List.of(refund2, refund1));
+        given(refundMapper.toResponse(refund2)).willReturn(
+                new RefundResponse(2L, 1L, refund2.getAmount(), "RESCHEDULE_CREDIT", RefundStatus.PENDING, null, null, null, null));
+        given(refundMapper.toResponse(refund1)).willReturn(
+                new RefundResponse(1L, 1L, refund1.getAmount(), "PARTIAL_REFUND", RefundStatus.PROCESSED, 9L, Instant.now(), null, null));
+
+        List<RefundResponse> refunds = service.listRefundsForBooking(500L);
+
+        assertThat(refunds).extracting(RefundResponse::id).containsExactly(2L, 1L);
+    }
+
+    @Test
+    void listRefundsForBooking_whenBookingMissing_throwsBookingNotFoundException() {
+        RefundServiceImpl service = newService(PROPERTIES);
+        given(bookingRepository.existsById(500L)).willReturn(false);
+
+        assertThatThrownBy(() -> service.listRefundsForBooking(500L))
+                .isInstanceOf(BookingNotFoundException.class);
     }
 
     @Test
@@ -318,9 +362,9 @@ class RefundServiceImplTest {
         given(refundRepository.findById(1L)).willReturn(Optional.of(refund));
         given(userRepository.findByUsername("support1")).willReturn(Optional.of(admin));
         given(refundMapper.toResponse(refund)).willReturn(
-                new RefundResponse(1L, 1L, refund.getAmount(), "FULL_REFUND", RefundStatus.PROCESSED, 9L, Instant.now()));
+                new RefundResponse(1L, 1L, refund.getAmount(), "FULL_REFUND", RefundStatus.PROCESSED, 9L, Instant.now(), null, null));
 
-        RefundResponse response = service.processRefund(1L, "support1", RefundDecision.APPROVE);
+        RefundResponse response = service.processRefund(1L, "support1", RefundDecision.APPROVE, null, null);
 
         assertThat(response.status()).isEqualTo(RefundStatus.PROCESSED);
         assertThat(refund.getStatus()).isEqualTo(RefundStatus.PROCESSED);
@@ -345,9 +389,9 @@ class RefundServiceImplTest {
         given(refundRepository.findById(1L)).willReturn(Optional.of(refund));
         given(userRepository.findByUsername("support1")).willReturn(Optional.of(admin));
         given(refundMapper.toResponse(refund)).willReturn(
-                new RefundResponse(1L, 1L, refund.getAmount(), "RESCHEDULE_CREDIT", RefundStatus.PROCESSED, 9L, Instant.now()));
+                new RefundResponse(1L, 1L, refund.getAmount(), "RESCHEDULE_CREDIT", RefundStatus.PROCESSED, 9L, Instant.now(), null, null));
 
-        service.processRefund(1L, "support1", RefundDecision.APPROVE);
+        service.processRefund(1L, "support1", RefundDecision.APPROVE, null, null);
 
         assertThat(refund.getStatus()).isEqualTo(RefundStatus.PROCESSED);
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED);
@@ -364,9 +408,9 @@ class RefundServiceImplTest {
         given(refundRepository.findById(1L)).willReturn(Optional.of(refund));
         given(userRepository.findByUsername("support1")).willReturn(Optional.of(admin));
         given(refundMapper.toResponse(refund)).willReturn(
-                new RefundResponse(1L, 1L, refund.getAmount(), "FULL_REFUND", RefundStatus.REJECTED, 9L, Instant.now()));
+                new RefundResponse(1L, 1L, refund.getAmount(), "FULL_REFUND", RefundStatus.REJECTED, 9L, Instant.now(), null, null));
 
-        service.processRefund(1L, "support1", RefundDecision.REJECT);
+        service.processRefund(1L, "support1", RefundDecision.REJECT, null, null);
 
         assertThat(refund.getStatus()).isEqualTo(RefundStatus.REJECTED);
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED); // unchanged
@@ -374,11 +418,88 @@ class RefundServiceImplTest {
     }
 
     @Test
+    void processRefund_approveWithOverride_waivesFeeAndRecordsDeltaAndReason() {
+        RefundServiceImpl service = newService(PROPERTIES);
+        Payment payment = succeededPayment(new BigDecimal("100.00"));
+        Refund refund = Refund.builder().id(1L).payment(payment).amount(new BigDecimal("50.00"))
+                .policyCode("PARTIAL_REFUND").status(RefundStatus.PENDING).build();
+        User admin = User.builder().id(9L).username("support1").build();
+
+        given(refundRepository.findById(1L)).willReturn(Optional.of(refund));
+        given(userRepository.findByUsername("support1")).willReturn(Optional.of(admin));
+        given(refundMapper.toResponse(refund)).willReturn(
+                new RefundResponse(1L, 1L, refund.getAmount(), "PARTIAL_REFUND", RefundStatus.PROCESSED, 9L,
+                        Instant.now(), refund.getOverrideDelta(), refund.getOverrideReason()));
+
+        service.processRefund(1L, "support1", RefundDecision.APPROVE, new BigDecimal("100.00"), "Goodwill waiver - repeat customer");
+
+        assertThat(refund.getAmount()).isEqualByComparingTo("100.00");
+        assertThat(refund.getOverrideDelta()).isEqualByComparingTo("50.00");
+        assertThat(refund.getOverrideReason()).isEqualTo("Goodwill waiver - repeat customer");
+        verify(auditService).record("support1", "REFUND_FEE_OVERRIDDEN", "REFUND", 1L,
+                "delta=50.00 reason=Goodwill waiver - repeat customer");
+        verify(auditService).record("support1", "REFUND_APPROVED", "REFUND", 1L, "status=PROCESSED");
+    }
+
+    @Test
+    void processRefund_approveWithOverrideAmountButNoReason_throwsRefundOverrideReasonRequiredException() {
+        RefundServiceImpl service = newService(PROPERTIES);
+        Payment payment = succeededPayment(new BigDecimal("100.00"));
+        Refund refund = Refund.builder().id(1L).payment(payment).amount(new BigDecimal("50.00"))
+                .policyCode("PARTIAL_REFUND").status(RefundStatus.PENDING).build();
+        User admin = User.builder().id(9L).username("support1").build();
+
+        given(refundRepository.findById(1L)).willReturn(Optional.of(refund));
+        given(userRepository.findByUsername("support1")).willReturn(Optional.of(admin));
+
+        assertThatThrownBy(() -> service.processRefund(1L, "support1", RefundDecision.APPROVE, new BigDecimal("100.00"), " "))
+                .isInstanceOf(RefundOverrideReasonRequiredException.class);
+        assertThat(refund.getStatus()).isEqualTo(RefundStatus.PENDING);
+    }
+
+    @Test
+    void processRefund_approveWithOverrideAmountExceedingPayment_throwsRefundOverrideAmountExceedsPaymentException() {
+        RefundServiceImpl service = newService(PROPERTIES);
+        Payment payment = succeededPayment(new BigDecimal("100.00"));
+        Refund refund = Refund.builder().id(1L).payment(payment).amount(new BigDecimal("50.00"))
+                .policyCode("PARTIAL_REFUND").status(RefundStatus.PENDING).build();
+        User admin = User.builder().id(9L).username("support1").build();
+
+        given(refundRepository.findById(1L)).willReturn(Optional.of(refund));
+        given(userRepository.findByUsername("support1")).willReturn(Optional.of(admin));
+
+        assertThatThrownBy(() -> service.processRefund(1L, "support1", RefundDecision.APPROVE, new BigDecimal("150.00"), "Full waiver"))
+                .isInstanceOf(RefundOverrideAmountExceedsPaymentException.class);
+        assertThat(refund.getStatus()).isEqualTo(RefundStatus.PENDING);
+    }
+
+    @Test
+    void processRefund_rejectWithOverrideAmount_ignoresOverride() {
+        RefundServiceImpl service = newService(PROPERTIES);
+        Payment payment = succeededPayment(new BigDecimal("100.00"));
+        Refund refund = Refund.builder().id(1L).payment(payment).amount(new BigDecimal("50.00"))
+                .policyCode("PARTIAL_REFUND").status(RefundStatus.PENDING).build();
+        User admin = User.builder().id(9L).username("support1").build();
+
+        given(refundRepository.findById(1L)).willReturn(Optional.of(refund));
+        given(userRepository.findByUsername("support1")).willReturn(Optional.of(admin));
+        given(refundMapper.toResponse(refund)).willReturn(
+                new RefundResponse(1L, 1L, refund.getAmount(), "PARTIAL_REFUND", RefundStatus.REJECTED, 9L, Instant.now(), null, null));
+
+        service.processRefund(1L, "support1", RefundDecision.REJECT, new BigDecimal("100.00"), "Should be ignored");
+
+        assertThat(refund.getAmount()).isEqualByComparingTo("50.00");
+        assertThat(refund.getOverrideDelta()).isNull();
+        assertThat(refund.getOverrideReason()).isNull();
+        verify(auditService, never()).record(any(), eq("REFUND_FEE_OVERRIDDEN"), any(), any(), any());
+    }
+
+    @Test
     void processRefund_whenRefundMissing_throwsRefundNotFoundException() {
         RefundServiceImpl service = newService(PROPERTIES);
         given(refundRepository.findById(1L)).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.processRefund(1L, "support1", RefundDecision.APPROVE))
+        assertThatThrownBy(() -> service.processRefund(1L, "support1", RefundDecision.APPROVE, null, null))
                 .isInstanceOf(RefundNotFoundException.class);
     }
 
@@ -388,7 +509,7 @@ class RefundServiceImplTest {
         Refund refund = Refund.builder().id(1L).status(RefundStatus.PROCESSED).build();
         given(refundRepository.findById(1L)).willReturn(Optional.of(refund));
 
-        assertThatThrownBy(() -> service.processRefund(1L, "support1", RefundDecision.APPROVE))
+        assertThatThrownBy(() -> service.processRefund(1L, "support1", RefundDecision.APPROVE, null, null))
                 .isInstanceOf(InvalidRefundStateException.class);
     }
 
@@ -399,7 +520,7 @@ class RefundServiceImplTest {
         given(refundRepository.findById(1L)).willReturn(Optional.of(refund));
         given(userRepository.findByUsername("support1")).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.processRefund(1L, "support1", RefundDecision.APPROVE))
+        assertThatThrownBy(() -> service.processRefund(1L, "support1", RefundDecision.APPROVE, null, null))
                 .isInstanceOf(UserNotFoundException.class);
     }
 }
