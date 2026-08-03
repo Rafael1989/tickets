@@ -270,7 +270,16 @@ Findings were not marked resolved on assertion. Three mechanisms carry the proof
    impossible to verify with mocks or an in-memory DB.
 3. **Build-enforced gates.** See §6.
 
-The full-suite result is recorded in `backend/audit-verify.log`.
+Reproducing any of it is `cd backend && ./mvnw clean verify`. Every CI run also
+publishes the merged JaCoCo report as an artifact, so the numbers in §7 can be
+checked against a specific commit rather than taken on trust.
+
+> An earlier version of this section pointed at `backend/audit-verify.log` as
+> the record of a full-suite run. That file is matched by `*.log` in
+> `backend/.gitignore` and was never committed, so the reference resolved to
+> nothing for anyone but its author. Removed rather than committed: a log
+> pasted into the repo goes stale the moment the next commit lands, which is
+> exactly what had happened to it.
 
 ---
 
@@ -284,11 +293,12 @@ same class of defect fails the build rather than waiting for the next review:
 | JaCoCo ≥80% line **and** branch, at `verify`, on merged unit+IT data | Untested code merging |
 | JaCoCo 100% line+branch on `PricingServiceImpl`, `SeatHoldServiceImpl`, `SeatHoldExpirationScheduler`, `RefundPolicyService` | Silent financial bugs in the modules where they cost money |
 | Failsafe bound to `integration-test`/`verify` | Integration tests silently not running |
-| Unique-per-run IT fixtures (`AbstractIntegrationTest#uniqueSuffix`) | A suite that only passes against a virgin database |
-| GitHub Actions running `mvn verify` + frontend tests on every push/PR | Every gate above depending on someone remembering to run it |
+| Unique-per-run IT fixtures (`AbstractIntegrationTest#uniqueSuffix`) | Two tests in one run colliding on the same fixture identifier |
+| GitHub Actions running the backend, frontend **and** Playwright e2e suites on every push/PR | Every gate above depending on someone remembering to run it |
 | `ddl-auto: validate` | Entity↔migration schema drift |
 | `JWT_SECRET` with no default | Shipping a guessable signing key |
 | Real PostgreSQL instead of H2 | Tests passing on behaviour PostgreSQL does not have |
+| Testcontainers, one throwaway database per run | Rows surviving between runs, concurrent runs interfering — and any possibility of a test reaching a real database |
 | Single `@RestControllerAdvice` | Stack traces reaching clients |
 
 ---
@@ -339,25 +349,59 @@ against the same database: both `BUILD SUCCESS`, 28 ITs each.
 
 ---
 
+### Later the same day: making the gates actually run
+
+Committing the round above turned out to be the round's last finding. The CI
+pipeline it added had never executed, and every defect below surfaced only once
+it did — each of them invisible on a developer machine, and each the same
+*shape* as §4.1: silent, and passing every test that existed.
+
+| Finding | Severity | Status |
+|---|---|---|
+| **The build could not run on a clean machine at all.** Any build against an empty local repository died in Maven's resolver with `BasicAuthCache cannot be cast to AuthCache` — two ClassRealms, before a single goal executed. A warm `~/.m2` never opens a transport, so every developer was fine and the first CI run was not | **Critical** | Fixed: `-Dmaven.resolver.transport=wagon` in `backend/.mvn/maven.config`, verified by building against a deliberately empty repository with and without it |
+| **The e2e readiness probe poisoned the cache it was waiting on.** The workflow polled `GET /api/schedules/1` while the database was still unseeded; `ScheduleCatalogCache` stored that miss under key 1 for 30s; `global-setup.ts` then `TRUNCATE … RESTART IDENTITY`d, making the seeded schedule id 1. The search found the id, got the stale empty back, and answered 200 with an empty list | **High** | Fixed: probe `/v3/api-docs`, which touches no schedule data and is outside `/api/*` |
+| `backend/.gitignore` excluded `maven-wrapper.properties`, leaving the newly added wrapper unable to resolve a distribution | Medium | Fixed |
+| No `.gitattributes`, so `mvnw` could reach a Linux runner with CRLF and die on its shebang | Medium | Fixed: `mvnw` pinned to LF, `mvnw.cmd` to CRLF, `mvnw` committed mode 100755 |
+| Testcontainers' image pull went out as Docker API 1.32 while the negotiated connection was 1.55; Docker Engine 26+ rejects it | Medium | Fixed: `api.version=1.44` as a Failsafe system property (docker-java's own key, *not* `DOCKER_API_VERSION`) |
+
+Two hypotheses were pursued, disproved by experiment, and are recorded so they
+are not retried: the Maven failure is **not** caused by the runner's Maven
+version (3.9.16 reproduces it), and **not** by
+`spring-cloud-contract-maven-plugin`'s extension realm (removing it leaves the
+failure identical). The `<extensions>true</extensions>` removal was kept anyway,
+on its own merits.
+
+The method that finally worked was to stop guessing and make the failure
+describe itself: the golden-path test now waits on `GET /api/search` and names
+each failure mode separately, and the workflow prints the seeded rows and both
+server logs into the job log rather than into an artifact nobody downloads.
+
+---
+
 ## 8. Open items
 
-- **ITs share one database.** Unique-per-run fixtures fix re-runnability, but two
-  concurrent `mvn verify` runs against the same database can still interfere, and
-  rows accumulate. CI works around it with a per-run service container and a
-  `concurrency` group; locally `docker-compose.yml` makes the database
-  disposable (`docker compose down -v`), but it is still one shared instance per
-  developer. Testcontainers would solve it properly, at the cost of making Docker
-  a hard requirement — which the project has so far deliberately avoided.
+- **`-Dmaven.resolver.transport=wagon` is a workaround, not a fix.** It steers
+  the resolver away from the transport that breaks; whichever ClassRealm
+  supplies the conflicting `httpclient` is still there. Two candidates were
+  tested and eliminated (the runner's Maven version, and
+  `spring-cloud-contract-maven-plugin`'s extension realm), so finding the real
+  contributor means bisecting the remaining plugins. Low urgency — a cold build
+  works — but the note in `.mvn/maven.config` should not become permanent by
+  default.
+- **`api.version=1.44` is pinned by hand** for the Testcontainers JVM. It will
+  need revisiting if this ever has to run against a Docker Engine older than 25,
+  or once docker-java stops sending 1.32 for image pulls.
 
 ### Closed since this document was written
 
-Resolved on **2026-08-03**, in the same round that produced §7:
+Resolved on **2026-08-03**:
 
 | Was open | Now |
 |---|---|
-| **Playwright e2e not in CI** — needed backend + frontend + `ticketwave_e2e` started by hand | Fixed: a third `e2e` job in [`ci.yml`](../.github/workflows/ci.yml) builds the jar, boots both servers against their own service container, and uploads traces plus both server logs on failure. `global-setup.ts` now reads `DB_HOST`/`DB_PORT`/`E2E_DB_NAME`/`DB_USERNAME`/`DB_PASSWORD`, defaulting to the same safe values |
+| **Playwright e2e not in CI** — needed backend + frontend + `ticketwave_e2e` started by hand | Fixed: a third `e2e` job in [`ci.yml`](../.github/workflows/ci.yml) builds the jar, boots both servers against their own service container, and uploads traces plus both server logs on failure. `global-setup.ts` now reads its connection from the environment |
 | **31 uncovered branches** | Down to **9**, and all 9 are now deliberate — see the Known gaps table in [`testing.md`](testing.md). Branch coverage 93.28% → **98.05%**, line 98.16% → **99.34%**, via 24 targeted tests |
-| **No `docker-compose.yml`** | Added, with `docker/init-databases.sql` creating all three databases. Pinned to `postgres:16` to match CI. Still optional — nothing in the build requires Docker |
+| **No `docker-compose.yml`** | Added, with `docker/init-databases.sql`. Now scoped to *running the app* — the test suite no longer needs it |
+| **ITs share one database** — concurrent runs could interfere, rows accumulated, and a forgotten env var could in principle point a run at real data | Fixed: Testcontainers, one throwaway `postgres:16` per test JVM ([`PostgresContainerSupport`](../backend/src/test/java/com/ticketwave/PostgresContainerSupport.java)). There is no longer any configured database URL for a stray env var to resolve to. Docker is now required by `mvn verify`, which is the price and is stated up front in [`testing.md`](testing.md) |
 
 The three branches that remain uncovered on purpose are each marked with a
 "note for coverage readers" comment at the site itself, rather than only in the
@@ -388,3 +432,20 @@ What made this review method productive, in rough order of impact:
 7. **Record the defect next to the code.** The comments naming each bug are what
    made this document reconstructible at all — and are why the rate-limit filter
    did not repeat the authentication-filter mistake.
+8. **A gate that has never executed is indistinguishable from one that does not
+   exist.** Every finding in "Later the same day" was produced by the act of
+   running CI for the first time, not by reading the code. The same is true one
+   level down: three of those defects were invisible because a developer machine
+   has a warm `~/.m2`, a database that already exists, and a fast local server —
+   none of which a clean runner has.
+9. **When a symptom is ambiguous, fix the diagnostic before fixing the bug.**
+   The e2e failure was chased through three refuted hypotheses on the strength
+   of an error message (`element(s) not found`) that could not distinguish the
+   two causes it had. Making the test name its own failure mode, and printing
+   evidence into the job log rather than an artifact, found the real cause on
+   the next run.
+10. **Record refuted hypotheses, not just conclusions.** Two plausible
+    explanations for the Maven failure were tested and eliminated. Without
+    writing that down, the next person pays for the same experiments — and the
+    commit that acted on one of them says, in its own message, that it was
+    wrong.

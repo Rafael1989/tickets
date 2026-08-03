@@ -99,11 +99,11 @@ Every error response has the same shape:
   AuthCache` error from the resolver, because `spring-cloud-contract-maven-plugin`
   is declared with `<extensions>true</extensions>` and contributes its own
   `httpclient`. CI uses `./mvnw` for exactly that reason.
-- PostgreSQL 14+ — either a local install, or `docker compose up -d postgres`,
-  which starts `postgres:16` (the version CI uses) and creates all three
-  databases the project needs: `ticketwave` (dev), `ticketwave_test` (the `*IT`
-  suite) and `ticketwave_e2e` (Playwright). Docker is a convenience here, never
-  a requirement — no part of the build depends on it.
+- **Docker** — required by `mvn verify`, which starts a throwaway
+  `postgres:16` through Testcontainers for the integration tests.
+- PostgreSQL for **running the app** (not for the tests) — either a local
+  install or `docker compose up -d postgres`, which creates `ticketwave` (dev)
+  and `ticketwave_e2e` (Playwright).
 - Node.js + npm (`packageManager` pinned to `npm@11.16.0` in `frontend/package.json`)
 
 ### Backend
@@ -165,7 +165,7 @@ mvn clean verify
 This one command runs everything the coverage gate depends on:
 
 - **Unit tests** (Surefire) — services/controllers/mappers, JUnit 5 + Mockito.
-- **Integration tests** (Failsafe, classes ending in `*IT`) — `@SpringBootTest` against a **local PostgreSQL** (no Docker needed). Requires a `ticketwave_test` database; see [`docs/testing.md`](docs/testing.md).
+- **Integration tests** (Failsafe, classes ending in `*IT`) — `@SpringBootTest` against a **Testcontainers `postgres:16`**, started and destroyed per run. Needs Docker running; nothing else to set up. See [`docs/testing.md`](docs/testing.md).
 - **Contract tests** (Spring Cloud Contract) — generated from `src/test/resources/contracts`.
 - **Jacoco coverage check** — runs at `verify` on unit **and** integration coverage merged, and fails the build below the enforced thresholds:
   - ≥80% line **and** ≥80% branch coverage across the whole bundle.

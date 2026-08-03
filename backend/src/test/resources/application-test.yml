@@ -1,18 +1,14 @@
 # Activated via @ActiveProfiles("test") (see AbstractIntegrationTest). Only
-# overrides what needs to differ from application.yml for local-Postgres IT
-# runs — everything else (Hikari tuning, pricing/refund config, etc.)
-# inherits from the base file.
+# overrides what needs to differ from application.yml — everything else
+# (Hikari tuning, pricing/refund config, etc.) inherits from the base file.
 #
-# DATABASE SAFETY: the default DB_NAME here is "ticketwave_test", which is
-# DIFFERENT from application.yml's own default ("ticketwave"). Even if an
-# env var is forgotten, the test profile can never silently fall through to
-# the dev database name — the two defaults are deliberately distinct.
-spring:
-  datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ticketwave_test}
-    username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:root}
-
+# DATABASE SAFETY: there is deliberately no spring.datasource block here. The
+# connection is supplied at runtime by @DynamicPropertySource from the
+# throwaway Testcontainers instance (PostgresContainerSupport), which wins over
+# anything a file could set. This replaces the previous safeguard — a default
+# database name deliberately different from the dev one — with a stronger
+# guarantee: there is no URL left for a forgotten env var to resolve to, so a
+# test run cannot address a real database at all.
 ticketwave:
   jwt:
     # Fixed, well-known, non-secret test key — the opposite policy from

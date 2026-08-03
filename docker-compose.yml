@@ -1,14 +1,12 @@
-# Local PostgreSQL for development and tests.
+# Local PostgreSQL for RUNNING THE APP — the dev database and the Playwright
+# e2e one.
 #
-# Optional: the project deliberately does NOT use Testcontainers (see
-# backend/pom.xml), so the *IT suite runs against whatever PostgreSQL is
-# reachable on DB_HOST/DB_PORT — a natively installed server works just as
-# well. This file exists so a fresh machine can get all three databases with
-# one command instead of three manual CREATE DATABASE statements.
+# Not used by `mvn verify`: the *IT suite starts its own throwaway container
+# through Testcontainers (see PostgresContainerSupport), so it needs nothing
+# from here.
 #
-# Version pinned to 16 to match the service container in
-# .github/workflows/ci.yml: a local pass should mean the same thing CI's pass
-# means.
+# Version pinned to 16 to match both the Testcontainers image and the e2e job's
+# service container, so every PostgreSQL this project talks to is the same one.
 services:
   postgres:
     image: postgres:16

@@ -7,8 +7,10 @@ on:
     branches: [main]
 
 concurrency:
-  # One run per branch: the integration tests share a single PostgreSQL
-  # database, so overlapping runs on the same ref can interfere with each other.
+  # One run per branch. This used to be a correctness requirement — every IT
+  # shared one database and overlapping runs could corrupt each other.
+  # Testcontainers made that impossible, so what remains is simply not paying
+  # for a superseded run.
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
@@ -17,25 +19,10 @@ jobs:
     name: Backend (mvn verify)
     runs-on: ubuntu-latest
 
-    services:
-      postgres:
-        # The *IT suite runs against a real PostgreSQL, never H2 — Liquibase
-        # migrations, SELECT ... FOR UPDATE and PostgreSQL's abort-the-whole-
-        # transaction behaviour on constraint violations are exactly what those
-        # tests exist to verify. Locally this is a developer's own instance
-        # (see docs/testing.md); here it is a service container.
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: root
-          POSTGRES_DB: ticketwave_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
+    # No postgres service: the *IT suite starts its own throwaway container
+    # via Testcontainers (see PostgresContainerSupport), so the database is
+    # created and torn down by the tests. Docker is available on the runner,
+    # and `mvn verify` now requires it.
 
     steps:
       - uses: actions/checkout@v4
@@ -57,12 +44,6 @@ jobs:
       - name: Build, test and enforce coverage
         run: ./mvnw -B clean verify
         working-directory: backend
-        env:
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_NAME: ticketwave_test
-          DB_USERNAME: postgres
-          DB_PASSWORD: root
 
       - name: Upload coverage report
         if: always()

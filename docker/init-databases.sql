@@ -6,12 +6,9 @@
 -- run — it does not create the databases themselves, which is why this file
 -- exists.
 
--- Target of the *IT suite (application-test.yml). Deliberately a different
--- name from the dev database so a forgotten env var can never point a test
--- run at dev data.
-CREATE DATABASE ticketwave_test;
-
--- Target of the Playwright e2e suite. Kept separate because e2e/global-setup.ts
--- TRUNCATEs every table it finds — pointing it at either database above would
--- destroy dev data or race the *IT suite.
+-- Target of the Playwright e2e suite. Kept separate from the dev database
+-- because e2e/global-setup.ts TRUNCATEs every table it finds.
 CREATE DATABASE ticketwave_e2e;
+
+-- Note there is no ticketwave_test here: the *IT suite runs against its own
+-- Testcontainers instance and needs nothing from this file.

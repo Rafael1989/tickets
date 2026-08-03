@@ -106,17 +106,17 @@ com.ticketwave.booking.mapper
   UPDATE` semantics and enum-column behavior all diverge from an in-memory DB,
   and several idempotency guarantees depend on PostgreSQL aborting the whole
   transaction on a constraint violation.
-  The database is a **local PostgreSQL**, not Testcontainers: extend
-  `AbstractIntegrationTest`, which activates the `test` profile
-  (`application-test.yml` → `ticketwave_test`, a deliberately different default
-  DB name from the dev one so a forgotten env var can never point a test run at
-  dev data). This keeps the suite runnable without Docker.
-  The tradeoff is that ITs share one database instead of getting an isolated
-  container, so **each test must generate its own unique data** (random
-  suffixes/UUIDs) rather than relying on rollback — `AbstractIntegrationTest`
-  is deliberately not `@Transactional`, because concurrency tests spawn worker
-  threads and HTTP tests run on Tomcat's thread, neither of which a test-thread
-  rollback would cover.
+  The database is a **Testcontainers `postgres:16`**, so `mvn verify` requires
+  a running Docker. Extend `AbstractIntegrationTest`, which activates the `test`
+  profile and registers the container via `@DynamicPropertySource`; there is no
+  configured database URL a forgotten env var could resolve to, so a test run
+  cannot reach a real database.
+  One container per test JVM, not per class (`PostgresContainerSupport`), so
+  classes in a run still share a database: **each test must generate its own
+  unique data** (`uniqueSuffix()`) rather than relying on rollback —
+  `AbstractIntegrationTest` is deliberately not `@Transactional`, because
+  concurrency tests spawn worker threads and HTTP tests run on Tomcat's thread,
+  neither of which a test-thread rollback would cover.
 - Controller tests (`@WebMvcTest` + MockMvc) verify request validation, status
   codes, and error-body shape — not business logic.
 - Test naming: `methodName_condition_expectedResult` (e.g.

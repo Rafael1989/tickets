@@ -24,6 +24,8 @@
         <jjwt.version>0.12.6</jjwt.version>
         <springdoc.version>3.0.3</springdoc.version>
         <spring-cloud-contract.version>5.0.3</spring-cloud-contract.version>
+        <!-- Spring Boot 4.0.6 does not manage org.testcontainers versions. -->
+        <testcontainers.version>1.21.3</testcontainers.version>
     </properties>
 
     <dependencies>
@@ -139,11 +141,22 @@
             <scope>test</scope>
         </dependency>
         <!--
-        No Testcontainers: the *IT suite runs against a local PostgreSQL via
-        the "test" profile (AbstractIntegrationTest -> application-test.yml ->
-        ticketwave_test), so the suite stays runnable without Docker. See
-        docs/testing.md for the isolation tradeoff that choice implies.
+        Testcontainers: the *IT suite gets its own throwaway PostgreSQL per
+        run (see PostgresContainerSupport), replacing the shared local
+        database every IT used to share. Docker is now required for
+        `mvn verify` - docs/testing.md says so up front, including the Docker
+        Desktop API-version caveat on Windows.
         -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
 
         <!-- Contract testing: see AuthContractBase and src/test/resources/contracts -->
         <dependency>
@@ -154,13 +167,50 @@
         </dependency>
     </dependencies>
 
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>${testcontainers.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <build>
         <plugins>
             <plugin>
                 <groupId>org.springframework.cloud</groupId>
                 <artifactId>spring-cloud-contract-maven-plugin</artifactId>
                 <version>${spring-cloud-contract.version}</version>
-                <extensions>true</extensions>
+                <!--
+                Deliberately NOT <extensions>true</extensions>. Binding the
+                three goals by hand costs three lines and makes the lifecycle
+                contribution visible in the file instead of implied by an
+                extension realm. Each goal keeps its own default phase
+                (generate-test-resources, generate-test-sources, package).
+
+                This was first tried as a fix for the resolver's
+                cross-ClassRealm ClassCastException (see .mvn/maven.config) on
+                the theory that this plugin's extension realm supplied the
+                conflicting httpclient. It is not: a cold-repository build with
+                the realm gone still fails identically, so some other realm
+                contributes it and the wagon transport selection stays. Kept
+                anyway, on its own merits, and recorded here so nobody retests
+                the same hypothesis.
+                -->
+                <executions>
+                    <execution>
+                        <id>contracts</id>
+                        <goals>
+                            <goal>convert</goal>
+                            <goal>generateTests</goal>
+                            <goal>generateStubs</goal>
+                        </goals>
+                    </execution>
+                </executions>
                 <configuration>
                     <testFramework>JUNIT5</testFramework>
                     <!--
@@ -212,6 +262,34 @@
                     incidental.
                     -->
                     <argLine>${failsafeArgLine}</argLine>
+                    <systemPropertyVariables>
+                        <!--
+                        Pins the Docker API version docker-java talks, for the
+                        forked *IT JVM only (nothing under Surefire touches
+                        Docker).
+
+                        Without it, Testcontainers negotiates the connection
+                        correctly - the log even prints "API Version: 1.55" -
+                        but the image-pull command still goes out as client
+                        version 1.32, and any Docker Engine from 26 onwards
+                        answers "client version 1.32 is too old. Minimum
+                        supported API version is 1.40". The symptom moves
+                        around (sometimes the /info probe fails instead,
+                        depending on whether ~/.testcontainers.properties has
+                        cached a strategy), which makes it look like several
+                        unrelated problems; it is one.
+
+                        Note this is docker-java's own `api.version` property,
+                        not the DOCKER_API_VERSION environment variable -
+                        setting that one does not help, because docker-java
+                        namespaces env vars differently.
+
+                        1.44 is Docker Engine 25's version: old enough that any
+                        engine this project could plausibly run on supports it,
+                        new enough to clear the 1.40 floor.
+                        -->
+                        <api.version>1.44</api.version>
+                    </systemPropertyVariables>
                 </configuration>
                 <executions>
                     <execution>

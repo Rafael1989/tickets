@@ -29,24 +29,38 @@ semantics and enum/JSON column handling all diverge from an in-memory database �
 and three of the four idempotency mechanisms depend on exactly those behaviours.
 An H2-backed test would pass while the production path was broken.
 
-**Local PostgreSQL, not Testcontainers.** ITs extend `AbstractIntegrationTest`,
-which activates the `test` profile — `application-test.yml` points at
-`ticketwave_test` on localhost. No Docker is required to run the suite.
+**Testcontainers.** `mvn verify` therefore **requires a running Docker**. One
+`postgres:16` container is started per test JVM by
+[`PostgresContainerSupport`](../backend/src/test/java/com/ticketwave/PostgresContainerSupport.java)
+and torn down by Ryuk when the JVM exits. Nothing outside the run is touched:
+there is no configured database URL a forgotten env var could resolve to, so a
+test run cannot reach a real database at all.
 
-`ticketwave_test` is a **deliberately different default** from
-`application.yml`'s `ticketwave`, so a forgotten env var can never let a test
-run silently destroy dev data.
+A hand-rolled singleton, not `@Testcontainers` + `@Container`: the annotations
+start and stop a container per test class, which here would mean eight
+containers and eight Liquibase runs per build, buying no isolation these tests
+need. `ScheduleSpecificationsIT` is `@DataJpaTest` and cannot extend
+`AbstractIntegrationTest` — mutually exclusive bootstrap strategies — so it
+registers the same singleton itself.
 
-The tradeoff is real and worth stating: without a container per run, every IT
-shares one database. Isolation therefore comes from each test generating unique
-data (random suffixes/UUIDs), **not** from rollback — `AbstractIntegrationTest`
-is deliberately not `@Transactional`, since concurrency tests spawn worker
-threads and HTTP-level tests execute on Tomcat's request thread, neither of which
-a test-thread rollback would cover. Consequences to be aware of:
+`AbstractIntegrationTest` is still deliberately **not** `@Transactional`:
+concurrency tests spawn worker threads and HTTP-level tests run on Tomcat's
+request thread, neither of which a test-thread rollback would cover. And
+`uniqueSuffix()` still matters, for a narrower reason than before — the
+container is per JVM, so every class in a run shares one database and a
+hardcoded fixture identifier still collides with a sibling test, just no longer
+with yesterday's run.
 
-- Two concurrent `mvn verify` runs against the same database can interfere.
-- Leftover rows from an aborted run persist; `ScheduleSpecificationsIT` carries
-  an in-code note about exactly this.
+> **Windows / Docker Desktop caveat.** The build pins `api.version=1.44` for the
+> Failsafe JVM (see `backend/pom.xml`). Without it Testcontainers negotiates the
+> connection fine — it even logs `API Version: 1.55` — but the image-pull command
+> still goes out as client version 1.32, and Docker Engine 26+ rejects it with
+> *"client version 1.32 is too old"*. The symptom moves around depending on
+> whether `~/.testcontainers.properties` has cached a client strategy, which
+> makes it look like several unrelated faults. It is one, and the pinned property
+> is the fix. Note it is docker-java's own `api.version`, **not** the
+> `DOCKER_API_VERSION` environment variable, which docker-java namespaces
+> differently and which does not help.
 
 ### Frontend
 
@@ -215,35 +229,27 @@ mvn clean test      # unit + controller tests, unit-only coverage report
 mvn clean verify    # the above, plus the *IT suite, contract tests, and the coverage gate
 ```
 
-`verify` needs a reachable PostgreSQL with a `ticketwave_test` database. Defaults
-are `localhost:5432`, user `postgres`, password `root`; override with `DB_HOST`,
-`DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`.
+`verify` needs **Docker running** and nothing else — no database to create, no
+env vars to export. Testcontainers pulls `postgres:16` on first use and starts a
+throwaway instance per run (§1).
 
-Either point those at a PostgreSQL you already run natively, or start the one
-this repo ships:
+`docker-compose.yml` is still here, but it is now only for **running the app**:
+it creates `ticketwave` (dev) and `ticketwave_e2e` (Playwright), which the *IT*
+suite no longer needs.
 
 ```bash
-docker compose up -d postgres   # creates ticketwave, ticketwave_test, ticketwave_e2e
+docker compose up -d postgres   # dev + e2e databases; the IT suite is independent of it
 ```
 
-`docker-compose.yml` is a convenience, not a requirement — nothing in the build
-depends on Docker (see §1). It pins `postgres:16` to match CI's service
-container, and `docker/init-databases.sql` creates all three databases the
-project uses. Without it, create them by hand once:
-
-```sql
-CREATE DATABASE ticketwave_test;
-```
-
-Two caveats:
+Two caveats for that compose file:
 
 - **Port 5432 is often already bound** by a natively installed PostgreSQL. If
   the container fails to bind, either stop that service or run with
-  `DB_PORT=5433` exported for both `docker compose` and `mvn`.
+  `DB_PORT=5433` exported for both `docker compose` and the app.
 - **The init script runs only on first initialisation** of an empty volume. If
-  you started the container before this file existed, the two extra databases
-  are missing; `docker compose down -v` (destroys the data) or a manual
-  `CREATE DATABASE` fixes it.
+  you started the container before it existed, the extra databases are missing;
+  `docker compose down -v` (destroys the data) or a manual `CREATE DATABASE`
+  fixes it.
 
 Liquibase builds the schema inside each database on first run.
 
