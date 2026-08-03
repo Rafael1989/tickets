@@ -299,6 +299,8 @@ same class of defect fails the build rather than waiting for the next review:
 | `JWT_SECRET` with no default | Shipping a guessable signing key |
 | Real PostgreSQL instead of H2 | Tests passing on behaviour PostgreSQL does not have |
 | Testcontainers, one throwaway database per run | Rows surviving between runs, concurrent runs interfering — and any possibility of a test reaching a real database |
+| JaCoCo `append=false` | A coverage number that includes hits from a build whose tests no longer exist |
+| `npm test` defaulting to one-shot | A frontend job that hangs until it times out, and a developer who typed the obvious command waiting for a prompt that never comes |
 | Single `@RestControllerAdvice` | Stack traces reaching clients |
 
 ---
@@ -315,8 +317,8 @@ findings, for completeness:
 | JaCoCo `report`/`check` bound to the `test` phase ran **before** `integration-test`, so the 7 `*IT` classes contributed nothing to the gate they were meant to satisfy | Medium | Fixed: `prepare-agent-integration` + `merge` + `check` at `verify` |
 | Docs (incl. `CLAUDE.md`) claimed integration tests used **Testcontainers**. Nothing does — the deps were declared but unused, and the ITs run against a local PostgreSQL | Medium | Fixed: docs corrected to reality, dead deps removed |
 | `TenantScope` and `AuditLogSpecifications` had **zero** branch coverage — every caller mocked them | Medium | Fixed: unit tests added |
-| A stale `target/jacoco.exec` inflates coverage, because JaCoCo appends by default | Low | Documented; `clean` required |
-| `npm test` runs in watch mode and never exits — unusable in CI | Low | Documented: `npx ng test --watch=false` |
+| A stale `target/jacoco.exec` inflates coverage, because JaCoCo appends by default | Low | Documented at the time, then **fixed**: `<append>false</append>`, so `clean` is no longer load-bearing |
+| `npm test` runs in watch mode and never exits — unusable in CI | Low | Documented at the time, then **fixed**: `npm test` is the one-shot run, `npm run test:watch` the watching one |
 | `frontend/run-frontend.log` was tracked in git | Low | Fixed: untracked and ignored |
 | **No CI pipeline** — every gate in §6 depended on someone remembering to run `mvn verify`, which is how a never-executing integration suite went unnoticed | High | Fixed: `.github/workflows/ci.yml` |
 | 27 of 75 `file:line` citations in [`functional-test-cases.md`](functional-test-cases.md) had drifted | Low | Fixed, plus a verification script added to the doc |

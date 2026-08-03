@@ -77,11 +77,14 @@ with yesterday's run.
 | Unit / component | Vitest (via `@angular/build:unit-test`) + Angular TestBed | 57 spec files, **401 tests**, all passing — services, guards, interceptors, components |
 | End-to-end | Playwright + Chromium | **5 tests**, all passing — `auth.spec.ts` (4) and `booking-golden-path.spec.ts` (1, search → book → pay) |
 
-`npm test` runs in **watch mode** and does not exit. For a one-shot or CI run:
-
 ```bash
-npx ng test --watch=false
+npm test         # one shot, exits when done — what CI runs
+npm run test:watch   # the watching variant, for working on a spec
 ```
+
+`npm test` deliberately passes `--watch=false`. Angular's default is to watch,
+which hangs a CI job until it times out and surprises anyone typing the
+conventional command; watching is opt-in here instead.
 
 The run prints repeated `Not implemented: HTMLCanvasElement's getContext()`
 warnings — jsdom lacking a canvas implementation, triggered by the QR-code
@@ -223,8 +226,13 @@ Two details are load-bearing:
 `mvn test` alone still produces the unit-only report, but no longer runs the
 gate — `mvn verify` is what enforces it.
 
-**Always use `clean`.** JaCoCo appends to an existing exec file by default, so a
-stale one from an earlier run inflates the numbers.
+**`clean` is no longer required for a trustworthy number.** JaCoCo appends to an
+existing exec file by default — a run over a `target/` from an earlier build
+would report the union of both, so code whose test was just deleted still
+counted as covered. `<append>false</append>` in the plugin configuration makes
+each run overwrite instead. (Valid because Surefire and Failsafe each use a
+single fork here; with `forkCount` above 1 the executions would need distinct
+`destFile`s instead.)
 
 ---
 
@@ -263,7 +271,7 @@ Liquibase builds the schema inside each database on first run.
 
 ```bash
 cd frontend
-npx ng test --watch=false   # Vitest, one shot (npm test watches and never exits)
+npm test                    # Vitest, one shot; npm run test:watch to watch
 ```
 
 ### End-to-end (Playwright)
@@ -323,8 +331,7 @@ stays out of the shared rate-limit bucket.
 k6 run load-test/search-and-seat-hold.js
 ```
 
-Always use `clean` when you care about the coverage number, for the append reason
-above.
+The coverage number is trustworthy without `clean` — see the append note above.
 
 ---
 
@@ -336,7 +343,7 @@ three parallel jobs:
 | Job | Does |
 |---|---|
 | **backend** | `mvn -B clean verify` against a `postgres:16` service container — full suite plus the coverage gate. Uploads the merged JaCoCo report always, and Surefire/Failsafe reports on failure |
-| **frontend** | `npm ci`, `npx ng test --watch=false`, `npm run build` |
+| **frontend** | `npm ci`, `npm test`, `npm run build` |
 | **e2e** | Builds the backend jar, boots it on 8081 against a `ticketwave_e2e` service container, serves the frontend on 4201, then runs the Playwright suite. Uploads traces, reports and both server logs on failure |
 
 Three details carried over from the problems documented above:

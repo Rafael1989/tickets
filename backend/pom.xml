@@ -332,6 +332,20 @@
                         <exclude>**/*MapperImpl.class</exclude>
                         <exclude>com/ticketwave/devseed/**</exclude>
                     </excludes>
+                    <!--
+                    JaCoCo's agent appends to an existing .exec by default, so a
+                    run over a target/ left by an earlier build reports the union
+                    of both — code whose test was just deleted still counts as
+                    covered, and the gate passes on evidence that no longer
+                    exists. The documented mitigation used to be "remember to run
+                    clean", which is not a mitigation.
+
+                    Safe because both Surefire and Failsafe run a single fork
+                    here (forkCount defaults to 1). If that ever changes, each
+                    fork would truncate the previous one's data and this must
+                    become a per-execution append with a distinct destFile.
+                    -->
+                    <append>false</append>
                 </configuration>
                 <executions>
                     <execution>

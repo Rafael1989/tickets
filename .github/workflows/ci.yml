@@ -81,10 +81,8 @@ jobs:
         run: npm ci
         working-directory: frontend
 
-      # --watch=false is required: `npm test` (ng test) watches by default and
-      # would never exit, hanging the job until it times out.
       - name: Unit tests
-        run: npx ng test --watch=false
+        run: npm test
         working-directory: frontend
 
       - name: Build

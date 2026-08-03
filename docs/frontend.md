@@ -209,7 +209,7 @@ checkout header (hold banner), which react to expiry differently.
 cd frontend
 npm install
 npm start                   # ng serve → http://localhost:4201
-npx ng test --watch=false   # Vitest, one shot (npm test watches and never exits)
+npm test                    # Vitest, one shot; npm run test:watch to watch
 npm run e2e                 # Playwright, needs backend + frontend running
 ```
 

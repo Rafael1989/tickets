@@ -178,22 +178,22 @@ see [`docs/testing.md`](docs/testing.md) for what that does and does not mean.
 
 The authoritative HTML report lands at
 `backend/target/site/jacoco-merged/index.html`; `site/jacoco/` holds the
-unit-only one from the `test` phase. Always use `clean` when you care about the
-number: JaCoCo appends to an existing exec file by default, so a stale one
-inflates it.
+unit-only one from the `test` phase. The number is trustworthy without `clean`:
+the JaCoCo agent is configured with `append=false`, so a run never adds to an
+earlier one's data.
 
-Run only unit tests (skips the `*IT` suite, so no database is needed):
+Run only unit tests (skips the `*IT` suite, so no Docker is needed):
 
 ```bash
-mvn test
+./mvnw test
 ```
 
 ### Frontend
 
 ```bash
 cd frontend
-npm test                    # Vitest, watch mode (stays running)
-npx ng test --watch=false   # one-shot run — 57 spec files, 401 tests
+npm test                    # Vitest, one shot — 57 spec files, 401 tests
+npm run test:watch          # the watching variant, for working on a spec
 npm run e2e                 # Playwright, against a running backend + frontend
 ```
 
