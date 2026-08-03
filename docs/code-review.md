@@ -411,6 +411,10 @@ The three branches that remain uncovered on purpose are each marked with a
 docs — the same *record-the-defect-next-to-the-code* habit that made §4
 reconstructible at all.
 
+For the same story told by problem rather than by review phase — including the
+build and CI failures that were never review findings, and the hypotheses that
+were tested and turned out wrong — see [`challenges.md`](challenges.md).
+
 ---
 
 ## 9. Key learnings

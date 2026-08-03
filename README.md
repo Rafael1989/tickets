@@ -17,6 +17,7 @@ Full product spec: [`genai.txt`](genai.txt). Repo-level coding standards
 | [`docs/frontend.md`](docs/frontend.md) | Angular app: routing, guards, interceptors, state, feature screens, shared components |
 | [`docs/testing.md`](docs/testing.md) | Test layers, coverage gates and what they measure, known gaps |
 | [`docs/code-review.md`](docs/code-review.md) | How the code review was conducted, findings and corrections with evidence, what now prevents regression |
+| [`docs/challenges.md`](docs/challenges.md) | The problems that actually cost time, what each turned out to be, how it was proven fixed — including the hypotheses that were wrong |
 | [`docs/functional-specification.md`](docs/functional-specification.md) | Every endpoint: method, path, summary, required role |
 | [`docs/functional-test-cases.md`](docs/functional-test-cases.md) | Functional test cases |
 
