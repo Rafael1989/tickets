@@ -1,0 +1,14 @@
+# Line endings are normalised to LF in the repository and restored per platform
+# on checkout. Two files cannot be left to that default:
+#
+#   mvnw      is executed by /bin/sh on the CI runner. Checked out with CRLF it
+#             fails as "bad interpreter: /bin/sh^M" before Maven ever starts.
+#   mvnw.cmd  is the reverse case — cmd.exe wants CRLF.
+#
+# Everything else follows git's own text detection.
+* text=auto
+
+mvnw text eol=lf
+*.sh text eol=lf
+mvnw.cmd text eol=crlf
+*.bat text eol=crlf

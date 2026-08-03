@@ -93,7 +93,12 @@ Every error response has the same shape:
 ### Prerequisites
 
 - Java 21
-- Maven (or use the repo's own `mvn` if a wrapper is added later)
+- Maven — or just use the committed wrapper, `backend/mvnw` (`mvnw.cmd` on
+  Windows), which pins **3.9.16**. Prefer it: older 3.9.x releases fail to
+  resolve this project at all, with a `BasicAuthCache cannot be cast to
+  AuthCache` error from the resolver, because `spring-cloud-contract-maven-plugin`
+  is declared with `<extensions>true</extensions>` and contributes its own
+  `httpclient`. CI uses `./mvnw` for exactly that reason.
 - PostgreSQL 14+ — either a local install, or `docker compose up -d postgres`,
   which starts `postgres:16` (the version CI uses) and creates all three
   databases the project needs: `ticketwave` (dev), `ticketwave_test` (the `*IT`

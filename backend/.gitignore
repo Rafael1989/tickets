@@ -1,6 +1,11 @@
 target/
-!.mvn/wrapper/maven-wrapper.jar
-.mvn/wrapper/maven-wrapper.properties
+
+# The Maven wrapper is committed on purpose — mvnw, mvnw.cmd and
+# maven-wrapper.properties together are what pin the Maven version, and CI
+# invokes ./mvnw precisely so it does not inherit the runner image's own
+# (older, broken for this project) Maven. Ignoring the properties file, as
+# this list used to, would leave the wrapper unable to resolve a distribution
+# at all. distributionType=only-script means there is no jar to worry about.
 
 ### IDE ###
 .idea/

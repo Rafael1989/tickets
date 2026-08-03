@@ -50,8 +50,14 @@ jobs:
       # `verify`, not `test`: the coverage gate is bound to the verify phase and
       # grades unit + integration coverage merged. `mvn test` alone would skip
       # every *IT and run no gate at all.
+      # ./mvnw, never the runner's `mvn`: the image's Maven is an older 3.9.x
+      # whose resolver blows up with a cross-ClassRealm ClassCastException
+      # (BasicAuthCache -> AuthCache) as soon as it has to download anything,
+      # because spring-cloud-contract-maven-plugin is declared with
+      # <extensions>true</extensions> and brings its own httpclient. The
+      # wrapper pins 3.9.16, which does not.
       - name: Build, test and enforce coverage
-        run: mvn -B clean verify
+        run: ./mvnw -B clean verify
         working-directory: backend
         env:
           DB_HOST: localhost
@@ -152,7 +158,7 @@ jobs:
       # them and enforces the coverage gate. This build exists only to produce
       # a runnable jar.
       - name: Build backend jar
-        run: mvn -B -DskipTests package
+        run: ./mvnw -B -DskipTests package
         working-directory: backend
 
       - name: Install frontend dependencies
