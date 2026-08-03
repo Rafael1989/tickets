@@ -222,6 +222,23 @@ jobs:
           DB_USERNAME: postgres
           DB_PASSWORD: root
 
+      # Printed into the job log, not only uploaded: an artifact has to be
+      # downloaded through the web UI before anyone can read it, which is a
+      # poor place to put the one piece of evidence a failure turns on. The
+      # log is what gets copied and pasted.
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          echo "===== seeded rows in ticketwave_e2e ====="
+          PGPASSWORD=root psql -h localhost -U postgres -d ticketwave_e2e \
+            -c "select route_id, type, origin, destination from routes" \
+            -c "select schedule_id, route_id, departure_time, status, base_fare from schedules" \
+            -c "select seat_id, schedule_id, seat_number, status from seats" || true
+          echo "===== backend.log (last 120 lines) ====="
+          tail -120 backend/backend.log || true
+          echo "===== frontend.log (last 60 lines) ====="
+          tail -60 frontend/frontend.log || true
+
       - name: Upload Playwright artifacts on failure
         if: failure()
         uses: actions/upload-artifact@v4
