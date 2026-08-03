@@ -120,6 +120,33 @@ class PartnerWebhookDeliveryServiceTest {
         assertThat(captor.getValue().getErrorMessage()).isNotBlank();
     }
 
+    @Test
+    void deliver_toAnEndpointReturningANonSuccessStatus_logsFailureWithThatStatus() throws Exception {
+        int port = freePort();
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
+        // 304 is the interesting case: RestClient's default status handler
+        // only raises for 4xx/5xx, so a 3xx comes back as an ordinary
+        // response and the "did it succeed?" decision rests entirely on the
+        // status < 300 check. Treating it as success would mark a webhook
+        // the partner never accepted as delivered.
+        server.createContext("/hook", exchange -> {
+            exchange.sendResponseHeaders(304, -1);
+            exchange.close();
+        });
+        server.start();
+
+        PartnerWebhook webhook = webhook("http://127.0.0.1:" + port + "/hook");
+        given(webhookRepository.findByPartnerIdAndEventTypeAndStatus(9L, "BOOKING_CANCELLED", WebhookStatus.ACTIVE))
+                .willReturn(List.of(webhook));
+
+        service.deliver(9L, "BOOKING_CANCELLED", new Payload(500L, "ABC123"));
+
+        ArgumentCaptor<WebhookDeliveryLog> captor = ArgumentCaptor.forClass(WebhookDeliveryLog.class);
+        verify(deliveryLogRepository).save(captor.capture());
+        assertThat(captor.getValue().isSuccess()).isFalse();
+        assertThat(captor.getValue().getResponseStatus()).isEqualTo(304);
+    }
+
     private static int freePort() {
         try (ServerSocket socket = new ServerSocket(0)) {
             return socket.getLocalPort();

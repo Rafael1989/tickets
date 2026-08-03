@@ -42,3 +42,10 @@ __screenshots__/
 # System files
 .DS_Store
 Thumbs.db
+
+# Local dev server output
+run-frontend.log
+
+# Playwright output
+test-results/
+playwright-report/

@@ -83,7 +83,16 @@ class RefundFlowIT extends AbstractIntegrationTest {
                 username, null, List.of(new SimpleGrantedAuthority("ROLE_" + role.name()))));
     }
 
-    private User newUser(String username, UserRole role) {
+    /**
+     * Suffixes the username itself rather than trusting callers to do it: this
+     * database is shared across runs and nothing rolls back, so a fixture with
+     * a fixed name passes once and then fails forever on uq_users_username.
+     * Centralising it here is what makes that impossible to forget - the
+     * support-user fixtures below are exactly the ones that were missed when
+     * the suffixing lived at the call site.
+     */
+    private User newUser(String label, UserRole role) {
+        String username = label + "-" + uniqueSuffix();
         return userRepository.save(User.builder()
                 .username(username).email(username + "@example.com")
                 .passwordHash("hash").role(role).build());
@@ -95,9 +104,12 @@ class RefundFlowIT extends AbstractIntegrationTest {
      * pricing engine's occupancy adjustment stays neutral and the payment
      * amount matches booking.totalAmount() exactly.
      */
-    private BookingDetailResponse newConfirmedBooking(String suffix, Duration untilDeparture) {
-        User operator = newUser("operator-refund-" + suffix, UserRole.OPERATOR);
-        User customer = newUser("customer-refund-" + suffix, UserRole.CUSTOMER);
+    private BookingDetailResponse newConfirmedBooking(String label, Duration untilDeparture) {
+        // newUser suffixes usernames itself; this local one is for the payment
+        // reference, which carries its own UNIQUE constraint.
+        String run = uniqueSuffix();
+        User operator = newUser("operator-refund-" + label, UserRole.OPERATOR);
+        User customer = newUser("customer-refund-" + label, UserRole.CUSTOMER);
         Route route = routeRepository.save(Route.builder()
                 .operator(operator).type(RouteType.BUS).origin("NYC").destination("Boston").build());
         Schedule schedule = scheduleRepository.save(Schedule.builder()
@@ -123,7 +135,7 @@ class RefundFlowIT extends AbstractIntegrationTest {
                 schedule.getId(), List.of(new SeatSelection(seat.getId(), passenger.getId())), null, null));
 
         paymentService.recordPayment(created.booking().id(),
-                new PaymentRequest(created.booking().totalAmount(), "card", "PAY-REFUND-" + suffix, "4242424242424242"));
+                new PaymentRequest(created.booking().totalAmount(), "card", "PAY-REFUND-" + label + "-" + run, "4242424242424242"));
 
         return created;
     }

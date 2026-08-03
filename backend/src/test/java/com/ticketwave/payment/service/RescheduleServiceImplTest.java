@@ -27,6 +27,8 @@ import com.ticketwave.payment.exception.FareDifferencePaymentRequiredException;
 import com.ticketwave.payment.exception.PaymentNotFoundException;
 import com.ticketwave.payment.repository.PaymentRepository;
 import com.ticketwave.payment.repository.RefundRepository;
+import com.ticketwave.pricing.dto.PromoCodeApplication;
+import com.ticketwave.pricing.entity.PromoCode;
 import com.ticketwave.pricing.service.PricingService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -352,5 +354,81 @@ class RescheduleServiceImplTest {
 
         assertThatThrownBy(() -> service.reschedule(500L, request))
                 .isInstanceOf(InvalidBookingStateException.class);
+    }
+
+    @Test
+    void previewReschedule_whenBookingHasPromoCode_subtractsTheDiscountFromTheNewSubtotal() {
+        Booking booking = booking(BookingStatus.INITIATED, Duration.ofDays(10), new BigDecimal("50.00"));
+        PromoCode promo = PromoCode.builder().id(7L).code("SAVE10").build();
+        booking.setPromoCode(promo);
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+        given(scheduleRepository.findById(20L)).willReturn(Optional.of(Schedule.builder().id(20L).build()));
+        Seat seat = seat(5L, BigDecimal.ONE);
+        given(seatRepository.findAllById(List.of(5L))).willReturn(List.of(seat));
+        given(pricingService.calculateSeatFare(any(), eq(seat))).willReturn(new BigDecimal("65.00"));
+        given(pricingService.previewPromoCode("SAVE10", new BigDecimal("65.00")))
+                .willReturn(new PromoCodeApplication(promo, new BigDecimal("10.00")));
+
+        RescheduleQuoteResponse quote = service.previewReschedule(500L, 20L, List.of(5L));
+
+        // 65.00 subtotal - 10.00 discount = 55.00, so the delta against the
+        // original 50.00 is 5.00 and not the undiscounted 15.00. A booking's
+        // promo code has to survive a reschedule, or rebooking silently
+        // revokes a discount the customer already earned.
+        assertThat(quote.newTotal()).isEqualByComparingTo("55.00");
+        assertThat(quote.fareDifference()).isEqualByComparingTo("5.00");
+    }
+
+    @Test
+    void previewReschedule_whenOnlySomeSeatsExist_reportsTheMissingOne() {
+        Booking booking = booking(BookingStatus.INITIATED, Duration.ofDays(10), new BigDecimal("50.00"));
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+        given(scheduleRepository.findById(20L)).willReturn(Optional.of(Schedule.builder().id(20L).build()));
+        // Seat 5 resolves, seat 6 does not: the partial case, distinct from the
+        // findAllById-returns-nothing case above. It is the one that exercises
+        // the id-diffing rather than just the size mismatch.
+        given(seatRepository.findAllById(List.of(5L, 6L))).willReturn(List.of(seat(5L, BigDecimal.ONE)));
+
+        assertThatThrownBy(() -> service.previewReschedule(500L, 20L, List.of(5L, 6L)))
+                .isInstanceOf(SeatNotFoundException.class)
+                .hasMessageContaining("6");
+    }
+
+    @Test
+    void reschedule_whenBookingHasBothAFailedAndASucceededPayment_billsAgainstTheSucceededOne() {
+        Booking booking = booking(BookingStatus.CONFIRMED, Duration.ofDays(10), new BigDecimal("50.00"));
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+        Payment failed = Payment.builder().id(9L).amount(new BigDecimal("50.00")).status(PaymentStatus.FAILED).build();
+        Payment succeeded = succeededPayment(new BigDecimal("50.00"));
+        // A retried checkout leaves the failed attempt in the table. Billing
+        // the fare difference against it would adjust a payment that never
+        // took any money.
+        given(paymentRepository.findByBookingId(500L)).willReturn(List.of(failed, succeeded));
+        RescheduleRequest request = requestWithPayment("card", "REF-1", APPROVED_CARD);
+        given(bookingService.rescheduleBooking(500L, request)).willReturn(detailWithTotal(new BigDecimal("65.00")));
+
+        service.reschedule(500L, request);
+
+        assertThat(succeeded.getAmount()).isEqualByComparingTo("65.00");
+        assertThat(failed.getAmount()).isEqualByComparingTo("50.00");
+        verify(auditService).record("alice", "RESCHEDULE_FARE_COLLECTED", "PAYMENT", 1L, "bookingId=500 amount=15.00");
+    }
+
+    @Test
+    void reschedule_forConfirmedBooking_upgradeWithBlankPaymentReference_throwsFareDifferencePaymentRequiredException() {
+        Booking booking = booking(BookingStatus.CONFIRMED, Duration.ofDays(10), new BigDecimal("50.00"));
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+        Payment payment = succeededPayment(new BigDecimal("50.00"));
+        given(paymentRepository.findByBookingId(500L)).willReturn(List.of(payment));
+        // Present-but-empty, not null: a form that submits "" for an untouched
+        // field must be rejected exactly like a missing field, or an upgrade
+        // gets applied with no payment reference to reconcile against.
+        RescheduleRequest request = requestWithPayment("card", "   ", APPROVED_CARD);
+        given(bookingService.rescheduleBooking(500L, request)).willReturn(detailWithTotal(new BigDecimal("65.00")));
+
+        assertThatThrownBy(() -> service.reschedule(500L, request))
+                .isInstanceOf(FareDifferencePaymentRequiredException.class);
+
+        assertThat(payment.getAmount()).isEqualByComparingTo("50.00");
     }
 }

@@ -14,6 +14,10 @@ Money fields are `BigDecimal`. Every error response follows the single shape enf
 { "status": 404, "error": "BOOKING_NOT_FOUND", "message": "...", "timestamp": "..." }
 ```
 
+For the logic *behind* these endpoints see [`business-rules.md`](business-rules.md);
+for how the layers fit together, [`architecture.md`](architecture.md); for the
+persistence model, [`data-model.md`](data-model.md).
+
 **Role legend:** `Public` — no token · `Customer` — any authenticated user, ownership-checked
 where relevant · `Support/Admin` · `Operator` — scoped to routes/vehicles/drivers/schedules the
 caller owns · `Admin` · `Partner API` — a short-lived `PARTNER_API` token issued by the OAuth2

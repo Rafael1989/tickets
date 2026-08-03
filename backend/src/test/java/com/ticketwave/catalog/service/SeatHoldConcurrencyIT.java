@@ -54,9 +54,13 @@ class SeatHoldConcurrencyIT extends AbstractIntegrationTest {
 
     @Test
     void holdSeat_underConcurrentRequests_onlyOneAttemptSucceeds() throws Exception {
+        // Suffixed per run: the database is shared and nothing rolls back, so a
+        // fixed username only survives the first run (see
+        // AbstractIntegrationTest#uniqueSuffix).
+        String run = uniqueSuffix();
         User operator = userRepository.save(User.builder()
-                .username("operator-concurrency")
-                .email("operator-concurrency@example.com")
+                .username("operator-concurrency-" + run)
+                .email("operator-concurrency-" + run + "@example.com")
                 .passwordHash("hash")
                 .role(UserRole.OPERATOR)
                 .build());
@@ -90,8 +94,8 @@ class SeatHoldConcurrencyIT extends AbstractIntegrationTest {
         List<User> customers = new ArrayList<>();
         for (int i = 0; i < attempts; i++) {
             customers.add(userRepository.save(User.builder()
-                    .username("customer-concurrency-" + i)
-                    .email("customer-concurrency-" + i + "@example.com")
+                    .username("customer-concurrency-" + run + "-" + i)
+                    .email("customer-concurrency-" + run + "-" + i + "@example.com")
                     .passwordHash("hash")
                     .role(UserRole.CUSTOMER)
                     .build()));

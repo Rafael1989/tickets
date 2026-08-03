@@ -3,6 +3,8 @@ package com.ticketwave;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.util.UUID;
+
 /**
  * Shared base for every full-context integration test against real
  * PostgreSQL (see application-test.yml for the "test" profile — points at
@@ -22,4 +24,23 @@ import org.springframework.test.context.ActiveProfiles;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 public abstract class AbstractIntegrationTest {
+
+    /**
+     * Per-invocation unique token for any value under a UNIQUE constraint
+     * (username, email, PNR-adjacent references, ...).
+     *
+     * Not optional bookkeeping: with no Testcontainers isolation and no
+     * transactional rollback (see this class's own Javadoc), rows written by
+     * one run survive into the next. A hardcoded fixture username therefore
+     * passes exactly once against a fresh database and fails with
+     * "duplicate key value violates unique constraint" on every run after
+     * that - which is precisely how RefundFlowIT broke, taking all 8 of its
+     * tests down at setup and turning `mvn verify` into a one-shot command.
+     *
+     * Prefer this over a class-level constant: two tests in the same class
+     * must not collide with each other either.
+     */
+    protected static String uniqueSuffix() {
+        return UUID.randomUUID().toString().substring(0, 8);
+    }
 }

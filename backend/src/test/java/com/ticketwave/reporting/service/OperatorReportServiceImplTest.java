@@ -120,6 +120,24 @@ class OperatorReportServiceImplTest {
     }
 
     @Test
+    void getReport_whenRouteHasNoSeatRowsYet_reportsZeroSeatsAndZeroOccupancy() {
+        User operator = User.builder().id(1L).username("operator1").build();
+        Route route = Route.builder().id(10L).type(RouteType.BUS).origin("NYC").destination("Boston").build();
+
+        given(userRepository.findByUsername("operator1")).willReturn(Optional.of(operator));
+        given(routeRepository.findByOperatorId(1L)).willReturn(List.of(route));
+        given(bookingRepository.aggregateConfirmedBookingsByRouteId(List.of(10L))).willReturn(List.of());
+        given(seatRepository.aggregateSeatsByRouteId(List.of(10L))).willReturn(List.of());
+
+        OperatorReportResponse report = reportService.getReport("operator1");
+
+        RouteReportItem item = report.routes().getFirst();
+        assertThat(item.totalSeats()).isZero();
+        assertThat(item.bookedSeats()).isZero();
+        assertThat(item.occupancyRate()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
     void getReport_whenOperatorBelongsToAPartner_usesThePartnersRoutes() {
         Partner partner = Partner.builder().id(9L).build();
         User operator = User.builder().id(1L).username("operator1").partner(partner).build();

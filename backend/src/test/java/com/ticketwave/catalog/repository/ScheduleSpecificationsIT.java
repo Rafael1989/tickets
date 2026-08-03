@@ -5,6 +5,8 @@ import com.ticketwave.catalog.entity.Route;
 import com.ticketwave.catalog.model.RouteType;
 import com.ticketwave.catalog.entity.Schedule;
 import com.ticketwave.catalog.entity.ScheduleStatus;
+import com.ticketwave.catalog.entity.Seat;
+import com.ticketwave.catalog.entity.SeatStatus;
 import com.ticketwave.catalog.specification.ScheduleSpecifications;
 import com.ticketwave.user.entity.User;
 import com.ticketwave.user.entity.UserRole;
@@ -19,6 +21,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -44,6 +47,9 @@ class ScheduleSpecificationsIT {
 
     @Autowired
     private ScheduleRepository scheduleRepository;
+
+    @Autowired
+    private SeatRepository seatRepository;
 
     private static final Instant NOW = Instant.parse("2026-08-01T00:00:00Z");
 
@@ -115,7 +121,52 @@ class ScheduleSpecificationsIT {
         assertThat(results).extracting(Schedule::getId).doesNotContain(departed.getId());
     }
 
-    private static User operator(String username) {
+    @Test
+    void hasSeatClass_matchesOnlySchedulesCarryingASeatOfThatClass_caseInsensitively() {
+        // The one criterion that compiles to an EXISTS subquery rather than a
+        // plain column predicate, so it is only meaningfully verifiable
+        // against a real database — a mocked CriteriaBuilder would assert the
+        // shape of the call chain, not that the SQL selects the right rows.
+        User operator = userRepository.save(operator("operator4"));
+        Route route = routeRepository.save(route(operator, RouteType.TRAIN, "E", "F"));
+
+        Schedule withBusiness = scheduleRepository.save(
+                schedule(route, NOW.plusSeconds(7200), ScheduleStatus.SCHEDULED));
+        Schedule economyOnly = scheduleRepository.save(
+                schedule(route, NOW.plusSeconds(10800), ScheduleStatus.SCHEDULED));
+        seatRepository.save(seat(withBusiness, "1A", "Business"));
+        seatRepository.save(seat(economyOnly, "1A", "economy"));
+
+        ScheduleSearchCriteria criteria =
+                new ScheduleSearchCriteria(null, null, null, null, null, null, null, "  business  ", null);
+
+        List<Schedule> results = scheduleRepository.findAll(ScheduleSpecifications.matching(criteria, NOW));
+
+        // Trimmed and lower-cased on both sides: a seat stored as "Business"
+        // must still match a "  business  " query typed into a filter box.
+        assertThat(results).extracting(Schedule::getId).contains(withBusiness.getId());
+        assertThat(results).extracting(Schedule::getId).doesNotContain(economyOnly.getId());
+    }
+
+    private static Seat seat(Schedule schedule, String seatNumber, String seatClass) {
+        return Seat.builder()
+                .schedule(schedule)
+                .seatNumber(seatNumber)
+                .seatClass(seatClass)
+                .status(SeatStatus.AVAILABLE)
+                .priceModifier(new BigDecimal("1.000"))
+                .build();
+    }
+
+    /**
+     * Unlike the @SpringBootTest-based ITs, @DataJpaTest is transactional and
+     * rolls back, so fixtures here don't actually survive the run. The suffix
+     * is defensive: it keeps the class re-runnable if that annotation ever
+     * changes, and costs nothing. Same convention as
+     * AbstractIntegrationTest#uniqueSuffix, which this class can't inherit.
+     */
+    private static User operator(String label) {
+        String username = label + "-" + UUID.randomUUID().toString().substring(0, 8);
         return User.builder()
                 .username(username)
                 .email(username + "@example.com")

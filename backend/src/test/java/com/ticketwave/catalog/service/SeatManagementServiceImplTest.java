@@ -93,6 +93,28 @@ class SeatManagementServiceImplTest {
     }
 
     @Test
+    void addSeat_withAnExplicitStatus_keepsItInsteadOfDefaultingToAvailable() {
+        Schedule schedule = scheduleOwnedBy(1L, "operator1");
+        SeatRequest request = new SeatRequest(1L, "1A", "economy", SeatStatus.BLOCKED, new BigDecimal("1.000"));
+        // The mapper already carried the requested status across; the default
+        // must not overwrite it, or an operator adding a seat pre-blocked
+        // (out-of-service row, crew seat) would put it straight on sale.
+        Seat mapped = Seat.builder().schedule(schedule).seatNumber("1A").status(SeatStatus.BLOCKED).build();
+        Seat saved = Seat.builder().id(5L).schedule(schedule).status(SeatStatus.BLOCKED).build();
+        SeatResponse response = new SeatResponse(5L, 1L, "1A", "economy", SeatStatus.BLOCKED, new BigDecimal("1.000"), null, null, false);
+
+        given(scheduleRepository.findById(1L)).willReturn(Optional.of(schedule));
+        given(seatMapper.toEntity(request, schedule)).willReturn(mapped);
+        given(seatRepository.save(mapped)).willReturn(saved);
+        given(seatMapper.toResponse(saved)).willReturn(response);
+
+        SeatResponse result = seatManagementService.addSeat("operator1", request);
+
+        assertThat(result).isEqualTo(response);
+        assertThat(mapped.getStatus()).isEqualTo(SeatStatus.BLOCKED);
+    }
+
+    @Test
     void addSeat_whenScheduleBelongsToDifferentOperator_throwsScheduleNotFoundException() {
         Schedule schedule = scheduleOwnedBy(1L, "operator1");
         given(scheduleRepository.findById(1L)).willReturn(Optional.of(schedule));
@@ -179,6 +201,24 @@ class SeatManagementServiceImplTest {
         seatManagementService.updateSeat("operator1", 5L, request);
 
         assertThat(seat.getStatus()).isEqualTo(SeatStatus.AVAILABLE);
+    }
+
+    @Test
+    void updateSeat_whenHeldWithNoExpiry_isRejectedRatherThanTreatedAsExpired() {
+        Schedule schedule = scheduleOwnedBy(1L, "operator1");
+        // HELD with a null heldUntil: an inconsistent row rather than a normal
+        // hold. isExpiredHold must read that as "not provably expired" and
+        // refuse — treating a missing expiry as expired would let an operator
+        // overwrite a hold that may still be backing a live checkout.
+        Seat seat = Seat.builder().id(5L).schedule(schedule).status(SeatStatus.HELD)
+                .priceModifier(BigDecimal.ONE).heldUntil(null).build();
+        given(seatRepository.findByIdForUpdate(5L)).willReturn(Optional.of(seat));
+        SeatUpdateRequest request = new SeatUpdateRequest(SeatStatus.BLOCKED, BigDecimal.ONE);
+
+        assertThatThrownBy(() -> seatManagementService.updateSeat("operator1", 5L, request))
+                .isInstanceOf(SeatUnavailableException.class);
+
+        assertThat(seat.getStatus()).isEqualTo(SeatStatus.HELD);
     }
 
     @Test

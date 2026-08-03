@@ -19,6 +19,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -31,6 +34,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -118,6 +122,38 @@ class ScheduleControllerTest {
                 .andExpect(status().isOk());
 
         verify(scheduleSearchService).getSeatsForSchedule(1L, "alice");
+    }
+
+    @Test
+    void getSeats_withAnonymousAuthentication_passesNullUsername() throws Exception {
+        given(scheduleSearchService.getSeatsForSchedule(eq(1L), isNull())).willReturn(List.of());
+
+        // Pins the observable contract — a guest is never treated as an
+        // identified caller — for the case where an anonymous token is in the
+        // security context. It does not reach callerUsername's anonymous arm:
+        // getUserPrincipal() nulls anonymous authentications before the
+        // controller ever sees them (see that method's Javadoc), which is why
+        // that arm stays uncovered by design.
+        mockMvc.perform(get("/api/schedules/1/seats")
+                        .with(authentication(new AnonymousAuthenticationToken(
+                                "key", "anonymousUser", List.of(new SimpleGrantedAuthority("ROLE_ANONYMOUS"))))))
+                .andExpect(status().isOk());
+
+        verify(scheduleSearchService).getSeatsForSchedule(1L, null);
+    }
+
+    @Test
+    void getSeats_withAnUnauthenticatedToken_passesNullUsername() throws Exception {
+        given(scheduleSearchService.getSeatsForSchedule(eq(1L), isNull())).willReturn(List.of());
+
+        // Same contract for a token that carries a name but has not been
+        // authenticated: a half-populated context must never be trusted for
+        // identity.
+        mockMvc.perform(get("/api/schedules/1/seats")
+                        .with(authentication(UsernamePasswordAuthenticationToken.unauthenticated("mallory", null))))
+                .andExpect(status().isOk());
+
+        verify(scheduleSearchService).getSeatsForSchedule(1L, null);
     }
 
     @Test

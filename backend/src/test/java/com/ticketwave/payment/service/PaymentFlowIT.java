@@ -82,7 +82,13 @@ class PaymentFlowIT extends AbstractIntegrationTest {
                 username, null, List.of(new SimpleGrantedAuthority("ROLE_" + role.name()))));
     }
 
-    private User newUser(String username, UserRole role) {
+    /**
+     * Suffixes the username itself rather than trusting callers to: this
+     * database is shared across runs and nothing rolls back, so a fixture with
+     * a fixed name passes once and then fails forever on uq_users_username.
+     */
+    private User newUser(String label, UserRole role) {
+        String username = label + "-" + uniqueSuffix();
         return userRepository.save(User.builder()
                 .username(username)
                 .email(username + "@example.com")
@@ -91,9 +97,9 @@ class PaymentFlowIT extends AbstractIntegrationTest {
                 .build());
     }
 
-    private BookingDetailResponse newInitiatedBooking(String suffix) {
-        User operator = newUser("operator-pay-" + suffix, UserRole.OPERATOR);
-        User customer = newUser("customer-pay-" + suffix, UserRole.CUSTOMER);
+    private BookingDetailResponse newInitiatedBooking(String label) {
+        User operator = newUser("operator-pay-" + label, UserRole.OPERATOR);
+        User customer = newUser("customer-pay-" + label, UserRole.CUSTOMER);
         Route route = routeRepository.save(Route.builder()
                 .operator(operator).type(RouteType.BUS).origin("NYC").destination("Boston").build());
         // 10 days out and padded with filler seats: keeps the dynamic pricing
@@ -131,7 +137,7 @@ class PaymentFlowIT extends AbstractIntegrationTest {
         BigDecimal total = created.booking().totalAmount();
 
         PaymentResponse response = paymentService.recordPayment(bookingId,
-                new PaymentRequest(total, "card", "PAY-HAPPY-1", "4242424242424242"));
+                new PaymentRequest(total, "card", "PAY-HAPPY-" + uniqueSuffix(), "4242424242424242"));
 
         assertThat(response.status().name()).isEqualTo("SUCCEEDED");
         assertThat(seatRepository.findById(seatId).orElseThrow().getStatus()).isEqualTo(SeatStatus.BOOKED);
@@ -147,13 +153,17 @@ class PaymentFlowIT extends AbstractIntegrationTest {
         BookingDetailResponse created = newInitiatedBooking("idem");
         Long bookingId = created.booking().id();
         BigDecimal total = created.booking().totalAmount();
-        PaymentRequest request = new PaymentRequest(total, "card", "PAY-IDEMPOTENT-1", "4242424242424242");
+        // One reference, replayed deliberately - that's the whole point of the
+        // test - but unique per run, since payments.reference is UNIQUE and
+        // this database outlives the run.
+        String reference = "PAY-IDEMPOTENT-" + uniqueSuffix();
+        PaymentRequest request = new PaymentRequest(total, "card", reference, "4242424242424242");
 
         PaymentResponse first = paymentService.recordPayment(bookingId, request);
         PaymentResponse second = paymentService.recordPayment(bookingId, request);
 
         assertThat(second.id()).isEqualTo(first.id());
-        assertThat(paymentRepository.findByReference("PAY-IDEMPOTENT-1")).isPresent();
+        assertThat(paymentRepository.findByReference(reference)).isPresent();
         long paymentCount = paymentRepository.findByBookingId(bookingId).size();
         assertThat(paymentCount).isEqualTo(1);
     }
@@ -163,7 +173,9 @@ class PaymentFlowIT extends AbstractIntegrationTest {
         BookingDetailResponse created = newInitiatedBooking("race");
         Long bookingId = created.booking().id();
         BigDecimal total = created.booking().totalAmount();
-        PaymentRequest request = new PaymentRequest(total, "card", "PAY-RACE-1", "4242424242424242");
+        // Both threads share this one reference on purpose - that's the race
+        // under test - but it must still be unique across runs.
+        PaymentRequest request = new PaymentRequest(total, "card", "PAY-RACE-" + uniqueSuffix(), "4242424242424242");
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
         CountDownLatch start = new CountDownLatch(1);
@@ -197,7 +209,7 @@ class PaymentFlowIT extends AbstractIntegrationTest {
         BigDecimal total = created.booking().totalAmount();
 
         PaymentResponse declined = paymentService.recordPayment(bookingId,
-                new PaymentRequest(total, "card", "PAY-DECLINE-1", "4000000000000002"));
+                new PaymentRequest(total, "card", "PAY-DECLINE-" + uniqueSuffix(), "4000000000000002"));
 
         assertThat(declined.status().name()).isEqualTo("FAILED");
         assertThat(declined.failureReason()).isEqualTo("Your card was declined.");
@@ -205,7 +217,7 @@ class PaymentFlowIT extends AbstractIntegrationTest {
         assertThat(seatRepository.findById(seatId).orElseThrow().getStatus()).isEqualTo(SeatStatus.HELD);
 
         PaymentResponse retried = paymentService.recordPayment(bookingId,
-                new PaymentRequest(total, "card", "PAY-DECLINE-RETRY-1", "4242424242424242"));
+                new PaymentRequest(total, "card", "PAY-DECLINE-RETRY-" + uniqueSuffix(), "4242424242424242"));
 
         assertThat(retried.status().name()).isEqualTo("SUCCEEDED");
         assertThat(seatRepository.findById(seatId).orElseThrow().getStatus()).isEqualTo(SeatStatus.BOOKED);
@@ -228,7 +240,7 @@ class PaymentFlowIT extends AbstractIntegrationTest {
         BigDecimal total = created.booking().totalAmount();
 
         PaymentResponse pending = paymentService.recordPayment(bookingId,
-                new PaymentRequest(total, "card", "PAY-3DS-1", "4000002500003155"));
+                new PaymentRequest(total, "card", "PAY-3DS-" + uniqueSuffix(), "4000002500003155"));
         assertThat(pending.status().name()).isEqualTo("PENDING_3DS");
 
         paymentService.confirmThreeDs(bookingId, pending.id(), "123456");

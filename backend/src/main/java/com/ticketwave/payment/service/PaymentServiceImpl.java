@@ -224,6 +224,10 @@ public class PaymentServiceImpl implements PaymentService {
      * the exception reaches the caller.
      */
     private void markPaymentProcessingWithRetry(Long bookingId) {
+        // Note for coverage readers: the loop's exit-by-condition branch is
+        // unreachable by construction — every iteration either returns or,
+        // on the final attempt, rethrows. It is the one permanently
+        // uncovered branch outside the @PrePersist hooks (see docs/testing.md).
         for (int attempt = 1; attempt <= MAX_MARK_PROCESSING_ATTEMPTS; attempt++) {
             try {
                 bookingService.markPaymentProcessing(bookingId);

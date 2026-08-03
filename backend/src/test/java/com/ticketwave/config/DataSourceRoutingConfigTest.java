@@ -17,10 +17,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * logic covered by ReadWriteRoutingDataSourceTest. Deliberately points at an
  * unreachable port: HikariDataSource pool initialization is lazy (the pool
  * connects on first getConnection(), not on bean construction), so this
- * proves the wiring is correct without needing a real database — the one
- * thing this sandbox can't provide (see TicketwaveApplicationIT, which
- * needs Docker/Testcontainers to verify the rest, including that a query
- * inside a read-only transaction actually reaches the pool successfully).
+ * proves the wiring is correct without needing a real database. Verifying
+ * that a query inside a read-only transaction actually reaches the pool is
+ * TicketwaveApplicationIT's job, since that needs the live local PostgreSQL.
+ *
+ * This class covers only the unconfigured-replica fallback; see
+ * {@link DataSourceRoutingConfigReplicaTest} for the branch that builds a
+ * genuinely separate replica connection.
  */
 @SpringBootTest(classes = {DataSourceRoutingConfig.class}, webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @EnableConfigurationProperties(ReplicaDataSourceProperties.class)

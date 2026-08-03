@@ -6,6 +6,7 @@ import com.ticketwave.catalog.dto.DriverResponse;
 import com.ticketwave.catalog.entity.Driver;
 import com.ticketwave.catalog.mapper.DriverMapper;
 import com.ticketwave.catalog.repository.DriverRepository;
+import com.ticketwave.partner.entity.Partner;
 import com.ticketwave.user.entity.User;
 import com.ticketwave.user.exception.UserNotFoundException;
 import com.ticketwave.user.repository.UserRepository;
@@ -23,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -81,6 +83,27 @@ class DriverServiceImplTest {
         List<DriverResponse> result = driverService.listMyDrivers("operator1");
 
         assertThat(result).containsExactly(response);
+    }
+
+    @Test
+    void listMyDrivers_whenOperatorBelongsToAPartner_listsTheWholePartnerFleet() {
+        Partner partner = Partner.builder().id(42L).name("Acme Travel").build();
+        User operator = User.builder().id(1L).username("operator1").partner(partner).build();
+        // A partner's drivers are shared across all of its operator accounts,
+        // so scoping by operator id here would hide colleagues' drivers from
+        // an operator who is entitled to see the whole fleet.
+        Driver sibling = Driver.builder().id(8L).operator(User.builder().id(2L).build())
+                .fullName("John Roe").licenseNumber("LIC-456").build();
+        DriverResponse response = new DriverResponse(8L, 2L, "John Roe", "LIC-456");
+
+        given(userRepository.findByUsername("operator1")).willReturn(Optional.of(operator));
+        given(driverRepository.findByOperatorPartnerId(42L)).willReturn(List.of(sibling));
+        given(driverMapper.toResponse(sibling)).willReturn(response);
+
+        List<DriverResponse> result = driverService.listMyDrivers("operator1");
+
+        assertThat(result).containsExactly(response);
+        verify(driverRepository, never()).findByOperatorId(any());
     }
 
     @Test

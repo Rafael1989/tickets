@@ -216,6 +216,28 @@ class ScheduleManagementServiceImplTest {
     }
 
     @Test
+    void createSchedule_withOwnedDriverAndNoConflict_assignsIt() {
+        Route route = route(1L, "operator1");
+        Driver driver = driver(7L, "operator1");
+        ScheduleRequest request = new ScheduleRequest(1L, Instant.now(), Instant.now().plusSeconds(3600),
+                new BigDecimal("20.00"), "USD", null, null, 7L);
+        Schedule mapped = Schedule.builder().route(route).driver(driver).build();
+        given(routeRepository.findById(1L)).willReturn(Optional.of(route));
+        given(driverRepository.findById(7L)).willReturn(Optional.of(driver));
+        // The conflict check runs and comes back clean — distinct from the
+        // no-driver case, which returns before ever querying. Without this,
+        // nothing proves an assignable driver is actually assignable.
+        given(scheduleRepository.findOverlappingByDriver(eq(7L), eq(0L), any(), any())).willReturn(List.of());
+        given(scheduleMapper.toEntity(request, route, null, driver)).willReturn(mapped);
+        given(scheduleRepository.save(mapped)).willReturn(mapped);
+        given(scheduleMapper.toResponse(mapped)).willReturn(response(ScheduleStatus.SCHEDULED));
+
+        scheduleManagementService.createSchedule("operator1", request);
+
+        assertThat(mapped.getDriver()).isEqualTo(driver);
+    }
+
+    @Test
     void createSchedule_whenDriverMissing_throwsDriverNotFoundException() {
         Route route = route(1L, "operator1");
         given(routeRepository.findById(1L)).willReturn(Optional.of(route));

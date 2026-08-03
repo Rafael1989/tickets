@@ -60,21 +60,27 @@ class BookingFlowIT extends AbstractIntegrationTest {
     @Autowired
     private SeatRepository seatRepository;
 
-    private User newOperator(String username) {
-        return userRepository.save(User.builder()
-                .username(username)
-                .email(username + "@example.com")
-                .passwordHash("hash")
-                .role(UserRole.OPERATOR)
-                .build());
+    private User newOperator(String label) {
+        return newUser(label, UserRole.OPERATOR);
     }
 
-    private User newCustomer(String username) {
+    private User newCustomer(String label) {
+        return newUser(label, UserRole.CUSTOMER);
+    }
+
+    /**
+     * The caller's label only identifies the fixture's role in the test; the
+     * unique suffix is what keeps it from colliding with the same fixture
+     * written by a previous run, since this database is shared and nothing
+     * rolls back (see AbstractIntegrationTest#uniqueSuffix).
+     */
+    private User newUser(String label, UserRole role) {
+        String username = label + "-" + uniqueSuffix();
         return userRepository.save(User.builder()
                 .username(username)
                 .email(username + "@example.com")
                 .passwordHash("hash")
-                .role(UserRole.CUSTOMER)
+                .role(role)
                 .build());
     }
 
@@ -238,9 +244,7 @@ class BookingFlowIT extends AbstractIntegrationTest {
     void searchBookings_matchesByPnrEmailAndPassengerName() {
         User operator = newOperator("operator-search-1");
         User customer = newCustomer("customer-search-1");
-        User support = userRepository.save(User.builder()
-                .username("support-search-1").email("support-search-1@example.com")
-                .passwordHash("hash").role(UserRole.SUPPORT).build());
+        User support = newUser("support-search", UserRole.SUPPORT);
         Schedule schedule = newSchedule(operator);
         newFillerSeats(schedule, 2);
         Seat seat = newSeat(schedule, "4A");

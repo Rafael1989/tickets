@@ -1,0 +1,41 @@
+# Local PostgreSQL for development and tests.
+#
+# Optional: the project deliberately does NOT use Testcontainers (see
+# backend/pom.xml), so the *IT suite runs against whatever PostgreSQL is
+# reachable on DB_HOST/DB_PORT — a natively installed server works just as
+# well. This file exists so a fresh machine can get all three databases with
+# one command instead of three manual CREATE DATABASE statements.
+#
+# Version pinned to 16 to match the service container in
+# .github/workflows/ci.yml: a local pass should mean the same thing CI's pass
+# means.
+services:
+  postgres:
+    image: postgres:16
+    container_name: ticketwave-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: root
+      # Creates the dev database. The other two come from the init script
+      # below, which the entrypoint runs only on FIRST initialisation of an
+      # empty data volume — see docs/testing.md if you need to re-run it.
+      POSTGRES_DB: ticketwave
+    ports:
+      # Host port is overridable because 5432 is frequently already taken by a
+      # natively installed PostgreSQL. If `docker compose up` fails to bind,
+      # either stop that service or run with DB_PORT=5433 (and export the same
+      # DB_PORT for mvn, which reads it via application-test.yml).
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
+    healthcheck:
+      # Same probe CI uses, so `depends_on: service_healthy` and the CI job
+      # agree on what "ready" means.
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:

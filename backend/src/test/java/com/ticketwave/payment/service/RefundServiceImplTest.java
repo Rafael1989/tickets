@@ -25,6 +25,7 @@ import com.ticketwave.payment.exception.RefundAlreadyPendingException;
 import com.ticketwave.payment.exception.RefundNotFoundException;
 import com.ticketwave.payment.exception.RefundOverrideAmountExceedsPaymentException;
 import com.ticketwave.payment.exception.RefundOverrideReasonRequiredException;
+import com.ticketwave.partner.entity.Partner;
 import com.ticketwave.payment.mapper.RefundMapper;
 import com.ticketwave.payment.repository.PaymentRepository;
 import com.ticketwave.payment.repository.RefundRepository;
@@ -557,5 +558,79 @@ class RefundServiceImplTest {
 
         assertThatThrownBy(() -> service.processRefund(1L, "support1", RefundDecision.APPROVE, null, null))
                 .isInstanceOf(UserNotFoundException.class);
+    }
+
+    /**
+     * The partner-backed counterpart of {@link #succeededPayment}: same shape,
+     * but the operator belongs to a Partner, which is what makes
+     * notifyBookingCancelledWebhook actually deliver instead of returning early.
+     */
+    private static Payment succeededPaymentUnderPartner(BigDecimal amount, Partner partner) {
+        User operator = User.builder().id(99L).username("operator-with-partner").partner(partner).build();
+        Route route = Route.builder().id(1L).operator(operator).build();
+        Schedule schedule = Schedule.builder().id(50L).route(route).build();
+        Booking booking = Booking.builder().id(500L).schedule(schedule).pnr("TEST01").build();
+        return Payment.builder().id(1L).amount(amount).status(PaymentStatus.SUCCEEDED).booking(booking).build();
+    }
+
+    @Test
+    void previewRefund_whenAFailedAttemptPrecedesTheSucceededPayment_quotesAgainstTheSucceededOne() {
+        RefundServiceImpl service = newService(PROPERTIES);
+        Schedule schedule = scheduleDepartingIn(Duration.ofDays(10));
+        Booking booking = booking(500L, BookingStatus.CONFIRMED, schedule);
+        // Same guard initiateRefund already has a test for. Quoting off the
+        // failed attempt would promise a refund of money that was never taken.
+        Payment failedAttempt = Payment.builder().id(2L).amount(new BigDecimal("999.00")).status(PaymentStatus.FAILED).build();
+        Payment payment = succeededPayment(new BigDecimal("100.00"));
+
+        given(bookingRepository.findById(500L)).willReturn(Optional.of(booking));
+        given(paymentRepository.findByBookingId(500L)).willReturn(List.of(failedAttempt, payment));
+
+        RefundQuoteResponse quote = service.previewRefund(500L);
+
+        assertThat(quote.fareAmount()).isEqualByComparingTo("100.00");
+        assertThat(quote.refundAmount()).isEqualByComparingTo("100.00");
+    }
+
+    @Test
+    void processRefund_approve_whenOperatorBelongsToAPartner_deliversTheBookingCancelledWebhook() {
+        RefundServiceImpl service = newService(PROPERTIES);
+        Partner partner = Partner.builder().id(77L).name("Acme Travel").build();
+        Payment payment = succeededPaymentUnderPartner(new BigDecimal("100.00"), partner);
+        Refund refund = Refund.builder().id(1L).payment(payment).amount(new BigDecimal("100.00"))
+                .policyCode("FULL_REFUND").status(RefundStatus.PENDING).build();
+        User admin = User.builder().id(9L).username("support1").build();
+
+        given(refundRepository.findById(1L)).willReturn(Optional.of(refund));
+        given(userRepository.findByUsername("support1")).willReturn(Optional.of(admin));
+        given(refundMapper.toResponse(refund)).willReturn(
+                new RefundResponse(1L, 1L, refund.getAmount(), "FULL_REFUND", RefundStatus.PROCESSED, 9L, Instant.now(), null, null));
+
+        service.processRefund(1L, "support1", RefundDecision.APPROVE, null, null);
+
+        // The partner-less path is covered by every other processRefund test;
+        // this is the one that proves an integrating partner is actually told
+        // its booking was cancelled rather than silently skipped.
+        verify(webhookDeliveryService).deliver(eq(77L), eq("BOOKING_CANCELLED"), any());
+    }
+
+    @Test
+    void processRefund_approveWithOverrideAmountAndNullReason_throwsRefundOverrideReasonRequiredException() {
+        RefundServiceImpl service = newService(PROPERTIES);
+        Payment payment = succeededPayment(new BigDecimal("100.00"));
+        Refund refund = Refund.builder().id(1L).payment(payment).amount(new BigDecimal("50.00"))
+                .policyCode("PARTIAL_REFUND").status(RefundStatus.PENDING).build();
+        User admin = User.builder().id(9L).username("support1").build();
+
+        given(refundRepository.findById(1L)).willReturn(Optional.of(refund));
+        given(userRepository.findByUsername("support1")).willReturn(Optional.of(admin));
+
+        // A wholly absent reason, as opposed to the blank-string case above:
+        // an override with no recorded justification is exactly the audit hole
+        // the mandatory-reason rule exists to close.
+        assertThatThrownBy(() -> service.processRefund(1L, "support1", RefundDecision.APPROVE, new BigDecimal("100.00"), null))
+                .isInstanceOf(RefundOverrideReasonRequiredException.class);
+        assertThat(refund.getStatus()).isEqualTo(RefundStatus.PENDING);
+        assertThat(refund.getAmount()).isEqualByComparingTo("50.00");
     }
 }

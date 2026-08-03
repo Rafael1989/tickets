@@ -230,4 +230,47 @@ class RateLimitingFilterTest {
 
         assertThat(secondResponse.getStatus()).isEqualTo(429); // CUSTOMER role isn't PARTNER_API, so IP keying applies
     }
+
+    @Test
+    void partnerKeyedPath_withNonBearerAuthorizationHeader_fallsBackToIpKeying() throws Exception {
+        RateLimitingFilter filter = new RateLimitingFilter(newLimiter(1), List.of(), List.of("/api/partner/**"), JWT_SERVICE, 60);
+
+        // A present-but-wrong scheme, distinct from the no-header case: the
+        // substring() below it would otherwise slice a Basic credential and
+        // hand the result to the JWT parser.
+        MockHttpServletRequest first = new MockHttpServletRequest("GET", "/api/partner/routes");
+        first.addHeader("Authorization", "Basic cGFydG5lcjpzZWNyZXQ=");
+        first.setRemoteAddr("10.0.0.14");
+        performRequest(filter, first, new MockHttpServletResponse());
+
+        MockHttpServletRequest second = new MockHttpServletRequest("GET", "/api/partner/routes");
+        second.addHeader("Authorization", "Basic cGFydG5lcjpzZWNyZXQ=");
+        second.setRemoteAddr("10.0.0.14");
+        MockHttpServletResponse secondResponse = new MockHttpServletResponse();
+        performRequest(filter, second, secondResponse);
+
+        assertThat(secondResponse.getStatus()).isEqualTo(429);
+    }
+
+    @Test
+    void partnerKeyedPath_withMalformedBearerToken_fallsBackToIpKeying() throws Exception {
+        RateLimitingFilter filter = new RateLimitingFilter(newLimiter(1), List.of(), List.of("/api/partner/**"), JWT_SERVICE, 60);
+
+        // An unverifiable token must not become a rate-limit key: if it did,
+        // an attacker could mint an arbitrary subject per request and get a
+        // fresh bucket every time, making the limiter useless on exactly the
+        // paths it is keyed hardest on.
+        MockHttpServletRequest first = new MockHttpServletRequest("GET", "/api/partner/routes");
+        first.addHeader("Authorization", "Bearer not-a-jwt-at-all");
+        first.setRemoteAddr("10.0.0.15");
+        performRequest(filter, first, new MockHttpServletResponse());
+
+        MockHttpServletRequest second = new MockHttpServletRequest("GET", "/api/partner/routes");
+        second.addHeader("Authorization", "Bearer also.not.valid");
+        second.setRemoteAddr("10.0.0.15");
+        MockHttpServletResponse secondResponse = new MockHttpServletResponse();
+        performRequest(filter, second, secondResponse);
+
+        assertThat(secondResponse.getStatus()).isEqualTo(429); // both fell back to the shared IP bucket
+    }
 }

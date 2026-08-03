@@ -115,6 +115,18 @@ public class ScheduleController {
                 .orElseThrow(() -> new SeatNotFoundException(seatId));
     }
 
+    /**
+     * Guest browsing is supported, so this collapses "no identified caller"
+     * into null rather than rejecting the request.
+     *
+     * Note for coverage readers: only the null check is reachable through
+     * Spring MVC. A bare Authentication parameter is resolved from
+     * HttpServletRequest#getUserPrincipal(), and
+     * SecurityContextHolderAwareRequestWrapper already returns null for an
+     * anonymous authentication — so the anonymous and not-authenticated arms
+     * below never execute on this path, and are kept as defence in depth
+     * against that resolution ever changing. See docs/testing.md.
+     */
     private static String callerUsername(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()
                 || ANONYMOUS_PRINCIPAL.equals(authentication.getName())) {

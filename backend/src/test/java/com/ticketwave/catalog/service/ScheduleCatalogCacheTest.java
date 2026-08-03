@@ -95,6 +95,26 @@ class ScheduleCatalogCacheTest {
     }
 
     @Test
+    void findMatchingIds_withSortByDepartureTime_sortsByDepartureTimeAscending() {
+        given(scheduleRepository.findAll(any(Specification.class), any(Sort.class))).willReturn(List.of());
+
+        // Same resulting Sort as the omitted-sortBy default, but reached
+        // through the switch rather than the null guard — an explicitly
+        // requested DEPARTURE_TIME must not fall through to a price sort.
+        scheduleCatalogCache.findMatchingIds(
+                new ScheduleSearchCriteria(null, null, null, null, null, null, null, null, ScheduleSortBy.DEPARTURE_TIME),
+                Instant.parse("2026-01-01T00:00:00Z"));
+
+        ArgumentCaptor<Sort> sortCaptor = ArgumentCaptor.forClass(Sort.class);
+        verify(scheduleRepository).findAll(any(Specification.class), sortCaptor.capture());
+
+        Sort.Order order = sortCaptor.getValue().getOrderFor("departureTime");
+        assertThat(order).isNotNull();
+        assertThat(order.getDirection()).isEqualTo(Sort.Direction.ASC);
+        assertThat(sortCaptor.getValue().getOrderFor("baseFare")).isNull();
+    }
+
+    @Test
     void findMatchingIds_returnsScheduleIdsInRepositoryOrder() {
         Route route = route(10L, RouteType.BUS, "NYC", "Boston", null);
         Schedule scheduleA = schedule(5L, route, Instant.parse("2026-08-01T10:00:00Z"), BigDecimal.TEN);

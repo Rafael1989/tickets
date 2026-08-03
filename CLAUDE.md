@@ -95,16 +95,28 @@ com.ticketwave.booking.mapper
 
 ## Testing standards
 
-- Target ≥80% line coverage on service and controller layers; 100% on
-  pricing, seat-hold, and refund-proration logic specifically, since these
-  are the modules where a silent bug has direct financial impact.
+- Target ≥80% line **and** branch coverage on service and controller layers;
+  100% on pricing, seat-hold, and refund-proration logic specifically, since
+  these are the modules where a silent bug has direct financial impact.
 - Unit tests (JUnit 5 + Mockito) for services: mock the repository/dependency
   layer, assert business rules (hold expiration, pricing modifiers, refund
   calculation, PNR uniqueness).
-- Integration tests (`@SpringBootTest` + Testcontainers against real
-  PostgreSQL, not H2) for repository queries and full booking/payment flows,
-  since Liquibase-managed schema and JSON/enum column behavior can diverge
-  from an in-memory DB.
+- Integration tests (`@SpringBootTest`, classes suffixed `*IT`) run against a
+  **real PostgreSQL, never H2** — Liquibase-managed schema, `SELECT … FOR
+  UPDATE` semantics and enum-column behavior all diverge from an in-memory DB,
+  and several idempotency guarantees depend on PostgreSQL aborting the whole
+  transaction on a constraint violation.
+  The database is a **local PostgreSQL**, not Testcontainers: extend
+  `AbstractIntegrationTest`, which activates the `test` profile
+  (`application-test.yml` → `ticketwave_test`, a deliberately different default
+  DB name from the dev one so a forgotten env var can never point a test run at
+  dev data). This keeps the suite runnable without Docker.
+  The tradeoff is that ITs share one database instead of getting an isolated
+  container, so **each test must generate its own unique data** (random
+  suffixes/UUIDs) rather than relying on rollback — `AbstractIntegrationTest`
+  is deliberately not `@Transactional`, because concurrency tests spawn worker
+  threads and HTTP tests run on Tomcat's thread, neither of which a test-thread
+  rollback would cover.
 - Controller tests (`@WebMvcTest` + MockMvc) verify request validation, status
   codes, and error-body shape — not business logic.
 - Test naming: `methodName_condition_expectedResult` (e.g.

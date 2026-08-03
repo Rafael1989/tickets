@@ -7,13 +7,26 @@ role-based access for customers, operators, support agents, and admins.
 Full product spec: [`genai.txt`](genai.txt). Repo-level coding standards
 (layering, naming, error handling, testing): [`CLAUDE.md`](CLAUDE.md).
 
+## Documentation
+
+| Document | Covers |
+|---|---|
+| [`docs/architecture.md`](docs/architecture.md) | Runtime topology, backend layering, security, error handling, persistence concerns, full configuration reference |
+| [`docs/data-model.md`](docs/data-model.md) | Entities and relationships, enums, concurrency controls, migration history |
+| [`docs/business-rules.md`](docs/business-rules.md) | Pricing, seat holds, booking lifecycle, payments/3DS, refunds, reschedule, tenancy, reporting |
+| [`docs/frontend.md`](docs/frontend.md) | Angular app: routing, guards, interceptors, state, feature screens, shared components |
+| [`docs/testing.md`](docs/testing.md) | Test layers, coverage gates and what they measure, known gaps |
+| [`docs/code-review.md`](docs/code-review.md) | How the code review was conducted, findings and corrections with evidence, what now prevents regression |
+| [`docs/functional-specification.md`](docs/functional-specification.md) | Every endpoint: method, path, summary, required role |
+| [`docs/functional-test-cases.md`](docs/functional-test-cases.md) | Functional test cases |
+
 ## Tech stack
 
 | | |
 |---|---|
 | **Backend** | Spring Boot 4.0.6, Java 21, PostgreSQL, Liquibase, MapStruct, JWT, springdoc-openapi |
 | **Frontend** | Angular 22, RxJS |
-| **Testing** | JUnit 5 + Mockito, Testcontainers, Spring Cloud Contract, MockMvc, Vitest, Playwright, k6 |
+| **Testing** | JUnit 5 + Mockito, Spring Cloud Contract, MockMvc, Vitest, Playwright, k6 |
 | **Build** | Maven (backend), npm/Angular CLI (frontend) |
 
 ## Architecture
@@ -59,7 +72,7 @@ partners/OAuth2 credentials, and the audit/ledger tables.
 
 ## API endpoints
 
-70 endpoints across 20 `@RestController` classes, grouped by area:
+69 endpoints across 20 `@RestController` classes, grouped by area:
 Authentication · Search & schedules · Bookings/payments/reschedule ·
 Refund settlement · Account (profile/preferences/passengers) · Operator
 console (routes/schedules/vehicles/drivers/fares/reports) · Admin console
@@ -81,7 +94,11 @@ Every error response has the same shape:
 
 - Java 21
 - Maven (or use the repo's own `mvn` if a wrapper is added later)
-- PostgreSQL 14+ (local install, or a container — no `docker-compose.yml` is checked in yet, so start one yourself, e.g. `docker run -e POSTGRES_USER=ticketwave -e POSTGRES_PASSWORD=ticketwave -e POSTGRES_DB=ticketwave -p 5432:5432 postgres:16`)
+- PostgreSQL 14+ — either a local install, or `docker compose up -d postgres`,
+  which starts `postgres:16` (the version CI uses) and creates all three
+  databases the project needs: `ticketwave` (dev), `ticketwave_test` (the `*IT`
+  suite) and `ticketwave_e2e` (Playwright). Docker is a convenience here, never
+  a requirement — no part of the build depends on it.
 - Node.js + npm (`packageManager` pinned to `npm@11.16.0` in `frontend/package.json`)
 
 ### Backend
@@ -143,16 +160,24 @@ mvn clean verify
 This one command runs everything the coverage gate depends on:
 
 - **Unit tests** (Surefire) — services/controllers/mappers, JUnit 5 + Mockito.
-- **Integration tests** (Failsafe, classes ending in `*IT`) — `@SpringBootTest` against a real PostgreSQL via Testcontainers (needs Docker, or point it at your local Postgres per the flow above).
+- **Integration tests** (Failsafe, classes ending in `*IT`) — `@SpringBootTest` against a **local PostgreSQL** (no Docker needed). Requires a `ticketwave_test` database; see [`docs/testing.md`](docs/testing.md).
 - **Contract tests** (Spring Cloud Contract) — generated from `src/test/resources/contracts`.
-- **Jacoco coverage check** — fails the build below the enforced thresholds:
-  - ≥80% line coverage across the whole bundle.
+- **Jacoco coverage check** — runs at `verify` on unit **and** integration coverage merged, and fails the build below the enforced thresholds:
+  - ≥80% line **and** ≥80% branch coverage across the whole bundle.
   - 100% line **and** branch coverage on `PricingServiceImpl`, `SeatHoldServiceImpl`, `SeatHoldExpirationScheduler`, and `RefundPolicyService` specifically — the modules where a silent bug has direct financial impact.
 
-The HTML coverage report lands at `backend/target/site/jacoco/index.html`
-after the run.
+Currently measured: **99.34% line, 98.05% branch** — 670 unit + 35 integration
+tests, zero failures. Generated code (MapStruct `*MapperImpl`, Lombok members)
+and the `@Profile("seed")` `DevDataSeeder` are excluded from the measurement —
+see [`docs/testing.md`](docs/testing.md) for what that does and does not mean.
 
-Run only unit tests (skips Testcontainers/Docker):
+The authoritative HTML report lands at
+`backend/target/site/jacoco-merged/index.html`; `site/jacoco/` holds the
+unit-only one from the `test` phase. Always use `clean` when you care about the
+number: JaCoCo appends to an existing exec file by default, so a stale one
+inflates it.
+
+Run only unit tests (skips the `*IT` suite, so no database is needed):
 
 ```bash
 mvn test
@@ -162,8 +187,9 @@ mvn test
 
 ```bash
 cd frontend
-npm test            # Vitest unit/component tests
-npm run e2e          # Playwright, against a running backend + frontend
+npm test                    # Vitest, watch mode (stays running)
+npx ng test --watch=false   # one-shot run — 57 spec files, 401 tests
+npm run e2e                 # Playwright, against a running backend + frontend
 ```
 
 ### Load testing

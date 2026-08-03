@@ -9,11 +9,15 @@ import { Client } from 'pg';
  * *IT suite) - both would be destructively truncated on every E2E run.
  */
 const DB_CONFIG = {
-  host: 'localhost',
-  port: 5432,
-  database: 'ticketwave_e2e',
-  user: 'postgres',
-  password: 'root',
+  host: process.env['DB_HOST'] ?? 'localhost',
+  port: Number(process.env['DB_PORT'] ?? 5432),
+  // Overridable so CI can point at its own service container, but the
+  // default is never the dev or *IT database — an unset variable falls
+  // through to the safe name, exactly as application-test.yml does on the
+  // backend side.
+  database: process.env['E2E_DB_NAME'] ?? 'ticketwave_e2e',
+  user: process.env['DB_USERNAME'] ?? 'postgres',
+  password: process.env['DB_PASSWORD'] ?? 'root',
 };
 
 /**

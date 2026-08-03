@@ -203,6 +203,27 @@ class BookingServiceImplTest {
     }
 
     @Test
+    void createBooking_withoutIdempotencyKey_whenTheInsertViolatesAConstraint_propagatesTheOriginalException() {
+        User user = user(1L);
+        Schedule schedule = schedule(10L, new BigDecimal("20.00"));
+
+        given(userRepository.findByUsername("alice")).willReturn(Optional.of(user));
+        given(scheduleRepository.findById(10L)).willReturn(Optional.of(schedule));
+        given(pnrGenerator.generate()).willReturn("ABC234");
+        given(bookingRepository.save(any(Booking.class)))
+                .willThrow(new DataIntegrityViolationException("duplicate key value violates unique constraint \"uq_bookings_pnr\""));
+
+        CreateBookingRequest request = new CreateBookingRequest(10L, List.of(new SeatSelection(5L, 100L)), null, null);
+
+        // With no idempotency key there is no concurrent-retry story to tell,
+        // so the violation is something else entirely (a PNR collision here).
+        // Reporting it as DUPLICATE_BOOKING_REQUEST would blame the client for
+        // a server-side constraint failure and hide the real cause.
+        assertThatThrownBy(() -> bookingService.createBooking("alice", request))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
     void createBooking_withPromoCode_appliesDiscountAndRecordsPromoCodeOnBooking() {
         User user = user(1L);
         Schedule schedule = schedule(10L, new BigDecimal("20.00"));
@@ -726,6 +747,17 @@ class BookingServiceImplTest {
     @Test
     void searchBookings_withBlankQuery_returnsEmptyListWithoutQueryingRepository() {
         List<BookingSearchResult> results = bookingService.searchBookings("   ");
+
+        assertThat(results).isEmpty();
+        verify(bookingRepository, never()).search(any(), any(), any());
+    }
+
+    @Test
+    void searchBookings_withNullQuery_returnsEmptyListWithoutQueryingRepository() {
+        // The blank-string case above only ever reaches isBlank(); a null
+        // query (an omitted ?query= param) has to short-circuit before it,
+        // or the support console 500s on its own empty search box.
+        List<BookingSearchResult> results = bookingService.searchBookings(null);
 
         assertThat(results).isEmpty();
         verify(bookingRepository, never()).search(any(), any(), any());

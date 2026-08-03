@@ -7,6 +7,7 @@ import com.ticketwave.catalog.model.RouteType;
 import com.ticketwave.catalog.entity.Vehicle;
 import com.ticketwave.catalog.mapper.VehicleMapper;
 import com.ticketwave.catalog.repository.VehicleRepository;
+import com.ticketwave.partner.entity.Partner;
 import com.ticketwave.user.entity.User;
 import com.ticketwave.user.exception.UserNotFoundException;
 import com.ticketwave.user.repository.UserRepository;
@@ -24,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -82,6 +84,27 @@ class VehicleServiceImplTest {
         List<VehicleResponse> result = vehicleService.listMyVehicles("operator1");
 
         assertThat(result).containsExactly(response);
+    }
+
+    @Test
+    void listMyVehicles_whenOperatorBelongsToAPartner_listsTheWholePartnerFleet() {
+        Partner partner = Partner.builder().id(42L).name("Acme Travel").build();
+        User operator = User.builder().id(1L).username("operator1").partner(partner).build();
+        // Same tenancy rule as DriverServiceImpl: a partner's fleet is shared
+        // across its operator accounts, so scoping by operator id would hide
+        // vehicles this caller is entitled to see.
+        Vehicle sibling = Vehicle.builder().id(6L).operator(User.builder().id(2L).build())
+                .type(RouteType.BUS).identifier("BUS-9999").build();
+        VehicleResponse response = new VehicleResponse(6L, 2L, RouteType.BUS, "BUS-9999", 45, null);
+
+        given(userRepository.findByUsername("operator1")).willReturn(Optional.of(operator));
+        given(vehicleRepository.findByOperatorPartnerId(42L)).willReturn(List.of(sibling));
+        given(vehicleMapper.toResponse(sibling)).willReturn(response);
+
+        List<VehicleResponse> result = vehicleService.listMyVehicles("operator1");
+
+        assertThat(result).containsExactly(response);
+        verify(vehicleRepository, never()).findByOperatorId(any());
     }
 
     @Test

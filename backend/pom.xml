@@ -138,16 +138,12 @@
             <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
-        <dependency>
-            <groupId>org.testcontainers</groupId>
-            <artifactId>junit-jupiter</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.testcontainers</groupId>
-            <artifactId>postgresql</artifactId>
-            <scope>test</scope>
-        </dependency>
+        <!--
+        No Testcontainers: the *IT suite runs against a local PostgreSQL via
+        the "test" profile (AbstractIntegrationTest -> application-test.yml ->
+        ticketwave_test), so the suite stays runnable without Docker. See
+        docs/testing.md for the isolation tradeoff that choice implies.
+        -->
 
         <!-- Contract testing: see AuthContractBase and src/test/resources/contracts -->
         <dependency>
@@ -157,18 +153,6 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
-
-    <dependencyManagement>
-        <dependencies>
-            <dependency>
-                <groupId>org.testcontainers</groupId>
-                <artifactId>testcontainers-bom</artifactId>
-                <version>1.21.3</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
 
     <build>
         <plugins>
@@ -208,14 +192,27 @@
                 </configuration>
             </plugin>
             <!--
-            Previously missing entirely: the project's *IT classes (Testcontainers
-            integration tests) were never actually wired into the build — surefire's
-            default naming patterns don't match *IT, and with no failsafe execution
-            bound, `mvn verify` silently skipped them regardless of Docker availability.
+            Previously missing entirely: the project's *IT classes (integration
+            tests against a local PostgreSQL) were never actually wired into the
+            build — surefire's default naming patterns don't match *IT, and with
+            no failsafe execution bound, `mvn verify` silently skipped them.
             -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <!--
+                    Required for the *IT run to be measured at all. Paired with
+                    <propertyName>failsafeArgLine</propertyName> on jacoco's
+                    prepare-agent-integration: by default that goal publishes
+                    into ${argLine} - the same property prepare-agent already
+                    set for surefire - so the two would depend on execution
+                    order to not clobber each other. Naming them separately
+                    makes which agent lands on which run explicit rather than
+                    incidental.
+                    -->
+                    <argLine>${failsafeArgLine}</argLine>
+                </configuration>
                 <executions>
                     <execution>
                         <goals>
@@ -229,6 +226,21 @@
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
                 <version>0.8.15</version>
+                <configuration>
+                    <!--
+                    Coverage is measured on hand-written production code only.
+                    MapStruct emits *MapperImpl into target/generated-sources
+                    with a null-guard branch per property, and DevDataSeeder is
+                    a @Profile("seed") dev-fixture runner that never executes
+                    outside a developer's local database. Counting either one
+                    buries the real gaps: together they accounted for ~65% of
+                    all missed branches in the bundle.
+                    -->
+                    <excludes>
+                        <exclude>**/*MapperImpl.class</exclude>
+                        <exclude>com/ticketwave/devseed/**</exclude>
+                    </excludes>
+                </configuration>
                 <executions>
                     <execution>
                         <id>prepare-agent</id>
@@ -236,6 +248,24 @@
                             <goal>prepare-agent</goal>
                         </goals>
                     </execution>
+                    <!--
+                    Separate exec file for the *IT run, so unit and integration
+                    coverage stay distinguishable and can be merged
+                    deterministically below rather than relying on jacoco's
+                    append-into-the-same-file default (which is also what let a
+                    stale exec silently inflate the reported numbers).
+                    -->
+                    <execution>
+                        <id>prepare-agent-integration</id>
+                        <goals>
+                            <goal>prepare-agent-integration</goal>
+                        </goals>
+                        <configuration>
+                            <destFile>${project.build.directory}/jacoco-it.exec</destFile>
+                            <propertyName>failsafeArgLine</propertyName>
+                        </configuration>
+                    </execution>
+                    <!-- Unit-only report: fast feedback from a plain `mvn test`. -->
                     <execution>
                         <id>report</id>
                         <phase>test</phase>
@@ -244,25 +274,72 @@
                         </goals>
                     </execution>
                     <execution>
+                        <id>merge-all</id>
+                        <phase>post-integration-test</phase>
+                        <goals>
+                            <goal>merge</goal>
+                        </goals>
+                        <configuration>
+                            <fileSets>
+                                <fileSet>
+                                    <directory>${project.build.directory}</directory>
+                                    <includes>
+                                        <include>jacoco.exec</include>
+                                        <include>jacoco-it.exec</include>
+                                    </includes>
+                                </fileSet>
+                            </fileSets>
+                            <destFile>${project.build.directory}/jacoco-merged.exec</destFile>
+                        </configuration>
+                    </execution>
+                    <!--
+                    The authoritative report: unit + integration together.
+                    Lands in site/jacoco-merged so it never overwrites the
+                    unit-only one above.
+                    -->
+                    <execution>
+                        <id>report-merged</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                        <configuration>
+                            <dataFile>${project.build.directory}/jacoco-merged.exec</dataFile>
+                            <outputDirectory>${project.reporting.outputDirectory}/jacoco-merged</outputDirectory>
+                        </configuration>
+                    </execution>
+                    <execution>
                         <!--
                         Enforces the coverage bar from CLAUDE.md: >=80% overall
-                        line coverage, and 100% line+branch coverage on the
-                        pricing, seat-hold, and refund-proration logic
+                        line AND branch coverage, and 100% line+branch coverage
+                        on the pricing, seat-hold, and refund-proration logic
                         specifically, since a silent bug there has direct
                         financial impact.
+
+                        Bound to `verify` and reading the MERGED exec: bound to
+                        `test` (as it was), it ran before integration-test and
+                        so graded the Surefire suite alone - the *IT classes
+                        could not contribute a single covered line to the gate
+                        they were supposed to help satisfy.
                         -->
                         <id>check</id>
-                        <phase>test</phase>
+                        <phase>verify</phase>
                         <goals>
                             <goal>check</goal>
                         </goals>
                         <configuration>
+                            <dataFile>${project.build.directory}/jacoco-merged.exec</dataFile>
                             <rules>
                                 <rule>
                                     <element>BUNDLE</element>
                                     <limits>
                                         <limit>
                                             <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.80</minimum>
+                                        </limit>
+                                        <limit>
+                                            <counter>BRANCH</counter>
                                             <value>COVEREDRATIO</value>
                                             <minimum>0.80</minimum>
                                         </limit>

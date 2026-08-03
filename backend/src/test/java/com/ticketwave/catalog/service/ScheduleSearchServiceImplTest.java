@@ -252,6 +252,28 @@ class ScheduleSearchServiceImplTest {
     }
 
     @Test
+    void getSeatsForSchedule_forAnAuthenticatedCaller_leavesUnheldSeatsUnmarked() {
+        Route route = route(10L, RouteType.BUS, "NYC", "Boston", null);
+        Schedule schedule = schedule(1L, route, Instant.parse("2026-08-01T10:00:00Z"), new BigDecimal("20.00"));
+        com.ticketwave.user.entity.User caller = User.builder().id(7L).username("alice").build();
+        // An identified caller looking at a seat that nobody holds: the
+        // heldBy null-guard has to short-circuit before getHeldBy().getId(),
+        // which is an NPE on every free seat in the map otherwise.
+        Seat free = Seat.builder().id(1L).schedule(schedule).status(SeatStatus.AVAILABLE).build();
+
+        given(scheduleRepository.findById(1L)).willReturn(Optional.of(schedule));
+        given(userRepository.findByUsername("alice")).willReturn(Optional.of(caller));
+        given(seatRepository.findByScheduleId(1L)).willReturn(List.of(free));
+        given(seatMapper.toResponse(free)).willReturn(
+                new SeatResponse(1L, 1L, "1A", "economy", SeatStatus.AVAILABLE, BigDecimal.ONE, null, null, false));
+        given(pricingService.calculateSeatFare(schedule, free)).willReturn(new BigDecimal("20.00"));
+
+        List<SeatResponse> seats = searchService.getSeatsForSchedule(1L, "alice");
+
+        assertThat(seats).extracting(SeatResponse::heldByMe).containsExactly(false);
+    }
+
+    @Test
     void getSeatsForSchedule_whenUsernameIsNull_neverMarksAnySeatHeldByMeEvenIfHeld() {
         Route route = route(10L, RouteType.BUS, "NYC", "Boston", null);
         Schedule schedule = schedule(1L, route, Instant.parse("2026-08-01T10:00:00Z"), new BigDecimal("20.00"));
