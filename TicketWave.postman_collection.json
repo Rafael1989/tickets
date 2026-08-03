@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "TicketWave API",
-    "description": "Full backend API for TicketWave (local dev instance running on port 8081 — port 8080 is taken by another project on this machine). Swagger UI: http://localhost:8081/swagger-ui.html · OpenAPI JSON: http://localhost:8081/v3/api-docs.\n\nRun the four 'Login as ...' requests in the Auth folder first — each one saves its JWT into a collection variable (customerToken/operatorToken/supportToken/adminToken) that every other request's Authorization header references. All example bodies use every field defined on the request DTO.",
+    "description": "Full backend API for TicketWave (local dev instance running on port 8081 — port 8080 is taken by another project on this machine). Swagger UI: http://localhost:8081/swagger-ui.html · OpenAPI JSON: http://localhost:8081/v3/api-docs.\n\nRun the four 'Login as ...' requests in the Auth folder first — each one saves its JWT into a collection variable (customerToken/operatorToken/supportToken/adminToken) that every other request's Authorization header references. All example bodies use every field defined on the request DTO.\n\nThe partner flow (folders 15 and 16) is ordered as a chain and must be run top to bottom: create the partner, activate it, issue a credential — whose test script captures the clientId/clientSecret, since the secret is returned exactly once — then exchange those for a token in folder 16 and call /api/partner/routes with it. That token is scoped to /api/partner/** and will not open any customer or admin endpoint.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -16,7 +16,16 @@
     { "key": "refundId", "value": "1", "description": "Seeded PENDING refund." },
     { "key": "createdUserId", "value": "", "description": "Filled by 'Create user (admin)'. Update-role example targets this, never a real seeded account." },
     { "key": "scheduleId", "value": "2" },
-    { "key": "seatId", "value": "6", "description": "Seeded AVAILABLE seat on schedule 2." }
+    { "key": "seatId", "value": "6", "description": "Seeded AVAILABLE seat on schedule 2." },
+    { "key": "paymentId", "value": "", "description": "Only needed for 'Confirm a 3DS challenge' — take it from a payment left in PENDING_3DS." },
+    { "key": "promoCodeId", "value": "", "description": "Filled by 'Create promo code'." },
+    { "key": "fareRuleId", "value": "", "description": "Filled by 'Create fare rule'." },
+    { "key": "partnerId", "value": "", "description": "Filled by 'Create partner'." },
+    { "key": "credentialId", "value": "", "description": "Filled by 'Issue API credential'." },
+    { "key": "webhookId", "value": "", "description": "Filled by 'Register webhook'." },
+    { "key": "partnerClientId", "value": "", "description": "Filled by 'Issue API credential'." },
+    { "key": "partnerClientSecret", "value": "", "description": "Filled by 'Issue API credential' — returned by the API exactly once and never readable again." },
+    { "key": "partnerToken", "value": "", "description": "Filled by 'Get partner token'. Scoped to /api/partner/** only." }
   ],
   "item": [
     {
@@ -305,6 +314,90 @@
             "url": { "raw": "{{baseUrl}}/api/bookings/pnr/EN25TW", "host": ["{{baseUrl}}"], "path": ["api", "bookings", "pnr", "EN25TW"] },
             "description": "EN25TW is customer1's seeded CONFIRMED booking's PNR. Support/admin only."
           }
+        },
+        {
+          "name": "Confirm booking (without paying)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/confirm", "host": ["{{baseUrl}}"], "path": ["api", "bookings", "{{bookingId}}", "confirm"] },
+            "description": "INITIATED -> CONFIRMED without a payment. 'Record payment' below already confirms as a side effect, so this is the path for a booking settled outside the API."
+          }
+        },
+        {
+          "name": "Confirm a 3DS challenge",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/payments/{{paymentId}}/confirm-3ds", "host": ["{{baseUrl}}"], "path": ["api", "bookings", "{{bookingId}}", "payments", "{{paymentId}}", "confirm-3ds"] },
+            "description": "Only for a payment left in PENDING_3DS. Use card 4000000000003220 on 'Record payment' to produce one, then send its id here as {{paymentId}}."
+          }
+        },
+        {
+          "name": "List my bookings",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/bookings/me", "host": ["{{baseUrl}}"], "path": ["api", "bookings", "me"] },
+            "description": "Every booking owned by the calling customer."
+          }
+        },
+        {
+          "name": "Reschedule quote (preview)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/reschedule-quote?scheduleId={{scheduleId}}&seatIds={{seatId}}",
+              "host": ["{{baseUrl}}"], "path": ["api", "bookings", "{{bookingId}}", "reschedule-quote"],
+              "query": [
+                { "key": "scheduleId", "value": "{{scheduleId}}" },
+                { "key": "seatIds", "value": "{{seatId}}", "description": "Repeat the parameter for multiple seats." }
+              ]
+            },
+            "description": "Read-only. Returns the fare difference and whether payment is required, without changing anything — call this before the reschedule below."
+          }
+        },
+        {
+          "name": "Refund quote (preview)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/bookings/{{paidBookingId}}/refund-quote", "host": ["{{baseUrl}}"], "path": ["api", "bookings", "{{paidBookingId}}", "refund-quote"] },
+            "description": "Read-only. Shows which policy applies (FULL_REFUND / PARTIAL_REFUND / none) and the refundable amount. Returns eligible=false near departure instead of failing."
+          }
+        },
+        {
+          "name": "List a booking's refunds",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/bookings/{{paidBookingId}}/refunds", "host": ["{{baseUrl}}"], "path": ["api", "bookings", "{{paidBookingId}}", "refunds"] }
+          }
+        },
+        {
+          "name": "Search bookings (support/admin)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{supportToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/search?query=customer1",
+              "host": ["{{baseUrl}}"], "path": ["api", "bookings", "search"],
+              "query": [{ "key": "query", "value": "customer1", "description": "Matches PNR, username or email. Blank/absent returns an empty list rather than everything." }]
+            }
+          }
+        },
+        {
+          "name": "Public PNR lookup (guest)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/pnr/EN25TW/lookup?lastName=Doe",
+              "host": ["{{baseUrl}}"], "path": ["api", "bookings", "pnr", "EN25TW", "lookup"],
+              "query": [{ "key": "lastName", "value": "Doe", "description": "Passenger surname on the booking — the second factor that makes this safe to expose unauthenticated." }]
+            },
+            "description": "No token. PNR alone is guessable, so the surname must match."
+          }
         }
       ]
     },
@@ -503,6 +596,83 @@
             "url": { "raw": "{{baseUrl}}/api/seats/{{seatId}}", "host": ["{{baseUrl}}"], "path": ["api", "seats", "{{seatId}}"] },
             "description": "Only status and priceModifier are mutable after creation — schedule/seatNumber/class are structural. {{seatId}} (6) must belong to a schedule owned by operator1."
           }
+        },
+        {
+          "name": "Update route",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{operatorToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"type\": \"BUS\",\n  \"origin\": \"Chicago\",\n  \"destination\": \"Detroit\",\n  \"venue\": null,\n  \"durationMinutes\": 260\n}" },
+            "url": { "raw": "{{baseUrl}}/api/routes/1", "host": ["{{baseUrl}}"], "path": ["api", "routes", "1"] },
+            "description": "Route 1 belongs to operator1 in the seed data. A route owned by someone else returns 404, not 403 — foreign resources are invisible rather than forbidden."
+          }
+        },
+        {
+          "name": "List a route's schedules",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{operatorToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/routes/1/schedules", "host": ["{{baseUrl}}"], "path": ["api", "routes", "1", "schedules"] }
+          }
+        },
+        {
+          "name": "Update schedule",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{operatorToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"routeId\": 1,\n  \"departureTime\": \"2026-09-01T11:00:00Z\",\n  \"arrivalTime\": \"2026-09-01T15:00:00Z\",\n  \"baseFare\": 49.00,\n  \"currency\": \"USD\",\n  \"status\": \"DELAYED\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/schedules/{{scheduleId}}", "host": ["{{baseUrl}}"], "path": ["api", "schedules", "{{scheduleId}}"] },
+            "description": "routeId is ignored on update — a schedule cannot be moved to another route. Setting status CANCELLED is how a trip is called off."
+          }
+        },
+        {
+          "name": "Create driver",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{operatorToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"fullName\": \"Jane Doe\",\n  \"licenseNumber\": \"LIC-100234\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/drivers", "host": ["{{baseUrl}}"], "path": ["api", "drivers"] },
+            "description": "Assignable to a schedule via ScheduleRequest.driverId. Overlapping assignments are rejected with 409."
+          }
+        },
+        {
+          "name": "List my drivers",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{operatorToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/drivers/mine", "host": ["{{baseUrl}}"], "path": ["api", "drivers", "mine"] },
+            "description": "For an operator belonging to a partner, this lists the whole partner's fleet, not just its own drivers."
+          }
+        },
+        {
+          "name": "Create vehicle",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{operatorToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"type\": \"BUS\",\n  \"identifier\": \"BUS-1234\",\n  \"capacity\": 45,\n  \"model\": \"Marcopolo Paradiso\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/vehicles", "host": ["{{baseUrl}}"], "path": ["api", "vehicles"] },
+            "description": "type: FLIGHT | BUS | TRAIN | EVENT. Assignable via ScheduleRequest.vehicleId; overlapping assignments are rejected with 409."
+          }
+        },
+        {
+          "name": "List my vehicles",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{operatorToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/vehicles/mine", "host": ["{{baseUrl}}"], "path": ["api", "vehicles", "mine"] }
+          }
         }
       ]
     },
@@ -516,6 +686,313 @@
             "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
             "url": { "raw": "{{baseUrl}}/api/audit", "host": ["{{baseUrl}}"], "path": ["api", "audit"] },
             "description": "Most recent first: account creation, role changes, refund decisions, etc."
+          }
+        },
+        {
+          "name": "Search audit log (filtered)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/audit?actor=admin&action=USER_ROLE_CHANGED&entityType=USER&from=2026-01-01T00:00:00Z&to=2027-01-01T00:00:00Z&page=0&size=50",
+              "host": ["{{baseUrl}}"], "path": ["api", "audit"],
+              "query": [
+                { "key": "actor", "value": "admin", "description": "Substring match on the acting username." },
+                { "key": "action", "value": "USER_ROLE_CHANGED", "description": "Exact match." },
+                { "key": "entityType", "value": "USER", "description": "Exact match." },
+                { "key": "from", "value": "2026-01-01T00:00:00Z" },
+                { "key": "to", "value": "2027-01-01T00:00:00Z" },
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "50" }
+              ]
+            },
+            "description": "Every filter is optional; delete the ones you do not want. All-empty matches everything."
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. Pricing rules (operator)",
+      "item": [
+        {
+          "name": "Create fare rule",
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "if (pm.response.code === 201) { pm.collectionVariables.set('fareRuleId', pm.response.json().id); }"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{operatorToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"routeId\": 1,\n  \"seatClass\": \"business\",\n  \"validFrom\": \"2026-08-01T00:00:00Z\",\n  \"validTo\": \"2026-12-31T23:59:59Z\",\n  \"surchargeRate\": 0.2500\n}" },
+            "url": { "raw": "{{baseUrl}}/api/fare-rules", "host": ["{{baseUrl}}"], "path": ["api", "fare-rules"] },
+            "description": "surchargeRate is a multiplier delta applied on top of the seat's own price modifier: 0.25 means +25%. Range -1.0 to 5.0; negative is a discount."
+          }
+        },
+        {
+          "name": "Bulk create fare rules",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{operatorToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "[\n  {\n    \"routeId\": 1,\n    \"seatClass\": \"economy\",\n    \"validFrom\": \"2026-08-01T00:00:00Z\",\n    \"validTo\": \"2026-12-31T23:59:59Z\",\n    \"surchargeRate\": 0.0000\n  },\n  {\n    \"routeId\": 1,\n    \"seatClass\": \"first\",\n    \"validFrom\": \"2026-08-01T00:00:00Z\",\n    \"validTo\": \"2026-12-31T23:59:59Z\",\n    \"surchargeRate\": 0.7500\n  }\n]" },
+            "url": { "raw": "{{baseUrl}}/api/fare-rules/bulk", "host": ["{{baseUrl}}"], "path": ["api", "fare-rules", "bulk"] },
+            "description": "A JSON array. All-or-nothing: one invalid entry rejects the whole batch."
+          }
+        },
+        {
+          "name": "List a route's fare rules",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{operatorToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/routes/1/fare-rules", "host": ["{{baseUrl}}"], "path": ["api", "routes", "1", "fare-rules"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "12. Promo codes (admin)",
+      "item": [
+        {
+          "name": "Create promo code",
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "if (pm.response.code === 201) { pm.collectionVariables.set('promoCodeId', pm.response.json().id); }"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"code\": \"POSTMAN10\",\n  \"discountType\": \"PERCENTAGE\",\n  \"discountValue\": 10.00,\n  \"validFrom\": \"2026-08-01T00:00:00Z\",\n  \"validTo\": \"2026-12-31T23:59:59Z\",\n  \"maxRedemptions\": 100\n}" },
+            "url": { "raw": "{{baseUrl}}/api/promos", "host": ["{{baseUrl}}"], "path": ["api", "promos"] },
+            "description": "discountType: PERCENTAGE | FIXED_AMOUNT. validTo must be in the future. code is unique — re-running returns 409. maxRedemptions is optional (null = unlimited)."
+          }
+        },
+        {
+          "name": "List promo codes",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/promos", "host": ["{{baseUrl}}"], "path": ["api", "promos"] }
+          }
+        },
+        {
+          "name": "Activate / deactivate a promo code",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"active\": false\n}" },
+            "url": { "raw": "{{baseUrl}}/api/promos/{{promoCodeId}}/status", "host": ["{{baseUrl}}"], "path": ["api", "promos", "{{promoCodeId}}", "status"] },
+            "description": "Deactivating is the way to retire a code — they are never deleted, so past bookings keep a valid reference. Recorded in the audit log."
+          }
+        }
+      ]
+    },
+    {
+      "name": "13. Reports (operator)",
+      "item": [
+        {
+          "name": "My operator report",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{operatorToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/operator/reports", "host": ["{{baseUrl}}"], "path": ["api", "operator", "reports"] },
+            "description": "Occupancy and revenue across the calling operator's own schedules only — scoped by the authenticated principal, not by a parameter."
+          }
+        }
+      ]
+    },
+    {
+      "name": "14. Ledger (admin)",
+      "item": [
+        {
+          "name": "Reconciliation report",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/ledger/reconciliation?from=2026-01-01T00:00:00Z&to=2027-01-01T00:00:00Z",
+              "host": ["{{baseUrl}}"], "path": ["api", "ledger", "reconciliation"],
+              "query": [
+                { "key": "from", "value": "2026-01-01T00:00:00Z", "description": "Inclusive." },
+                { "key": "to", "value": "2027-01-01T00:00:00Z", "description": "Exclusive." }
+              ]
+            },
+            "description": "Aggregates the append-only ledger over [from, to): payments in, refunds out, net. Both parameters are required."
+          }
+        }
+      ]
+    },
+    {
+      "name": "15. Partners — provisioning (admin)",
+      "item": [
+        {
+          "name": "Create partner",
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "if (pm.response.code === 201) { pm.collectionVariables.set('partnerId', pm.response.json().id); }"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Postman Travel\",\n  \"contactEmail\": \"integrations@postman-travel.example\",\n  \"commissionRate\": 0.1000\n}" },
+            "url": { "raw": "{{baseUrl}}/api/partners", "host": ["{{baseUrl}}"], "path": ["api", "partners"] },
+            "description": "Created in PENDING status. commissionRate is 0..1. Saves the new id into {{partnerId}}."
+          }
+        },
+        {
+          "name": "List partners",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/partners", "host": ["{{baseUrl}}"], "path": ["api", "partners"] }
+          }
+        },
+        {
+          "name": "Get partner",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/partners/{{partnerId}}", "host": ["{{baseUrl}}"], "path": ["api", "partners", "{{partnerId}}"] }
+          }
+        },
+        {
+          "name": "Activate partner",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"ACTIVE\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/partners/{{partnerId}}/status", "host": ["{{baseUrl}}"], "path": ["api", "partners", "{{partnerId}}", "status"] },
+            "description": "status: PENDING | ACTIVE | SUSPENDED. Run this before issuing a credential — a token request for a non-ACTIVE partner is rejected."
+          }
+        },
+        {
+          "name": "Issue API credential",
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "if (pm.response.code === 201) {",
+              "  const body = pm.response.json();",
+              "  pm.collectionVariables.set('partnerClientId', body.clientId);",
+              "  pm.collectionVariables.set('partnerClientSecret', body.clientSecret);",
+              "  pm.collectionVariables.set('credentialId', body.id);",
+              "}"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/partners/{{partnerId}}/credentials", "host": ["{{baseUrl}}"], "path": ["api", "partners", "{{partnerId}}", "credentials"] },
+            "description": "No body. The clientSecret is returned ONLY here — it is BCrypt-hashed at rest and can never be read back. The test script captures it into {{partnerClientSecret}}; lose it and you must issue a new credential."
+          }
+        },
+        {
+          "name": "List credentials",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/partners/{{partnerId}}/credentials", "host": ["{{baseUrl}}"], "path": ["api", "partners", "{{partnerId}}", "credentials"] },
+            "description": "Shows clientId, status and lastUsedAt — never the secret."
+          }
+        },
+        {
+          "name": "Revoke a credential",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/partners/credentials/{{credentialId}}/revoke", "host": ["{{baseUrl}}"], "path": ["api", "partners", "credentials", "{{credentialId}}", "revoke"] },
+            "description": "Note the path is not nested under the partner — credential ids are globally unique. Already-issued tokens stay valid until they expire; revocation only stops new ones."
+          }
+        },
+        {
+          "name": "Register webhook",
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "if (pm.response.code === 201) { pm.collectionVariables.set('webhookId', pm.response.json().id); }"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"url\": \"https://webhook.site/replace-with-your-own\",\n  \"eventType\": \"BOOKING_CANCELLED\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/partners/{{partnerId}}/webhooks", "host": ["{{baseUrl}}"], "path": ["api", "partners", "{{partnerId}}", "webhooks"] },
+            "description": "Returns a signing secret, shown only once. Deliveries carry X-TicketWave-Signature: sha256=<HMAC of the body>. To see one fire, approve a refund on a booking whose route belongs to this partner's operator."
+          }
+        },
+        {
+          "name": "List webhooks",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/partners/{{partnerId}}/webhooks", "host": ["{{baseUrl}}"], "path": ["api", "partners", "{{partnerId}}", "webhooks"] }
+          }
+        },
+        {
+          "name": "Disable a webhook",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"DISABLED\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/partners/webhooks/{{webhookId}}/status", "host": ["{{baseUrl}}"], "path": ["api", "partners", "webhooks", "{{webhookId}}", "status"] },
+            "description": "status: ACTIVE | DISABLED. Like credentials, the path is not nested under the partner."
+          }
+        }
+      ]
+    },
+    {
+      "name": "16. Partner API (B2B, machine-to-machine)",
+      "item": [
+        {
+          "name": "Get partner token",
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "if (pm.response.code === 200) { pm.collectionVariables.set('partnerToken', pm.response.json().accessToken); }"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"clientId\": \"{{partnerClientId}}\",\n  \"clientSecret\": \"{{partnerClientSecret}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/oauth/token", "host": ["{{baseUrl}}"], "path": ["api", "oauth", "token"] },
+            "description": "Client-credentials exchange — no user is involved. Run 'Issue API credential' first; its test script fills both variables used here. Rejected if the credential is revoked or the partner is not ACTIVE. Saves the token into {{partnerToken}}."
+          }
+        },
+        {
+          "name": "List my routes (as the partner)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{partnerToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/partner/routes", "host": ["{{baseUrl}}"], "path": ["api", "partner", "routes"] },
+            "description": "Returns only routes whose operator belongs to this partner. A brand-new partner has no operators yet, so an empty array here is correct, not a failure — attach an operator account to the partner to see data. Note this token does NOT work on /api/routes or any customer endpoint."
           }
         }
       ]
