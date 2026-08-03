@@ -1,0 +1,14 @@
+$env:JWT_SECRET = 'a-long-random-development-secret'
+mvn spring-boot:run
+npm start
+
+Guest flow
+Customer flow
+Support flow
+Operator flow
+Admin flow
+partner flow
+mvn test
+
+database
+postman

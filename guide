@@ -1,46 +1,5 @@
 How created the project with prompts
 test coverage 
 if face any chalenge how resolved the problem
-claude fez 72 % mas eu pedi para ele deixar 100% coverage
-nao tava conseguindo conectar com o postgree local eu dei minha senha pra ele
-as telas dos usuarios com diferente permissoes estavam todas iguais
-
-executei
-
-Please review and verify the entire implementation of the system against the following 8 User Stories (US1 to US8). For each User Story, perform a code & functionality audit to confirm that the backend endpoints, database models, business logic, and Angular frontend components exist and work as expected:
-
-1. US1 [Guest]: Search for routes/events by date and location.
-   - Verify unauthenticated public search endpoints (REST & UI).
-   - Check query filters for date, origin, and destination.
-
-2. US2 [Registered User]: Account creation, preferences, and saved passengers.
-   - Verify registration endpoint (`/api/v1/auth/register` or similar).
-   - Check user profile persistence, saved passenger management, and user preferences.
-
-3. US3 [Customer]: Seat selection, real-time availability, and dynamic pricing.
-   - Verify schedule details and seat map visualization (seat status: available, held, booked).
-   - Verify price display with dynamic fare modifiers / promo codes.
-
-4. US4 [Customer]: Secure payment processing and e-ticket generation.
-   - Verify payment integration/recording with idempotency guarantees.
-   - Confirm booking state transition to CONFIRMED and PNR / e-ticket generation.
-
-5. US5 [Customer]: Cancellation, rescheduling, and refund requests within policy.
-   - Verify cancellation/reschedule policy logic and proration calculation.
-   - Verify refund status tracking and inventory release.
-
-6. US6 [Operator]: Schedule/inventory management and fare loading.
-   - Check RBAC permissions for OPERATOR role.
-   - Verify endpoints and UI for creating/updating routes, schedules, seat inventory, and base fares.
-
-7. US7 [Support]: Booking lookup and assisted changes/refunds.
-   - Check RBAC permissions for SUPPORT role.
-   - Verify PNR / customer booking lookup and override/support refund execution capabilities.
-
-8. US8 [Admin]: User management, partner configuration, and audit logs.
-   - Check RBAC permissions for ADMIN role.
-   - Verify endpoints and UI for user role assignment, partner onboarding, and viewing audit logs.
-
-Output a checklist summary (PASS / FAIL / PARTIAL) for each User Story, highlighting any missing endpoints, frontend routes, or test cases that need to be addressed.
 how did code review
 test case

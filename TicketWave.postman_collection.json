@@ -514,9 +514,9 @@
               { "key": "Authorization", "value": "Bearer {{adminToken}}" },
               { "key": "Content-Type", "value": "application/json" }
             ],
-            "body": { "mode": "raw", "raw": "{\n  \"username\": \"postman_operator\",\n  \"password\": \"PostmanPass123!\",\n  \"email\": \"postman_operator@example.com\",\n  \"role\": \"OPERATOR\"\n}" },
+            "body": { "mode": "raw", "raw": "{\n  \"username\": \"postman_operator\",\n  \"password\": \"PostmanPass123!\",\n  \"email\": \"postman_operator@example.com\",\n  \"role\": \"OPERATOR\",\n  \"partnerId\": {{partnerId}}\n}" },
             "url": { "raw": "{{baseUrl}}/api/users", "host": ["{{baseUrl}}"], "path": ["api", "users"] },
-            "description": "The only way to provision OPERATOR/SUPPORT/ADMIN accounts — self-registration always creates CUSTOMER. role: CUSTOMER | OPERATOR | SUPPORT | ADMIN. Saves the new id into {{createdUserId}}."
+            "description": "The only way to provision OPERATOR/SUPPORT/ADMIN accounts — self-registration always creates CUSTOMER. role: CUSTOMER | OPERATOR | SUPPORT | ADMIN. Saves the new id into {{createdUserId}}.\n\npartnerId is the link that makes a partner have anything: routes belong to an operator, and /api/partner/routes returns the routes of every operator attached to that partner. Set it to null (or omit it) for a standalone operator — it is rejected with 400 for any non-OPERATOR role. Run 'Create partner' in folder 15 first so {{partnerId}} is populated, then log in as this operator and create a route in folder 9."
           }
         },
         {
