@@ -8,8 +8,10 @@
  *   k6 run -e BASE_URL=https://staging.example.com load-test/search-and-seat-hold.js
  *
  * Environment variables (all optional, defaults target a local dev-seeded
- * instance started per the backend README, i.e. `mvn spring-boot:run` with
- * the devseed profile that ships ~30 seeded customers):
+ * instance started with the "seed" profile, i.e.
+ * `mvn spring-boot:run -Dspring-boot.run.profiles=seed`, which ships ~30
+ * seeded customers - without it TEST_USERNAME does not exist and every login
+ * here 401s):
  *   BASE_URL      default http://localhost:8081
  *   TEST_USERNAME default customer1  (must be a real, seeded CUSTOMER account)
  *   TEST_PASSWORD default SeedPass123!
@@ -75,17 +77,36 @@ export const options = {
     },
 };
 
+/*
+ * `type` is bound to the RouteType enum by constant name, so it must be
+ * uppercase. The lowercase values CodedEnum.getCode() returns ("flight") are
+ * the persistence form and are rejected at the API boundary.
+ */
 const SEARCH_QUERIES = [
     {},
     { origin: 'NYC' },
     { destination: 'Boston' },
-    { type: 'bus' },
-    { type: 'flight' },
+    { type: 'BUS' },
+    { type: 'FLIGHT' },
 ];
+
+/**
+ * Hand-rolled rather than URLSearchParams: k6 runs on goja, not Node or a
+ * browser, and defines neither URLSearchParams nor URL. Using it throws
+ * "ReferenceError: URLSearchParams is not defined" on every iteration - which
+ * fails quietly, because the exception aborts the iteration before any request
+ * is made, so the scenario reports millions of instant iterations and zero
+ * search traffic instead of an obvious failure.
+ */
+function toQueryString(query) {
+    return Object.keys(query)
+        .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(query[key])}`)
+        .join('&');
+}
 
 export function searchBrowsing() {
     const query = SEARCH_QUERIES[Math.floor(Math.random() * SEARCH_QUERIES.length)];
-    const params = new URLSearchParams(query).toString();
+    const params = toQueryString(query);
     const res = http.get(`${BASE_URL}/api/search${params ? '?' + params : ''}`, {
         tags: { name: 'GET /api/search' },
     });

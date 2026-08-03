@@ -7,9 +7,20 @@ the "Load tests for search and seat selection" requirement in `genai.txt`.
 
 - [k6](https://k6.io/docs/get-started/installation/) installed locally (not
   a project dependency — these scripts aren't run as part of `mvn test`).
-- A running backend instance with seeded data (`mvn spring-boot:run` against
-  the dev profile that loads `DevDataSeeder`, or any environment with at
-  least one CUSTOMER account and some AVAILABLE seats).
+- A running backend instance with seeded data — `DevDataSeeder` is
+  `@Profile("seed")`, so it needs the profile named explicitly:
+
+  ```bash
+  cd backend
+  JWT_SECRET=local-dev-secret-key-at-least-32-bytes-long \
+  SERVER_PORT=8081 \
+  mvn spring-boot:run -Dspring-boot.run.profiles=seed
+  ```
+
+  Any other environment works too, as long as it has at least one CUSTOMER
+  account and some AVAILABLE seats. Without the seed, `customer1` does not
+  exist and every login 401s — which surfaces as `http_req_failed` at 100%
+  and `login succeeded` at 0%, not as an obvious "no seed data" message.
 
 ## Running
 

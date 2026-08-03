@@ -8,7 +8,90 @@ Support flow
 Operator flow
 Admin flow
 partner flow
-mvn test
+
+backend
+mvn clean test  
+
+672 unit and controller tests, no Docker: the unit tests prove business rules with dependencies mocked, 
+the controller tests prove the HTTP contract.
+
+file:///C:/Users/FLNS_/projetos/tickets/backend/target/site/jacoco/index.html
+
+The gate fails the build below 80% on the bundle and demands 100% on pricing, seat-hold and refund logic, 
+where a silent bug produces a wrong number instead of a visible error — currently at 98% branch.
+
+docker running
+mvn clean verify 
+
+Adds 35 integration tests against real PostgreSQL via Testcontainers — never H2, because FOR UPDATE, 
+enum columns and transaction-abort behaviour all diverge, and three of the four idempotency mechanisms 
+depend on exactly that.
+
+
+frontend
+npm test
+
+401 frontend tests in Vitest, focused on the seat-hold countdown, checkout validation and 
+error-state rendering.
+
+
+
+docker compose up -d postgres
+
+cd backend
+$env:JWT_SECRET='e2e-only-secret-key-at-least-32-bytes-long'
+$env:DB_NAME='ticketwave_e2e'; $env:DB_USERNAME='postgres'; $env:DB_PASSWORD='root'
+$env:SERVER_PORT='8081'
+mvn spring-boot:run
+
+cd frontend
+npm start
+
+npm run e2e
+
+5 Playwright tests in a real browser against a real backend and real Postgres — the only level that 
+exercises the whole stack together, including the search → book → pay journey.
+
+kill backend
+
+cd backend
+$env:JWT_SECRET='local-dev-secret-key-at-least-32-bytes-long'
+$env:SERVER_PORT='8081'
+$env:RATE_LIMIT_REQUESTS_PER_WINDOW='1000000'
+
+mvn spring-boot:run "-Dspring-boot.run.profiles=seed"
+
+if needed {
+ winget list --id k6.k6; winget list --id Grafana.k6; Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Links","$env:ProgramFiles\k6" -Filter k6.exe -ErrorAction SilentlyContinue | Select-Object FullName
+ $env:PATH += ';C:\Program Files\k6'
+ k6 version
+} 
+
+na raiz
+
+k6 run load-test/search-and-seat-hold.js
+
+A load test where 429 and 409 are the expected result, not a failure: they are the rate limiter and the 
+pessimistic lock doing their job under concurrency.
+
+https://github.com/Rafael1989/tickets/actions/runs/30830970095
+
+Three parallel jobs running verify rather than test, because test skips every *IT and enforces no 
+gate at all.
+
 
 database
+
+mvn spring-boot:run 
+
 postman
+
+swagger
+
+http://localhost:8081/swagger-ui/index.html
+
+http://localhost:8081/v3/api-docs
+
+docs
+
+

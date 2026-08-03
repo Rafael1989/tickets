@@ -1,6 +1,7 @@
 package com.ticketwave.common.exception;
 
 import com.ticketwave.booking.exception.BookingNotFoundException;
+import com.ticketwave.catalog.model.RouteType;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -8,7 +9,9 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -57,6 +60,41 @@ class GlobalExceptionHandlerTest {
 
         assertThat(response.getStatusCode().value()).isEqualTo(409);
         assertThat(response.getBody().error()).isEqualTo("CONCURRENT_UPDATE");
+    }
+
+    /**
+     * Regression: an unknown enum constant in a query parameter used to fall
+     * through to the catch-all Exception handler, answering 500 and logging a
+     * full stack trace for what is a plain client mistake.
+     */
+    @Test
+    void handleTypeMismatch_whenParameterIsAnEnum_returns400ListingTheAcceptedValues() {
+        MethodArgumentTypeMismatchException ex = mock(MethodArgumentTypeMismatchException.class);
+        given(ex.getName()).willReturn("type");
+        given(ex.getRequiredType()).willAnswer(invocation -> RouteType.class);
+
+        ResponseEntity<ErrorResponse> response = handler.handleTypeMismatch(ex);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(400);
+        assertThat(response.getBody().error()).isEqualTo("INVALID_PARAMETER");
+        assertThat(response.getBody().message())
+                .contains("type")
+                .contains("FLIGHT, BUS, TRAIN, EVENT");
+    }
+
+    @Test
+    void handleTypeMismatch_whenParameterIsNotAnEnum_returns400WithoutAnAcceptedValuesList() {
+        MethodArgumentTypeMismatchException ex = mock(MethodArgumentTypeMismatchException.class);
+        given(ex.getName()).willReturn("minPrice");
+        given(ex.getRequiredType()).willAnswer(invocation -> BigDecimal.class);
+
+        ResponseEntity<ErrorResponse> response = handler.handleTypeMismatch(ex);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(400);
+        assertThat(response.getBody().error()).isEqualTo("INVALID_PARAMETER");
+        assertThat(response.getBody().message())
+                .contains("minPrice")
+                .doesNotContain("Accepted values");
     }
 
     @Test

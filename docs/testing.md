@@ -327,9 +327,28 @@ check itself planted, and only when the whole sequence fits inside the 30s TTL
 `/v3/api-docs` instead: no schedule data, and outside `/api/*`, so it also
 stays out of the shared rate-limit bucket.
 
+### Load tests (k6)
+
+k6 is not a project dependency — install it separately. The script needs a
+backend with **seed data**: `DevDataSeeder` is `@Profile("seed")`, so the
+profile has to be named explicitly, and without it every login 401s.
+
 ```bash
+cd backend
+JWT_SECRET=local-dev-secret-key-at-least-32-bytes-long SERVER_PORT=8081 \
+mvn spring-boot:run -Dspring-boot.run.profiles=seed
+
+# then, from the repo root:
 k6 run load-test/search-and-seat-hold.js
 ```
+
+Unlike the two suites above, k6 has no database of its own: it drives the
+backend over HTTP and writes wherever that backend points — the dev database
+by default. It doesn't truncate anything (holds are released immediately), but
+the writes are real.
+
+See `load-test/README.md` for why 429 and 409 are expected results here rather
+than failures.
 
 The coverage number is trustworthy without `clean` — see the append note above.
 

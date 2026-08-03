@@ -9,8 +9,11 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -35,6 +38,33 @@ public class GlobalExceptionHandler {
                         "VALIDATION_FAILED",
                         "Request validation failed",
                         details));
+    }
+
+    /**
+     * An unparseable query/path parameter — a bad enum constant, a malformed
+     * date, a non-numeric id — is the caller's mistake, so it gets a 400 and
+     * no log line.
+     *
+     * Without this handler it falls through to handleUnexpectedException and
+     * becomes a 500 plus a full ERROR stack trace: a single client typo is
+     * reported as a server fault, and a client looping on one (a load test,
+     * a retrying integration) buries the log in stack traces that name no
+     * actual defect. Enum values are listed back because the accepted form is
+     * the constant name (FLIGHT), which a caller cannot guess from a 400
+     * alone.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        Class<?> requiredType = ex.getRequiredType();
+        String accepted = requiredType != null && requiredType.isEnum()
+                ? " Accepted values: " + Arrays.stream(requiredType.getEnumConstants()).map(Object::toString).collect(Collectors.joining(", ")) + "."
+                : "";
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of(
+                        HttpStatus.BAD_REQUEST.value(),
+                        "INVALID_PARAMETER",
+                        "Parameter '" + ex.getName() + "' has an invalid value." + accepted));
     }
 
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)

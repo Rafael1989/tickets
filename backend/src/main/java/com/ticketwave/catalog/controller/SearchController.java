@@ -41,7 +41,7 @@ public class SearchController {
             @ApiResponse(responseCode = "429", description = "Rate limit exceeded")
     })
     public ResponseEntity<List<ScheduleSearchResult>> search(
-            @Parameter(description = "flight, bus, train, or event") @RequestParam(required = false) RouteType type,
+            @Parameter(description = "FLIGHT, BUS, TRAIN, or EVENT (the constant name, not the lowercase persistence code)") @RequestParam(required = false) RouteType type,
             @Parameter(description = "Travel routes only, substring match, e.g. \"NY\"") @RequestParam(required = false) String origin,
             @Parameter(description = "Travel routes only, substring match") @RequestParam(required = false) String destination,
             @Parameter(description = "Events only, substring match, e.g. \"Arena\"") @RequestParam(required = false) String venue,
