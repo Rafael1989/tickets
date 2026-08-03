@@ -179,10 +179,19 @@ jobs:
           echo "starting $JAR"
           nohup java -jar "$JAR" > backend.log 2>&1 &
           for i in $(seq 1 60); do
-            # Any HTTP answer means Spring is up; a 404 from this path is a
-            # perfectly good readiness signal, and there is no actuator
-            # dependency in this project to ask instead.
-            if curl -s -o /dev/null http://localhost:8081/api/schedules/1; then
+            # /v3/api-docs, NOT an /api/... resource. A readiness probe must
+            # have no side effects, and this one did: GET /api/schedules/1
+            # against the still-unseeded database made ScheduleCatalogCache
+            # store an empty scheduleStaticInfo under key 1 (30s TTL). Playwright's
+            # global-setup then TRUNCATEs with RESTART IDENTITY, so the seeded
+            # schedule *is* id 1 - and the search found the id but got the stale
+            # empty back, returning 200 with an empty list. The golden-path test
+            # failed on a cache entry this very loop had planted.
+            # Reproduced locally by replaying that exact order; passes once the
+            # probe stops touching schedule data.
+            # It is also outside /api/*, so it does not consume the rate-limit
+            # bucket the suite shares. -f so only a 2xx counts as ready.
+            if curl -sf -o /dev/null http://localhost:8081/v3/api-docs; then
               echo "backend up after ${i} attempt(s)"; exit 0
             fi
             sleep 2

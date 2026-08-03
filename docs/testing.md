@@ -293,6 +293,18 @@ npx playwright test --config=e2e/playwright.config.ts
 The suite runs single-worker on purpose: every spec shares one seeded
 schedule/seat fixture, and parallel workers would race for it.
 
+**Never probe an `/api/...` resource to decide the backend is ready.** The
+backend caches `scheduleStaticInfo` per schedule id for 30s, and
+`global-setup.ts` truncates with `RESTART IDENTITY`, so the seeded schedule is
+always id 1. A readiness loop hitting `GET /api/schedules/1` before the seed
+therefore caches an empty result under exactly the key the suite is about to
+need: the search then finds the id, gets the stale empty back, and answers 200
+with an empty list. The golden-path test fails on a cache entry the readiness
+check itself planted, and only when the whole sequence fits inside the 30s TTL
+— which is why it survived three local runs and failed in CI. Probe
+`/v3/api-docs` instead: no schedule data, and outside `/api/*`, so it also
+stays out of the shared rate-limit bucket.
+
 ```bash
 k6 run load-test/search-and-seat-hold.js
 ```
