@@ -26,6 +26,18 @@
         <spring-cloud-contract.version>5.0.3</spring-cloud-contract.version>
         <!-- Spring Boot 4.0.6 does not manage org.testcontainers versions. -->
         <testcontainers.version>1.21.3</testcontainers.version>
+        <!--
+        Docker API version the *IT JVM talks; see the Failsafe configuration
+        for why it has to be stated at all. Overridable so a machine with an
+        older engine is not stuck editing the pom:
+
+          ./mvnw verify -Ddocker.api.version=1.41
+
+        1.44 is Docker Engine 25's. The floor is 1.40, below which Engine 26+
+        refuses; the ceiling is whatever the local daemon supports, and Docker
+        accepts any version at or under its own.
+        -->
+        <docker.api.version>1.44</docker.api.version>
     </properties>
 
     <dependencies>
@@ -193,13 +205,15 @@
                 (generate-test-resources, generate-test-sources, package).
 
                 This was first tried as a fix for the resolver's
-                cross-ClassRealm ClassCastException (see .mvn/maven.config) on
-                the theory that this plugin's extension realm supplied the
-                conflicting httpclient. It is not: a cold-repository build with
-                the realm gone still fails identically, so some other realm
-                contributes it and the wagon transport selection stays. Kept
-                anyway, on its own merits, and recorded here so nobody retests
-                the same hypothesis.
+                cross-ClassRealm ClassCastException (see .mvn/maven.config).
+                It is not one: the plugin realm is created when the plugin
+                executes, extension or not, and a cold-repository build with
+                <extensions>true</extensions> gone fails identically. The
+                plugin does supply the conflicting httpclient — it bundles
+                maven-resolver-transport-http and httpclient 4.5.14 — but the
+                fix for that is the transport selection in maven.config, not
+                this. Kept on its own merits; recorded so nobody retests the
+                hypothesis.
                 -->
                 <executions>
                     <execution>
@@ -284,11 +298,11 @@
                         setting that one does not help, because docker-java
                         namespaces env vars differently.
 
-                        1.44 is Docker Engine 25's version: old enough that any
-                        engine this project could plausibly run on supports it,
-                        new enough to clear the 1.40 floor.
+                        The value lives in the docker.api.version property so
+                        it can be overridden on the command line rather than by
+                        editing this file.
                         -->
-                        <api.version>1.44</api.version>
+                        <api.version>${docker.api.version}</api.version>
                     </systemPropertyVariables>
                 </configuration>
                 <executions>

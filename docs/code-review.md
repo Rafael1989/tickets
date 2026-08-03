@@ -380,17 +380,18 @@ server logs into the job log rather than into an artifact nobody downloads.
 
 ## 8. Open items
 
-- **`-Dmaven.resolver.transport=wagon` is a workaround, not a fix.** It steers
-  the resolver away from the transport that breaks; whichever ClassRealm
-  supplies the conflicting `httpclient` is still there. Two candidates were
-  tested and eliminated (the runner's Maven version, and
-  `spring-cloud-contract-maven-plugin`'s extension realm), so finding the real
-  contributor means bisecting the remaining plugins. Low urgency — a cold build
-  works — but the note in `.mvn/maven.config` should not become permanent by
-  default.
-- **`api.version=1.44` is pinned by hand** for the Testcontainers JVM. It will
-  need revisiting if this ever has to run against a Docker Engine older than 25,
-  or once docker-java stops sending 1.32 for image pulls.
+- **`-Dmaven.resolver.transport=wagon` mitigates a third-party defect we cannot
+  fix from here.** Root cause is now known:
+  `spring-cloud-contract-maven-plugin` 5.0.3's plugin realm bundles
+  `maven-resolver-transport-http:1.9.27` and `httpclient:4.5.14`, so once it has
+  executed, its `HttpTransporterFactory` shadows Maven's own for the next plugin
+  realm that needs a download. Removing it means excluding the bundled transport
+  from the plugin's classpath, which risks its stub-downloading path for no gain
+  in a project that generates stubs rather than fetching them. Revisit if the
+  plugin stops shipping a resolver transport.
+- **`docker.api.version` defaults to 1.44** for the Testcontainers JVM, and is
+  overridable on the command line. It can go away once docker-java stops sending
+  API 1.32 on image pulls.
 
 ### Closed since this document was written
 

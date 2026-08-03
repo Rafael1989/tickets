@@ -51,16 +51,24 @@ container is per JVM, so every class in a run shares one database and a
 hardcoded fixture identifier still collides with a sibling test, just no longer
 with yesterday's run.
 
-> **Windows / Docker Desktop caveat.** The build pins `api.version=1.44` for the
-> Failsafe JVM (see `backend/pom.xml`). Without it Testcontainers negotiates the
-> connection fine — it even logs `API Version: 1.55` — but the image-pull command
-> still goes out as client version 1.32, and Docker Engine 26+ rejects it with
-> *"client version 1.32 is too old"*. The symptom moves around depending on
-> whether `~/.testcontainers.properties` has cached a client strategy, which
-> makes it look like several unrelated faults. It is one, and the pinned property
-> is the fix. Note it is docker-java's own `api.version`, **not** the
-> `DOCKER_API_VERSION` environment variable, which docker-java namespaces
-> differently and which does not help.
+> **Docker API version.** The build passes `api.version` to the Failsafe JVM,
+> defaulting to **1.44** via the `docker.api.version` property in
+> `backend/pom.xml`. Override it if your daemon needs something else:
+>
+> ```bash
+> ./mvnw verify -Ddocker.api.version=1.41
+> ```
+>
+> Without it Testcontainers negotiates the connection fine — it even logs
+> `API Version: 1.55` — but the image-pull command still goes out as client
+> version 1.32, and Docker Engine 26+ rejects it with *"client version 1.32 is
+> too old. Minimum supported API version is 1.40"*. The symptom moves between the
+> pull and the `/info` probe depending on whether `~/.testcontainers.properties`
+> has cached a client strategy, which makes one fault look like several.
+>
+> Note it is docker-java's own `api.version` key, **not** the
+> `DOCKER_API_VERSION` environment variable — docker-java namespaces env vars
+> differently, and setting that one does not help (it was tried).
 
 ### Frontend
 
