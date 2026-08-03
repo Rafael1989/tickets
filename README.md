@@ -112,10 +112,11 @@ Every error response has the same shape:
 1. Create the database and set required environment variables. Everything
    has a sane local default (see `application.yml`) **except `JWT_SECRET`**,
    which has no default on purpose — startup fails fast rather than run with
-   a guessable key:
+   a guessable key. It must be **at least 32 characters** (HMAC-SHA needs a
+   256-bit key); a shorter one fails startup with a message saying so:
 
    ```bash
-   export JWT_SECRET="a-long-random-development-secret"
+   export JWT_SECRET="$(openssl rand -base64 48)"
    # optional, only if your Postgres differs from the defaults:
    export DB_HOST=localhost DB_PORT=5432 DB_NAME=ticketwave \
           DB_USERNAME=ticketwave DB_PASSWORD=ticketwave

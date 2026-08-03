@@ -8,6 +8,7 @@ import io.jsonwebtoken.security.Keys;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -20,12 +21,40 @@ public class JwtService {
 
     private static final String ROLES_CLAIM = "roles";
 
+    /**
+     * RFC 7518 §3.2 requires an HMAC-SHA key to be at least as long as the hash
+     * output — 256 bits, so 32 bytes, for HS256.
+     */
+    private static final int MINIMUM_SECRET_BYTES = 32;
+
     private final SecretKey signingKey;
     private final JwtProperties properties;
 
     public JwtService(JwtProperties properties) {
         this.properties = properties;
-        this.signingKey = Keys.hmacShaKeyFor(properties.secret().getBytes());
+        this.signingKey = Keys.hmacShaKeyFor(requireStrongSecret(properties.secret()));
+    }
+
+    /**
+     * Checked here rather than left to jjwt, which rejects a short key with a
+     * WeakKeyException quoting RFC 7518 at the reader — accurate, but it never
+     * mentions JWT_SECRET, so the reader is told the algorithm is unhappy
+     * rather than which variable to fix. Startup already fails fast when the
+     * variable is missing; failing just as clearly when it is present but too
+     * short is the same guarantee.
+     *
+     * Reports the length only. The value is a signing key and must never reach
+     * a log, which is exactly where a startup failure message ends up.
+     */
+    private static byte[] requireStrongSecret(String secret) {
+        byte[] bytes = secret == null ? new byte[0] : secret.getBytes(StandardCharsets.UTF_8);
+        if (bytes.length < MINIMUM_SECRET_BYTES) {
+            throw new IllegalStateException(
+                    "JWT_SECRET must be at least " + MINIMUM_SECRET_BYTES + " characters (256 bits) for HMAC-SHA signing, but is "
+                            + bytes.length + ". Set a longer value, for example: "
+                            + "export JWT_SECRET=\"$(openssl rand -base64 48)\"");
+        }
+        return bytes;
     }
 
     public String generateAccessToken(String subject, List<String> roles) {

@@ -114,7 +114,15 @@ runs before `UsernamePasswordAuthenticationFilter`. Passwords are BCrypt-hashed.
 
 `JWT_SECRET` has **no default value** in `application.yml` — startup fails fast
 if it is unset, rather than running with a secret that is public in source
-control.
+control. It must also be **at least 32 characters**: RFC 7518 §3.2 requires an
+HMAC-SHA key at least as long as the hash output, 256 bits for HS256. A shorter
+one fails startup with a message naming the variable and the requirement —
+`JwtService` checks the length itself rather than letting jjwt's
+`WeakKeyException` explain the RFC without ever mentioning `JWT_SECRET`.
+
+```bash
+export JWT_SECRET="$(openssl rand -base64 48)"
+```
 
 > A subtlety worth knowing before you touch it: `JwtAuthenticationFilter` is a
 > `@Component` *and* a `jakarta.servlet.Filter`, so Spring Boot would register it
@@ -243,7 +251,7 @@ Everything is environment-overridable. Defaults shown are the ones in
 
 | Property | Env var | Default | Effect |
 |---|---|---|---|
-| `ticketwave.jwt.secret` | `JWT_SECRET` | **none — required** | HMAC signing key; startup fails if unset |
+| `ticketwave.jwt.secret` | `JWT_SECRET` | **none — required, min 32 chars** | HMAC signing key. Startup fails if unset, and equally if shorter than 32 characters — RFC 7518 §3.2 requires an HMAC-SHA key at least as long as the hash output (256 bits) |
 | `ticketwave.jwt.access-token-ttl-minutes` | `JWT_ACCESS_TTL_MINUTES` | `15` | Access token lifetime |
 | `ticketwave.jwt.refresh-token-ttl-minutes` | `JWT_REFRESH_TTL_MINUTES` | `10080` | Refresh token lifetime |
 | `ticketwave.inventory.seat-hold-ttl-minutes` | `SEAT_HOLD_TTL_MINUTES` | `10` | How long a seat hold survives |
