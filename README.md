@@ -25,7 +25,7 @@ Full product spec: [`genai.txt`](genai.txt). Repo-level coding standards
 
 | | |
 |---|---|
-| **Backend** | Spring Boot 4.0.6, Java 21, PostgreSQL, Liquibase, MapStruct, JWT, springdoc-openapi |
+| **Backend** | Spring Boot 4.0.7, Java 21, PostgreSQL, Liquibase, MapStruct, JWT, springdoc-openapi |
 | **Frontend** | Angular 22, RxJS |
 | **Testing** | JUnit 5 + Mockito, Spring Cloud Contract, MockMvc, Vitest, Playwright, k6 |
 | **Build** | Maven (backend), npm/Angular CLI (frontend) |
@@ -173,7 +173,7 @@ This one command runs everything the coverage gate depends on:
   - ≥80% line **and** ≥80% branch coverage across the whole bundle.
   - 100% line **and** branch coverage on `PricingServiceImpl`, `SeatHoldServiceImpl`, `SeatHoldExpirationScheduler`, and `RefundPolicyService` specifically — the modules where a silent bug has direct financial impact.
 
-Currently measured: **99.34% line, 98.05% branch** — 670 unit + 35 integration
+Currently measured: **99.34% line, 98.05% branch** — 673 unit + 35 integration
 tests, zero failures. Generated code (MapStruct `*MapperImpl`, Lombok members)
 and the `@Profile("seed")` `DevDataSeeder` are excluded from the measurement —
 see [`docs/testing.md`](docs/testing.md) for what that does and does not mean.
