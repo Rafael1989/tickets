@@ -1,12 +1,25 @@
-$env:JWT_SECRET = 'a-long-random-development-secret'
+sc delete postgresql-x64-17
+
+"C:\Program Files\PostgreSQL\17\bin\pg_ctl.exe" register -N "postgresql-x64-17" -D "C:\Program Files\PostgreSQL\17\data"
+
+net start postgresql-x64-17
+
+$env:JWT_SECRET='a-long-random-development-secret-key-32plus'
 mvn spring-boot:run
 npm start
 
 Guest flow
 Customer flow
 Support flow
+support1
+SeedPass123!
+
+
+
 Operator flow
+operator2
 Admin flow
+admin1
 partner flow
 
 backend
@@ -53,6 +66,10 @@ npm run e2e
 exercises the whole stack together, including the search → book → pay journey.
 
 kill backend
+netstat -ano | Select-String ':8081.*LISTENING' | ForEach-Object { Stop-Process -Id (($_ -split '\s+')[-1]) -Force }
+
+Remove-Item Env:\DB_NAME, Env:\DB_USERNAME, Env:\DB_PASSWORD -ErrorAction SilentlyContinue
+
 
 cd backend
 $env:JWT_SECRET='local-dev-secret-key-at-least-32-bytes-long'
@@ -63,6 +80,7 @@ mvn spring-boot:run "-Dspring-boot.run.profiles=seed"
 
 if needed {
  winget list --id k6.k6; winget list --id Grafana.k6; Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Links","$env:ProgramFiles\k6" -Filter k6.exe -ErrorAction SilentlyContinue | Select-Object FullName
+ winget install k6 --source winget
  $env:PATH += ';C:\Program Files\k6'
  k6 version
 } 
@@ -73,6 +91,8 @@ k6 run load-test/search-and-seat-hold.js
 
 A load test where 429 and 409 are the expected result, not a failure: they are the rate limiter and the 
 pessimistic lock doing their job under concurrency.
+
+snyk test
 
 https://github.com/Rafael1989/tickets/actions/runs/30830970095
 

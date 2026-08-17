@@ -351,8 +351,9 @@ export class SeatSelectionComponent {
         this.notifications.error('This booking is too close to departure to reschedule online.');
         return;
       }
-      if (quote.paymentRequired && this.fareSettlementForm.invalid) {
+      if (quote.paymentRequired && this.fareSettlementMethod() === 'card' && this.fareSettlementForm.invalid) {
         this.fareSettlementForm.markAllAsTouched();
+        this.notifications.error('Enter a valid card number to continue.');
         return;
       }
     }
